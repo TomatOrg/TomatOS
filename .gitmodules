@@ -1,0 +1,6 @@
+[submodule "limine"]
+	path = limine
+	url = git@github.com:limine-bootloader/limine.git
+[submodule "lib/mir"]
+	path = lib/mir
+	url = git@github.com:vnmakarov/mir.git
