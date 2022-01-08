@@ -57,3 +57,7 @@ STATIC_ASSERT(KERNEL_HEAP_END < KERNEL_BASE);
         ASSERT(DIRECT_MAP_START <= _x && _x <= DIRECT_MAP_END); \
         _x - DIRECT_MAP_START; \
     })
+
+#include "phys.h"
+#include "malloc.h"
+#include "vmm.h"

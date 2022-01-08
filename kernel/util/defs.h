@@ -23,6 +23,20 @@
         (typeof(x))(_x - (_x & (_align - 1))); \
     })
 
+#define MIN(a, b) \
+    ({ \
+        typeof(a) _a = (a); \
+        typeof(b) _b = (b); \
+        _a < _b ? _a : _b; \
+    })
+
+#define MAX(a, b) \
+    ({ \
+        typeof(a) _a = (a); \
+        typeof(b) _b = (b); \
+        _a > _b ? _a : _b; \
+    })
+
 #define PACKED __attribute__((packed))
 #define UNUSED __attribute__((unused))
 

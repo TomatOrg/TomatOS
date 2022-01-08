@@ -1,4 +1,5 @@
 #include <sync/ticketlock.h>
+#include <util/string.h>
 #include "malloc.h"
 
 #include "tlsf.h"
@@ -22,6 +23,9 @@ void* malloc(size_t size) {
     ticketlock_lock(&m_tlsf_lock);
     void* ptr = tlsf_malloc(m_tlsf, size);
     ticketlock_unlock(&m_tlsf_lock);
+    if (ptr == NULL) {
+        memset(ptr, 0, size);
+    }
     return ptr;
 }
 

@@ -1,9 +1,12 @@
+#include "vmm.h"
+
 #include <util/string.h>
 #include <arch/intrin.h>
 #include <sync/spinlock.h>
-#include <kernel.h>
 #include <arch/msr.h>
-#include "vmm.h"
+#include <kernel.h>
+
+#include "mem.h"
 #include "early.h"
 
 // The recursive page table addresses
@@ -278,6 +281,26 @@ err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
         // unmap the direct page if we need to
         if (perms & MAP_UNMAP_DIRECT) {
             vmm_unmap_direct_page(pa);
+        }
+    }
+
+cleanup:
+    return err;
+}
+
+err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
+    err_t err = NO_ERROR;
+
+    size_t pml1i = ((uintptr_t)va >> 12) & 0xFFFFFFFFFull;
+
+    // simply iterate all the indexes and free them
+    for (int i = 0; i < page_count; i++, pml1i++) {
+        CHECK(PAGE_TABLE_PML1[pml1i].present);
+        PAGE_TABLE_PML1[pml1i].writeable = (perms & MAP_WRITE) ? 1 : 0;
+        PAGE_TABLE_PML1[pml1i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+
+        if (perms & MAP_UNMAP_DIRECT) {
+            vmm_unmap_direct_page(PAGE_TABLE_PML1[pml1i].frame << 12);
         }
     }
 

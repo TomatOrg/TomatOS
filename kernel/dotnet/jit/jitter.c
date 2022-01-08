@@ -10,7 +10,8 @@ void random_mir_test() {
 
     buffer_t* buffer = create_buffer();
     MIR_output(ctx, buffer);
-    TRACE("MIR Output: %s", buffer->buffer);
+    TRACE("MIR Output:");
+    printf("%s", buffer->buffer);
     destroy_buffer(buffer);
 
     MIR_finish(ctx);

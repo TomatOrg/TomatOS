@@ -7,7 +7,7 @@
 
 typedef struct metadata_table {
     void* table;
-    uint32_t rows;
+    int rows;
 } metadata_table_t;
 
 typedef struct metadata {

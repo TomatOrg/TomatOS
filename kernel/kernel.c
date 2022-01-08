@@ -22,6 +22,7 @@
 #include <dotnet/jit/jitter_internal.h>
 #include <mem/stack.h>
 #include <mem/malloc.h>
+#include <dotnet/assembly.h>
 
 alignas(16)
 static char m_entry_stack[SIZE_2MB] = {0};
@@ -123,7 +124,32 @@ cleanup:
 
     // wait until the kernel wakes us
     // up to start scheduling
-    while (1) asm ("hlt");
+    asm ("cli");
+    while(1) asm ("hlt");
+}
+
+/**
+ * Get a stivale2 module
+ *
+ * @param name      [IN] The name of the module we want
+ */
+static struct stivale2_module* get_stivale2_module(const char* name) {
+    static struct stivale2_struct_tag_modules* modules = NULL;
+    if (modules == NULL) {
+        modules = get_stivale2_tag(STIVALE2_STRUCT_TAG_MODULES_ID);
+    }
+
+    if (modules != NULL) {
+        // get the corlib first
+        for (int i = 0; i < modules->module_count; i++) {
+            struct stivale2_module* module = &modules->modules[i];
+            if (strcmp(module->string, name) == 0) {
+                return module;
+            }
+        }
+    }
+
+    return NULL;
 }
 
 void _start(struct stivale2_struct* stivale2) {
@@ -177,9 +203,18 @@ void _start(struct stivale2_struct* stivale2) {
         TRACE("Bootloader doesn't support SMP startup!");
     }
 
+    // get the corlib module
+    struct stivale2_module* corelib = get_stivale2_module("CoreLib.dll");
+    CHECK_ERROR(corelib != NULL, ERROR_NOT_FOUND, "CoreLib.dll not found!");
+    TRACE("Loading CoreLib");
+    assembly_t corlib = NULL;
+    CHECK_AND_RETHROW(load_assembly_from_blob(&corlib, (void*)corelib->begin, corelib->end - corelib->begin));
+
     // now that we are done with the bootloader we
     // can reclaim all memory
     CHECK_AND_RETHROW(palloc_reclaim());
+
+    random_mir_test();
 
 cleanup:
 
@@ -188,5 +223,6 @@ cleanup:
     }
 
     TRACE("Kernel init done");
+    asm ("cli");
     while(1) asm ("hlt");
 }

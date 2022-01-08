@@ -1,9 +1,8 @@
 #pragma once
 
+#include <util/except.h>
 #include <util/defs.h>
 #include <stdbool.h>
-
-#include "mem.h"
 
 typedef struct page_entry {
     uint64_t present : 1;
@@ -72,6 +71,15 @@ typedef enum map_perm {
  * @param perms         [IN] The permissions to set
  */
 err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms);
+
+/**
+ * This allows to set protections attributes
+ *
+ * @param va            [IN] The virtual address
+ * @param page_count    [IN] The number of pages
+ * @param perms         [IN] The new permissions
+ */
+err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms);
 
 /**
  * Allocates and maps physical memory (could be non-contigious) to the given virtual

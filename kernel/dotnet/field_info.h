@@ -2,6 +2,8 @@
 
 #include "dotnet.h"
 
+#include <stdbool.h>
+
 typedef enum field_attributes {
     FIELD_ATTRIBUTES_STATIC = 0x0010
 } field_attributes_t;

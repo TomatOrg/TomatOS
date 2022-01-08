@@ -1,8 +1,9 @@
 #pragma once
 
 #include <util/list.h>
-#include <stddef.h>
 #include <util/except.h>
+
+#include <stddef.h>
 
 /**
  * Init phys allocator
