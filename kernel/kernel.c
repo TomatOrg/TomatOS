@@ -106,6 +106,9 @@ static void per_cpu_start(struct stivale2_smp_info* info) {
     init_idt();
     init_vmm_per_cpu();
 
+    // move to higher half
+    info = PHYS_TO_DIRECT(info);
+
     // we are ready!
     TRACE("\tCPU #%d", info->lapic_id);
 
@@ -145,37 +148,38 @@ void _start(struct stivale2_struct* stivale2) {
     CHECK_AND_RETHROW(init_vmm());
     CHECK_AND_RETHROW(init_palloc());
     vmm_switch_allocator();
-//    CHECK_AND_RETHROW(init_malloc());
+    CHECK_AND_RETHROW(init_malloc());
 
-//    struct stivale2_struct_tag_smp* smp = get_stivale2_tag(STIVALE2_STRUCT_TAG_SMP_ID);
-//    if (smp != NULL) {
-//        TRACE("SMP Startup");
-//        for (int i = 0; i < smp->cpu_count; i++) {
-//            if (smp->smp_info[i].lapic_id == smp->bsp_lapic_id) {
-//                TRACE("\tCPU #%d - BSP", smp->bsp_lapic_id);
-//                continue;
-//            }
-//
-//            // setup the entry for the given CPU
-//            smp->smp_info[i].target_stack = (uintptr_t)alloc_stack();
-//            atomic_store(&smp->smp_info[i].goto_address, (uintptr_t)per_cpu_start);
-//        }
-//
-//        // wait for all the cores to start
-//        while (atomic_load_explicit(&m_startup_count, memory_order_relaxed) != smp->cpu_count - 1) {
-//            asm ("pause");
-//        }
-//
-//        // make sure we got no SMP errors
-//        CHECK(!atomic_load_explicit(&m_smp_error, memory_order_relaxed));
-//
-//        TRACE("Done CPU startup");
-//    } else {
-//        TRACE("Bootloader doesn't support SMP startup!");
-//    }
+    struct stivale2_struct_tag_smp* smp = get_stivale2_tag(STIVALE2_STRUCT_TAG_SMP_ID);
+    if (smp != NULL) {
+        TRACE("SMP Startup");
+        for (int i = 0; i < smp->cpu_count; i++) {
+            if (smp->smp_info[i].lapic_id == smp->bsp_lapic_id) {
+                TRACE("\tCPU #%d - BSP", smp->bsp_lapic_id);
+                continue;
+            }
 
-//    // we are done with the bootloader, we can reclaim its memory
-//    kmalloc_reclaim();
+            // setup the entry for the given CPU
+            smp->smp_info[i].target_stack = (uintptr_t)(palloc(PAGE_SIZE) + PAGE_SIZE);
+            atomic_store(&smp->smp_info[i].goto_address, (uintptr_t)per_cpu_start);
+        }
+
+        // wait for all the cores to start
+        while (atomic_load_explicit(&m_startup_count, memory_order_relaxed) != smp->cpu_count - 1) {
+            asm ("pause");
+        }
+
+        // make sure we got no SMP errors
+        CHECK(!atomic_load_explicit(&m_smp_error, memory_order_relaxed));
+
+        TRACE("Done CPU startup");
+    } else {
+        TRACE("Bootloader doesn't support SMP startup!");
+    }
+
+    // now that we are done with the bootloader we
+    // can reclaim all memory
+    CHECK_AND_RETHROW(palloc_reclaim());
 
 cleanup:
 

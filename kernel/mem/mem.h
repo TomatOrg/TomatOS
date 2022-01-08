@@ -27,17 +27,15 @@
 #define RECURSIVE_PAGING_START          (0xFFFFFF0000000000ull)
 #define RECURSIVE_PAGING_END            (RECURSIVE_PAGING_START + RECURSIVE_PAGING_SIZE)
 
-// The stack pool area
-#define STACK_POOL_SIZE                 (SIZE_1GB * 203ull)
+// The stack pool area, have enough for 64k running threads....
+#define STACK_POOL_SIZE                 ((SIZE_1MB * 3ull) * SIZE_64KB)
 #define STACK_POOL_START                (RECURSIVE_PAGING_END + SIZE_1GB)
 #define STACK_POOL_END                  (STACK_POOL_START + STACK_POOL_SIZE)
 
 // The kernel heap area
-#define KERNEL_HEAP_SIZE                (SIZE_1GB * 203ull)
-#define KERNEL_HEAP_START               (STACK_POOL_END + SIZE_2GB)
+#define KERNEL_HEAP_SIZE                (SIZE_4GB)
+#define KERNEL_HEAP_START               (STACK_POOL_END + SIZE_1GB)
 #define KERNEL_HEAP_END                 (KERNEL_HEAP_START + KERNEL_HEAP_SIZE)
-
-// we have 510GB that is between the kernel and the recursive page table
 
 // This is where the kernel virtual address is
 #define KERNEL_BASE                     (0xffffffff80000000)

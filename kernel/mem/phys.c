@@ -1,6 +1,7 @@
 #include <stdalign.h>
 #include <util/string.h>
 #include <sync/ticketlock.h>
+#include <util/stb_ds.h>
 #include "phys.h"
 #include "early.h"
 #include "mem.h"
@@ -725,10 +726,47 @@ err_t init_palloc() {
     CHECK_AND_RETHROW(mark_unusable_ranges(memmap));
     CHECK_AND_RETHROW(mark_bootloader_reclaim(memmap));
 
-    void* ptr = palloc(PAGE_SIZE);
-    TRACE("%p", ptr);
+cleanup:
+    return err;
+}
+
+err_t palloc_reclaim() {
+    err_t err = NO_ERROR;
+    struct stivale2_mmap_entry* to_reclaim = NULL;
+
+    // gather and copy entries that we need (we must copy them
+    // because otherwise we are going to reclaim them)
+    struct stivale2_struct_tag_memmap* memmap = get_stivale2_tag(STIVALE2_STRUCT_TAG_MEMMAP_ID);
+    CHECK(memmap != NULL);
+    for (int i = 0; i < memmap->entries; i++) {
+        if (memmap->memmap[i].type == STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE) {
+            arrpush(to_reclaim, memmap->memmap[i]);
+        }
+    }
+
+    // now actually reclaim them
+    TRACE("Reclaiming memory");
+    for (int i = 0; i < arrlen(to_reclaim); i++) {
+        struct stivale2_mmap_entry* entry = &to_reclaim[i];
+        TRACE("\t%p-%p: %llu bytes", entry->base, entry->base + entry->length, entry->length);
+
+        void* ptr = PHYS_TO_DIRECT(entry->base);
+        size_t length = entry->length;
+        while (length > 0) {
+            // get and free the entry
+            buddy_tree_pos_t pos = position_for_address(ptr);
+            CHECK(buddy_tree_valid(pos));
+            buddy_tree_release(pos);
+
+            // advance to next one
+            size_t size = size_for_depth(pos.depth);
+            ptr += size;
+            length -= size;
+        }
+    }
 
 cleanup:
+    arrfree(to_reclaim);
     return err;
 }
 
@@ -773,10 +811,7 @@ void pfree(void* base) {
     ticketlock_lock(&m_palloc_lock);
 
     buddy_tree_pos_t pos = position_for_address(base);
-    if (!buddy_tree_valid(pos)) {
-        return;
-    }
-
+    ASSERT (buddy_tree_valid(pos));
     buddy_tree_release(pos);
 
     ticketlock_unlock(&m_palloc_lock);
