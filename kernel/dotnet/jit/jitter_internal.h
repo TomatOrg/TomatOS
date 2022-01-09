@@ -2,8 +2,10 @@
 
 #include <mir/mir.h>
 
-typedef struct jitter_context {
-    MIR_context_t ctx;
-} jitter_context_t;
+typedef struct stack_entry {
 
-void random_mir_test();
+} stack_entry_t;
+
+struct jitter_context {
+    MIR_context_t ctx;
+};

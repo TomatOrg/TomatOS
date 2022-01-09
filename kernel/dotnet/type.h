@@ -30,6 +30,7 @@ struct type {
     type_t element_type;
 
     // A value that indicates whether the type is an array.
+    // TODO: is this how I wanna handle arrays?
     bool is_array;
 
     // A value indicating whether the Type is passed by reference.
@@ -86,8 +87,3 @@ type_t make_by_ref_type(type_t type);
  * Returns a Type object that represents a pointer to the current type.
  */
 type_t make_pointer_type(type_t type);
-
-/**
- * Checks if the type is assignable from the given type
- */
-bool type_is_assignable_from(type_t to, type_t from);

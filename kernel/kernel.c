@@ -23,6 +23,7 @@
 #include <mem/stack.h>
 #include <mem/malloc.h>
 #include <dotnet/assembly.h>
+#include <dotnet/jit/jitter.h>
 
 alignas(16)
 static char m_entry_stack[SIZE_2MB] = {0};
@@ -214,7 +215,9 @@ void _start(struct stivale2_struct* stivale2) {
     // can reclaim all memory
     CHECK_AND_RETHROW(palloc_reclaim());
 
-    random_mir_test();
+    jitter_context_t* ctx = create_jitter();
+    CHECK_AND_RETHROW(jitter_jit_method(ctx, g_corlib->entry_point));
+    destroy_jitter(ctx);
 
 cleanup:
 

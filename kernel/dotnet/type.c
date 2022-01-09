@@ -1,4 +1,5 @@
 #include "type.h"
+#include "types.h"
 
 #include <mem/malloc.h>
 #include <util/string.h>
@@ -6,20 +7,27 @@
 #include <stdalign.h>
 
 type_t make_array_type(type_t type) {
-//    if (type->by_ref_type != NULL) {
-//        return type->by_ref_type;
-//    }
+    if (type->by_ref_type != NULL) {
+        return type->by_ref_type;
+    }
 
-//    type_t new_type = kmalloc(1, sizeof(struct type));
-//    memset(new_type, 0, sizeof(struct type));
-//    *new_type = *g_array;
-//    new_type->is_array = true;
-//    new_type->element_type = type;
+    // slow path when it needs allocation
+    spinlock_lock(&type->array_type_lock);
+    if (type->array_type != NULL) {
+        spinlock_unlock(&type->array_type_lock);
+        return type->array_type;
+    }
 
-//    type->by_ref_type = new_type;
-//    return new_type;
+    type_t new_type = malloc(sizeof(struct type));
+    memset(new_type, 0, sizeof(struct type));
+    *new_type = *g_array;
+    new_type->is_array = true;
+    new_type->element_type = type;
 
-    return NULL;
+    type->array_type = new_type;
+
+    spinlock_unlock(&type->array_type_lock);
+    return new_type;
 }
 
 type_t make_by_ref_type(type_t type) {
@@ -40,8 +48,8 @@ type_t make_by_ref_type(type_t type) {
     new_type->assembly = type->assembly;
     new_type->stack_alignment = sizeof(void*);
     new_type->stack_size = sizeof(void*);
-    new_type->managed_alignment = alignof(void*);
-    new_type->managed_size = alignof(void*);
+    new_type->managed_alignment = type->stack_alignment;
+    new_type->managed_size = type->stack_size;
     new_type->is_by_ref = true;
     new_type->element_type = type;
 
@@ -69,8 +77,8 @@ type_t make_pointer_type(type_t type) {
     new_type->assembly = type->assembly;
     new_type->stack_alignment = sizeof(void*);
     new_type->stack_size = sizeof(void*);
-    new_type->managed_alignment = alignof(void*);
-    new_type->managed_size = alignof(void*);
+    new_type->managed_alignment = type->stack_alignment;
+    new_type->managed_size = type->stack_size;
     new_type->is_pointer = true;
     new_type->element_type = type;
 
@@ -78,8 +86,4 @@ type_t make_pointer_type(type_t type) {
 
     spinlock_unlock(&type->pointer_type_lock);
     return new_type;
-}
-
-bool type_is_assignable_from(type_t to, type_t from) {
-    return to == from;
 }
