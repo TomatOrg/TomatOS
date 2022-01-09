@@ -31,6 +31,11 @@ type_t g_object = NULL;
 type_t g_value_type = NULL;
 type_t g_array = NULL;
 
+type_t g_arithmetic_exception = NULL;
+type_t g_overflow_exception = NULL;
+type_t g_null_reference_exception = NULL;
+type_t g_divide_by_zero_exception = NULL;
+
 typedef struct base_type {
     type_t* pointer;
     const char* namespace;
