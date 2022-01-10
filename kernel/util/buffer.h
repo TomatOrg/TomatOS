@@ -16,6 +16,14 @@ buffer_t* create_buffer();
  */
 void destroy_buffer(buffer_t* buffer);
 
+#define DESTROY_BUFFER(buffer) \
+    do { \
+        if (buffer != NULL) { \
+            destroy_buffer(buffer); \
+            buffer = NULL; \
+        } \
+    } while (0)
+
 /**
  * Represents the buffer got no more chars in it
  */

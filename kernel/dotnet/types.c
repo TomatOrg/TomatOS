@@ -5,6 +5,7 @@
 #include <util/string.h>
 #include <stdalign.h>
 #include <stddef.h>
+#include <dotnet/builtin/string.h>
 
 type_t g_void = NULL;
 
@@ -131,6 +132,10 @@ err_t initialize_base_types(metadata_type_def_t* base_types, int base_types_coun
     // All value types inherit from this type (ignoring primitive
     // types)
     g_value_type->is_value_type = true;
+
+    // string is a built-in type
+    g_string->managed_size = sizeof(system_string_t);
+    g_string->managed_alignment = alignof(system_string_t);
 
 cleanup:
     return err;

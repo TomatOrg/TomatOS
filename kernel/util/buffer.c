@@ -14,8 +14,10 @@ buffer_t* create_buffer() {
 }
 
 void destroy_buffer(buffer_t* buffer) {
-    arrfree(buffer->buffer);
-    free(buffer);
+    if (buffer != NULL) {
+        arrfree(buffer->buffer);
+        free(buffer);
+    }
 }
 
 int bputc(int c, buffer_t* buffer) {

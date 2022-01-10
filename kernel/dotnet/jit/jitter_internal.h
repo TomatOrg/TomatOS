@@ -2,6 +2,7 @@
 
 #include <mir/mir.h>
 
+#include <dotnet/type.h>
 
 typedef struct stack_item {
     type_t type;
@@ -22,10 +23,13 @@ typedef struct jit_stack {
     MIR_reg_t frame;
 } jit_stack_t;
 
-struct jitter_context {
+typedef struct jitter_context {
     MIR_context_t ctx;
     jit_stack_t stack;
     MIR_func_t func;
-};
 
-
+    // This allows to set the top of the stack for the
+    // current frame
+    MIR_item_t set_top_frame;
+    MIR_item_t set_top_frame_proto;
+} jitter_context_t;

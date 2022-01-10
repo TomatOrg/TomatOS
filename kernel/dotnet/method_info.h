@@ -1,5 +1,7 @@
 #pragma once
 
+#include <util/buffer.h>
+#include <dotnet/jit/jitter.h>
 #include "dotnet.h"
 
 struct method_info {
@@ -25,4 +27,11 @@ struct method_info {
     // TODO: local variables
 
     // TODO: exceptions
+
+    // jit specific data
+    jitter_method_info_t jit;
 };
+
+void method_signature_string(method_info_t info, buffer_t* buffer);
+
+void method_full_name(method_info_t info, buffer_t* buffer);

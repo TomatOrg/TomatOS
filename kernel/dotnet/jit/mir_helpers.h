@@ -1,6 +1,6 @@
 #pragma once
 
-#include "jitter.h"
+#include "jitter_internal.h"
 
 #include <mir/mir.h>
 

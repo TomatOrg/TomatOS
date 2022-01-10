@@ -215,9 +215,7 @@ void _start(struct stivale2_struct* stivale2) {
     // can reclaim all memory
     CHECK_AND_RETHROW(palloc_reclaim());
 
-    jitter_context_t* ctx = create_jitter();
-    CHECK_AND_RETHROW(jitter_jit_method(ctx, g_corlib->entry_point));
-    destroy_jitter(ctx);
+    CHECK_AND_RETHROW(jitter_jit_assembly(g_corlib));
 
 cleanup:
 

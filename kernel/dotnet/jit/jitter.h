@@ -2,12 +2,12 @@
 
 #include <util/except.h>
 #include <dotnet/dotnet.h>
+#include <mir/mir.h>
 
-struct jitter_context;
-typedef struct jitter_context jitter_context_t;
+typedef struct jitter_method_info {
+    // info the jit needs
+    MIR_item_t proto;
+    MIR_item_t forward;
+} jitter_method_info_t;
 
-jitter_context_t* create_jitter();
-
-err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method);
-
-void destroy_jitter(jitter_context_t* jitter);
+err_t jitter_jit_assembly(assembly_t assembly);

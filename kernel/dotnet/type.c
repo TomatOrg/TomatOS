@@ -80,10 +80,36 @@ type_t make_pointer_type(type_t type) {
     new_type->managed_alignment = type->stack_alignment;
     new_type->managed_size = type->stack_size;
     new_type->is_pointer = true;
+    new_type->is_value_type = true;
     new_type->element_type = type;
 
     type->pointer_type = new_type;
 
     spinlock_unlock(&type->pointer_type_lock);
     return new_type;
+}
+
+void type_full_name(type_t type, buffer_t* buffer) {
+    if (type->is_by_ref) {
+        type_full_name(type->element_type, buffer);
+        bputc('&', buffer);
+    } else if (type->is_pointer) {
+        type_full_name(type->element_type, buffer);
+        bputc('*', buffer);
+    } else if (type->is_array) {
+        type_full_name(type->element_type, buffer);
+        bputc('[', buffer);
+        bputc(']', buffer);
+    } else {
+        if (type->declaring_type != NULL) {
+            type_full_name(type->declaring_type, buffer);
+            bputc('+', buffer);
+        }
+
+        if (type->namespace != NULL) {
+            bprintf(buffer, "%s.", type->namespace);
+        }
+
+        bprintf(buffer, "%s", type->name);
+    }
 }

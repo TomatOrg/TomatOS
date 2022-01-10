@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <sync/spinlock.h>
+#include <util/buffer.h>
 
 struct type {
     // The Assembly in which the type is declared. For generic types, gets the Assembly in which
@@ -87,3 +88,5 @@ type_t make_by_ref_type(type_t type);
  * Returns a Type object that represents a pointer to the current type.
  */
 type_t make_pointer_type(type_t type);
+
+void type_full_name(type_t type, buffer_t* buffer);
