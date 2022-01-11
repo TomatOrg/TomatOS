@@ -307,6 +307,20 @@ err_t sig_parse_method(const uint8_t* signature, method_info_t method) {
         method->parameters[0].name = "this";
     }
 
-    cleanup:
+cleanup:
     return err;
+}
+
+const wchar_t* sig_parse_user_string(const uint8_t* signature, size_t* length) {
+    err_t err = NO_ERROR;
+    sig_t sig = {
+        .entry = signature
+    };
+    int len = sig_get_entry(&sig);
+
+    // parse the length and set it
+    if (length != NULL) {
+        *length = len - 1;
+    }
+    return (const wchar_t*)sig.entry;
 }

@@ -177,6 +177,13 @@ static inline unsigned int _strnlen_s(const char* str, size_t maxsize)
   return (unsigned int)(s - str);
 }
 
+static inline unsigned int _wstrnlen_s(const wchar_t* str, size_t maxsize)
+{
+    const wchar_t* s;
+    for (s = str; *s && maxsize--; ++s);
+    return (unsigned int)(s - str);
+}
+
 
 // internal test if char is a digit (0-9)
 // \return true if char is a digit
@@ -847,6 +854,35 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         // string output
         while ((*p != 0) && (!(flags & FLAGS_PRECISION) || precision--)) {
           out(*(p++), buffer, idx++, maxlen);
+        }
+        // post padding
+        if (flags & FLAGS_LEFT) {
+          while (l++ < width) {
+            out(' ', buffer, idx++, maxlen);
+          }
+        }
+        format++;
+        break;
+      }
+
+      case 'S' : {
+        const wchar_t* p = va_arg(va, wchar_t*);
+        if (p == NULL) {
+            p = L"(null)";
+        }
+        unsigned int l = _wstrnlen_s(p, precision ? precision : (size_t)-1);
+        // pre padding
+        if (flags & FLAGS_PRECISION) {
+          l = (l < precision ? l : precision);
+        }
+        if (!(flags & FLAGS_LEFT)) {
+          while (l++ < width) {
+            out(' ', buffer, idx++, maxlen);
+          }
+        }
+        // string output
+        while ((*p != L'\0') && (!(flags & FLAGS_PRECISION) || precision--)) {
+          out((char)*(p++), buffer, idx++, maxlen);
         }
         // post padding
         if (flags & FLAGS_LEFT) {

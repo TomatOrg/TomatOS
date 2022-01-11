@@ -1,6 +1,7 @@
 #pragma once
 
 #include <util/except.h>
+#include <uchar.h>
 
 #include "dotnet.h"
 
@@ -23,7 +24,7 @@ struct assembly {
     // static data, all allocated on the heap
     char* strings;
     size_t strings_size;
-    char* us;
+    uint8_t* us;
     size_t us_size;
     uint8_t* blob;
     size_t blob_size;

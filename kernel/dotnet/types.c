@@ -51,6 +51,8 @@ typedef struct base_type {
 #define TYPE(ptr, cstype) \
     { .pointer = &ptr, .namespace = "System", .name = cstype, .size = -1, .alignment = -1 }
 
+STATIC_ASSERT(sizeof(wchar_t) == sizeof(uint16_t));
+
 static base_type_t m_base_types[] = {
         TYPE(g_void, "Void"),
 

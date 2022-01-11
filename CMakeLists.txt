@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD 11)
 ########################################################################################################################
 
 set(CMAKE_C_FLAGS "-O1 -g -Wformat -Werror -Wno-address-of-packed-member")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffreestanding -flto -static")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffreestanding -flto -static -fshort-wchar")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mno-red-zone")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -nostdlib")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -lgcc")

@@ -1,10 +1,9 @@
 #pragma once
 
 #include <stddef.h>
+#include <uchar.h>
 
 typedef struct system_string {
-    size_t length;
-    const char* data;
+    int32_t length;
+    const wchar_t data[];
 } system_string_t;
-
-system_string_t* system_string_from_cstr(const char* data);

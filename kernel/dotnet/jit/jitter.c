@@ -13,6 +13,7 @@
 #include <mir/mir.h>
 #include <util/stb_ds.h>
 #include <dotnet/types.h>
+#include <dotnet/metadata/signature.h>
 
 #define FETCH(type) \
     ({ \
@@ -326,7 +327,14 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             case CIL_OPCODE_LDSTR: {
-                token_t token = (token_t) { .packed = FETCH_U4() };
+                int index = FETCH_U4() & 0x00ffffff;
+                CHECK(index < method_info->assembly->us_size);
+
+                //
+                size_t size = 0;
+                const wchar_t* c = sig_parse_user_string(method_info->assembly->us + index, &size);
+                printf(" \"%.*S\"\n", size / 2, c);
+
                 MIR_op_t dst = jit_push(ctx, g_string);
 
                 // TODO: initialize a new string properly
@@ -475,10 +483,10 @@ cleanup:
     if (jitter.ctx != NULL) {
         MIR_finish_module(jitter.ctx);
 
-        buffer_t* buffer = create_buffer();
-        MIR_output(jitter.ctx, buffer);
-        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
-        destroy_buffer(buffer);
+//        buffer_t* buffer = create_buffer();
+//        MIR_output(jitter.ctx, buffer);
+//        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
+//        destroy_buffer(buffer);
 
         MIR_finish(jitter.ctx);
     }

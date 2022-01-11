@@ -2,10 +2,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <util/except.h>
 
-typedef struct system_array {
+typedef struct array {
     // the size of the object
-    size_t size;
+    int32_t size;
 
     // the raw data, allocated right after this...
     uint8_t data[];
