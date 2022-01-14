@@ -5,15 +5,17 @@
 #include "mir_helpers.h"
 #include "runtime.h"
 
+#include <dotnet/metadata/signature.h>
+#include <dotnet/builtin/string.h>
+#include <dotnet/parameter_info.h>
 #include <dotnet/method_info.h>
 #include <dotnet/assembly.h>
-#include <dotnet/parameter_info.h>
+#include <dotnet/types.h>
+#include <dotnet/gc/gc.h>
 #include <dotnet/type.h>
 
-#include <mir/mir.h>
 #include <util/stb_ds.h>
-#include <dotnet/types.h>
-#include <dotnet/metadata/signature.h>
+#include <mir/mir.h>
 
 #define FETCH(type) \
     ({ \
@@ -123,10 +125,17 @@ typedef struct mir_func_info {
     size_t ret_count;
     MIR_type_t ret_type;
     buffer_t* name;
+    MIR_var_t* vars;
+    buffer_t** var_names;
 } mir_func_info_t;
 
 static void destroy_mir_func_info(mir_func_info_t* func) {
     DESTROY_BUFFER(func->name);
+    for (int i = 0; i < arrlen(func->var_names); i++) {
+        DESTROY_BUFFER(func->var_names[i]);
+    }
+    arrfree(func->var_names);
+    arrfree(func->vars);
 }
 
 static err_t setup_mir_func_info(mir_func_info_t* func, method_info_t method_info) {
@@ -137,10 +146,49 @@ static err_t setup_mir_func_info(mir_func_info_t* func, method_info_t method_inf
     method_full_name(method_info, func->name);
     bputc('\0', func->name);
 
+    // setup the parameters
+    func->vars = NULL;
+    func->var_names = NULL;
+    for (int i = 0; i < method_info->parameters_count; i++) {
+        parameter_info_t parameter_info = &method_info->parameters[i];
+        type_t parameter_type = parameter_info->parameter_type;
+
+        // setup the var
+        MIR_var_t var = {
+            .name = parameter_info->name,
+        };
+
+        if (parameter_type->is_value_type) {
+            // value types
+            if (parameter_type->is_primitive) {
+                // primitive types
+                var.type = get_param_mir_type(parameter_type);
+            } else {
+                // value types
+                var.type = MIR_T_BLK;
+                var.size = parameter_type->stack_size;
+            }
+        } else {
+            // reference objects
+            var.type = MIR_T_P;
+        }
+
+        // create the name if needed
+        if (var.name == NULL) {
+            buffer_t* buffer = create_buffer();
+            bprintf(buffer, "arg%d", i);
+            bputc('\0', buffer);
+            var.name = buffer->buffer;
+            arrpush(func->var_names, buffer);
+        }
+
+        arrpush(func->vars, var);
+    }
+
     // setup the return value
     func->ret_count = 0;
     func->ret_type = MIR_T_UNDEF;
-    if (method_info->return_type != NULL) {
+    if (method_info->return_type != g_void) {
         func->ret_count = 1;
         if (method_info->return_type->is_value_type) {
             // value types
@@ -183,12 +231,11 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
     CHECK_AND_RETHROW(setup_mir_func_info(&func_info, method_info));
 
     // create the function
-    ctx->func = MIR_new_func(ctx->ctx, func_info.name->buffer,
+    ctx->func = MIR_new_func_arr(ctx->ctx, func_info.name->buffer,
                              func_info.ret_count, &func_info.ret_type,
-                             0)->u.func;
+                             arrlen(func_info.vars), func_info.vars)->u.func;
 
     TRACE("%s", func_info.name->buffer);
-    destroy_mir_func_info(&func_info);
 
     ctx->stack.frame = MIR_new_func_reg(ctx->ctx, ctx->func, MIR_T_I64, "stack_frame");
 
@@ -228,7 +275,23 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                 // assume any call could throw an exception
                 might_throw_exception = true;
 
-                // TODO: arguments
+                // setup the arguments
+                MIR_op_t* ops = NULL;
+
+                arrpush(ops, MIR_new_ref_op(ctx->ctx, called_method_info->jit.proto));
+                arrpush(ops, MIR_new_ref_op(ctx->ctx, called_method_info->jit.forward));
+
+                for (int i = 0; i < called_method_info->parameters_count; i++) {
+                    arrpush(ops, jit_pop(ctx));
+                }
+
+                if (called_method_info->return_type != g_void) {
+                    arrins(ops, 2, jit_push(ctx, get_intermediate_type(called_method_info->return_type)));
+                }
+
+                // call the function
+                MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                MIR_new_insn_arr(ctx->ctx, MIR_CALL, arrlen(ops), ops));
 
                 // pop the top frame by setting the top of the stack to our
                 // own stack frame
@@ -254,8 +317,19 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
             case CIL_OPCODE_LDARG: i4 = FETCH_U2(); printf(" %d", i4); goto cil_opcode_ldarg;
             case CIL_OPCODE_LDARG_S: i4 = FETCH_U1(); printf(" %d", i4); goto cil_opcode_ldarg;
             cil_opcode_ldarg: {
-                MIR_op_t dst = jit_push(ctx, method_info->parameters[i4].parameter_type);
-                // TODO: load it
+                // TODO: we don't really need to store the item we got the arg for on the stack...
+                //       think about it...
+                parameter_info_t parameter_info = &method_info->parameters[i4];
+                MIR_op_t dst = jit_push(ctx, parameter_info->parameter_type);
+                if (parameter_info->parameter_type->is_primitive || !parameter_info->parameter_type->is_value_type) {
+                    // load by a simple move
+                    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                    MIR_new_insn(ctx->ctx, MIR_MOV,
+                                                 dst,
+                                                 MIR_new_reg_op(ctx->ctx, MIR_reg(ctx->ctx, func_info.vars[i4].name, ctx->func))));
+                } else {
+                    CHECK_FAIL("TODO: value type arguments");
+                }
             } break;
 
             case CIL_OPCODE_LDC_I4_M1: i4 = -1; goto cil_opcode_ldc_i4;
@@ -305,7 +379,7 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                 // the object reference returned (if any) before the stack frame is
                 // popped and the reference from this frame is lost
 
-                if (method_info->return_type != NULL) {
+                if (method_info->return_type != g_void) {
                     MIR_op_t ret = jit_pop(ctx);
 
                     // value types
@@ -330,17 +404,48 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                 int index = FETCH_U4() & 0x00ffffff;
                 CHECK(index < method_info->assembly->us_size);
 
-                //
+                // get the string itself
                 size_t size = 0;
                 const wchar_t* c = sig_parse_user_string(method_info->assembly->us + index, &size);
-                printf(" \"%.*S\"\n", size / 2, c);
+                printf(" \"%.*S\"", size / 2, c);
 
+                // setup the string object
                 MIR_op_t dst = jit_push(ctx, g_string);
 
-                // TODO: initialize a new string properly
+                // Create the global instance
+                char name[64] = {0};
+                snprintf(name, sizeof(name), "str$%d", index);
+                MIR_item_t item = mir_get_data(ctx->ctx, name);
+                if (item == NULL) {
+                    // create a new global string item
+                    void* temp_data = malloc(sizeof(gc_header_t) + sizeof(system_string_t) + size);
+
+                    // setup gc header
+                    gc_header_t* header = temp_data;
+                    header->type = g_string;
+
+                    // setup the string itself
+                    system_string_t* str = temp_data + sizeof(gc_header_t);
+                    str->length = (int)size / 2;
+                    memcpy(str->data, c, size);
+
+                    // create the item itself
+                    snprintf(name, sizeof(name), "str#%d", index);
+                    item = MIR_new_data(ctx->ctx, name, MIR_T_U8, sizeof(gc_header_t) + sizeof(system_string_t) + size, temp_data);
+
+                    // Create the referenced item
+                    snprintf(name, sizeof(name), "str$%d", index);
+                    item = MIR_new_ref_data(ctx->ctx, name, item, sizeof(gc_header_t));
+
+                    // free the temp buffer
+                    free(temp_data);
+                }
+
+                // Initialize the string nicely
                 MIR_append_insn(ctx->ctx, ctx->func->func_item,
-                                MIR_new_insn(ctx->ctx, MIR_MOV, dst,
-                                             MIR_new_int_op(ctx->ctx, 0)));
+                                MIR_new_insn(ctx->ctx, MIR_MOV,
+                                             dst,
+                                             MIR_new_ref_op(ctx->ctx, item)));
             } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -428,9 +533,9 @@ static err_t create_method_proto_and_forward(jitter_context_t* ctx, method_info_
     bputc('\0', func_info.name);
 
     // create the function
-    method_info->jit.proto = MIR_new_proto(ctx->ctx, func_info.name->buffer,
+    method_info->jit.proto = MIR_new_proto_arr(ctx->ctx, func_info.name->buffer,
                                 func_info.ret_count, &func_info.ret_type,
-                                0);
+                               arrlen(func_info.vars), func_info.vars);
 
 cleanup:
     destroy_mir_func_info(&func_info);
@@ -483,10 +588,10 @@ cleanup:
     if (jitter.ctx != NULL) {
         MIR_finish_module(jitter.ctx);
 
-//        buffer_t* buffer = create_buffer();
-//        MIR_output(jitter.ctx, buffer);
-//        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
-//        destroy_buffer(buffer);
+        buffer_t* buffer = create_buffer();
+        MIR_output(jitter.ctx, buffer);
+        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
+        destroy_buffer(buffer);
 
         MIR_finish(jitter.ctx);
     }

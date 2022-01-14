@@ -30,6 +30,8 @@ MIR_insn_t mir_emit_inline_memset(
     uint8_t value8, size_t size
 );
 
+MIR_item_t mir_get_data(MIR_context_t ctx, const char* name);
+
 MIR_func_t mir_get_func(MIR_context_t ctx, const char* name);
 
 MIR_item_t mir_get_forward(MIR_context_t ctx, const char* name);

@@ -102,6 +102,18 @@ MIR_insn_t mir_emit_inline_memset(
     return after;
 }
 
+MIR_item_t mir_get_data(MIR_context_t ctx, const char* name) {
+    DLIST(MIR_module_t)* modules = MIR_get_module_list(ctx);
+    for (MIR_module_t module = DLIST_HEAD (MIR_module_t, *modules); module != NULL; module = DLIST_NEXT (MIR_module_t, module)) {
+        for (MIR_item_t item = DLIST_HEAD (MIR_item_t, module->items); item != NULL; item = DLIST_NEXT (MIR_item_t, item)) {
+            if (item->item_type == MIR_data_item && strcmp(item->u.data->name, name) == 0) {
+                return item;
+            }
+        }
+    }
+    return NULL;
+}
+
 MIR_func_t mir_get_func(MIR_context_t ctx, const char* name) {
     DLIST(MIR_module_t)* modules = MIR_get_module_list(ctx);
     for (MIR_module_t module = DLIST_HEAD (MIR_module_t, *modules); module != NULL; module = DLIST_NEXT (MIR_module_t, module)) {
