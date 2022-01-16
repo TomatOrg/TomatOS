@@ -193,7 +193,7 @@ type_t get_verification_type(type_t T) {
         // convert bool/char to int8/int16 respectively
         if (T == g_bool) {
             return g_sbyte;
-        } else if (g_char) {
+        } else if (T == g_char) {
             return g_short;
         }
     }
@@ -263,7 +263,7 @@ static bool is_pointer_elemenet_compatible_with(type_t T, type_t U) {
 /**
  * Also called location type in the spec
  */
-static bool is_type_compatible_with(type_t T, type_t U) {
+bool is_type_compatible_with(type_t T, type_t U) {
     if (!T->is_by_ref && !U->is_by_ref && is_signature_type_compatible_with(T, U)) {
         return true;
     } else if (T->is_by_ref && U->is_by_ref && is_pointer_elemenet_compatible_with(T, U)) {

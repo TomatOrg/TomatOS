@@ -9,6 +9,7 @@
 #include <dotnet/builtin/string.h>
 #include <dotnet/parameter_info.h>
 #include <dotnet/method_info.h>
+#include <dotnet/field_info.h>
 #include <dotnet/assembly.h>
 #include <dotnet/types.h>
 #include <dotnet/gc/gc.h>
@@ -33,6 +34,26 @@
 #define FETCH_U2() FETCH(uint16_t)
 #define FETCH_U4() FETCH(uint32_t)
 #define FETCH_UI8() FETCH(uint64_t)
+
+static MIR_reg_t jit_push_temp(jitter_context_t* ctx) {
+    char temp_name[32] = {0 };
+    snprintf(temp_name, sizeof(temp_name), "ti%d", ctx->stack.temp);
+
+    MIR_reg_t reg;
+    if (ctx->stack.temp == ctx->stack.max_temp) {
+        // need new reg
+        ctx->stack.max_temp++;
+        reg = MIR_new_func_reg(ctx->ctx, ctx->func, MIR_T_I64, temp_name);
+    } else {
+        // can reuse reg
+        reg = MIR_reg(ctx->ctx, temp_name, ctx->func);
+    }
+    return reg;
+}
+
+static void jit_pop_temp(jitter_context_t* ctx) {
+    ctx->stack.temp--;
+}
 
 static MIR_op_t jit_push(jitter_context_t* ctx, type_t type) {
     // TODO: queue type for jitting
@@ -205,12 +226,89 @@ static err_t setup_mir_func_info(mir_func_info_t* func, method_info_t method_inf
         }
     }
 
-    // TODO: setup arguments
-
 cleanup:
     if (IS_ERROR(err)) {
         destroy_mir_func_info(func);
     }
+    return err;
+}
+
+static err_t jit_newobj(jitter_context_t* ctx, method_info_t ctor, MIR_op_t* out_op) {
+    err_t err = NO_ERROR;
+    buffer_t* name = NULL;
+
+    name = create_buffer();
+    type_full_name(ctor->declaring_type, name);
+    bprintf(name, "$Type");
+    bputc('\0', name);
+    MIR_item_t item = mir_get_import(ctx->ctx, name->buffer);
+    CHECK(item != NULL);
+
+    MIR_reg_t temp = jit_push_temp(ctx);
+
+    // allocate space for the item
+    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                    MIR_new_call_insn(ctx->ctx, 4,
+                                      MIR_new_ref_op(ctx->ctx, ctx->gc_new_proto),
+                                      MIR_new_ref_op(ctx->ctx, ctx->gc_new),
+                                      MIR_new_reg_op(ctx->ctx, temp),
+                                      MIR_new_ref_op(ctx->ctx, item)));
+    // setup the arguments
+    MIR_op_t* ops = NULL;
+
+    arrpush(ops, MIR_new_ref_op(ctx->ctx, ctor->jit.proto));
+    arrpush(ops, MIR_new_ref_op(ctx->ctx, ctor->jit.forward));
+
+    // the first operand is the object we just allocated
+    arrpush(ops, MIR_new_reg_op(ctx->ctx, temp));
+    for (int i = 0; i < ctor->parameters_count - 1; i++) {
+        arrpush(ops, jit_pop(ctx));
+    }
+
+    // call the function
+    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                    MIR_new_insn_arr(ctx->ctx, MIR_CALL, arrlen(ops), ops));
+
+    // pop the top frame by setting the top of the stack to our
+    // own stack frame
+    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                    MIR_new_call_insn(ctx->ctx, 3,
+                                      MIR_new_ref_op(ctx->ctx, ctx->set_top_frame_proto),
+                                      MIR_new_ref_op(ctx->ctx, ctx->set_top_frame),
+                                      MIR_new_reg_op(ctx->ctx, ctx->stack.frame)));
+
+cleanup:
+    DESTROY_BUFFER(name);
+    return err;
+}
+
+static err_t jit_throw(jitter_context_t* ctx, type_t exception_type) {
+    err_t err = NO_ERROR;
+
+    // find the correct ctor
+    method_info_t ctor = NULL;
+    for (int i = 0; i < exception_type->methods_count; i++) {
+        method_info_t method_info = &exception_type->methods[i];
+        if (strcmp(method_info->name, ".ctor") == 0) {
+            if (method_info->parameters_count == 1) {
+                ctor = method_info;
+                break;
+            }
+        }
+    }
+    CHECK_ERROR(ctor != NULL, ERROR_NOT_FOUND);
+
+    MIR_op_t op;
+    CHECK_AND_RETHROW(jit_newobj(ctx, ctor, &op));
+
+    // call the actual throw function
+    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                    MIR_new_call_insn(ctx->ctx, 3,
+                                      MIR_new_ref_op(ctx->ctx, ctx->throw_proto),
+                                      MIR_new_ref_op(ctx->ctx, ctx->throw),
+                                      op));
+
+cleanup:
     return err;
 }
 
@@ -255,6 +353,7 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
         printf("[*] \t%s", cil_opcode_to_str(opcode));
 
         int32_t i4;
+        MIR_insn_code_t insn;
         switch (opcode) {
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Base instructions
@@ -302,6 +401,30 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                                                   MIR_new_reg_op(ctx->ctx, ctx->stack.frame)));
             } break;
 
+            case CIL_OPCODE_CONV_I1: insn = MIR_EXT8; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_I2: insn = MIR_EXT16; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_I4: insn = MIR_EXT32; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_U1: insn = MIR_UEXT8; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_U2: insn = MIR_UEXT16; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_U4: insn = MIR_UEXT32; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_I8:
+            case CIL_OPCODE_CONV_U8:
+            case CIL_OPCODE_CONV_I:
+            case CIL_OPCODE_CONV_U:
+                break; // nothing to do
+            cil_opcode_conv: {
+                type_t type = arrlast(ctx->stack.stack).type;
+                CHECK (type == g_int || type == g_nint || type == g_long);
+                MIR_op_t src = jit_pop(ctx);
+                MIR_op_t dst = jit_push(ctx, g_int);
+                MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                MIR_new_insn(ctx->ctx, MIR_EXT8, dst, src));
+            } break;
+
+            // TODO: CIL_OPCODE_CONV_R4
+            // TODO: CIL_OPCODE_CONV_R8
+            // TODO: CIL_OPCODE_CONV_R_UN
+
             case CIL_OPCODE_DUP: {
                 CHECK(arrlen(ctx->stack.stack) >= 1);
                 stack_item_t src = arrlast(ctx->stack.stack);
@@ -317,10 +440,10 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
             case CIL_OPCODE_LDARG: i4 = FETCH_U2(); printf(" %d", i4); goto cil_opcode_ldarg;
             case CIL_OPCODE_LDARG_S: i4 = FETCH_U1(); printf(" %d", i4); goto cil_opcode_ldarg;
             cil_opcode_ldarg: {
-                // TODO: we don't really need to store the item we got the arg for on the stack...
-                //       think about it...
+                CHECK(i4 < method_info->parameters_count);
                 parameter_info_t parameter_info = &method_info->parameters[i4];
-                MIR_op_t dst = jit_push(ctx, parameter_info->parameter_type);
+                MIR_op_t dst = jit_push(ctx, get_intermediate_type(parameter_info->parameter_type));
+
                 if (parameter_info->parameter_type->is_primitive || !parameter_info->parameter_type->is_value_type) {
                     // load by a simple move
                     MIR_append_insn(ctx->ctx, ctx->func->func_item,
@@ -399,6 +522,71 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Object model instructions
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            case CIL_OPCODE_LDFLD: {
+                token_t token = { .packed = FETCH_U4() };
+                field_info_t field_info = assembly_get_field_info_by_token(method_info->assembly, token);
+                CHECK_ERROR(field_info != NULL, ERROR_NOT_FOUND);
+
+                // for debug
+                temp_buffer = create_buffer();
+                type_full_name(field_info->declaring_type, temp_buffer);
+                printf(" %.*s.%s", arrlen(temp_buffer->buffer), temp_buffer->buffer, field_info->name);
+                DESTROY_BUFFER(temp_buffer);
+
+                // pop the value, but check that it is compatible before doing so
+                CHECK(is_type_compatible_with(arrlast(ctx->stack.stack).type, field_info->declaring_type));
+                MIR_op_t pos = jit_pop(ctx);
+
+                // get the source operand
+                MIR_op_t src;
+                if (field_is_static(field_info)) {
+                    CHECK_FAIL("TODO: Static variable");
+                } else {
+                    // we need a temp register to hold the base, since we need to first read
+                    // it from the pointer stack
+                    MIR_reg_t base = jit_push_temp(ctx);
+                    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                    MIR_new_insn(ctx->ctx, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->ctx, base),
+                                                 pos));
+
+                    src = MIR_new_mem_op(ctx->ctx, get_param_mir_type(field_info->field_type),
+                                   field_info->offset, base, 0, 0);
+                }
+
+                // push the intermediate type
+                MIR_op_t dst = jit_push(ctx, get_intermediate_type(field_info->field_type));
+
+                // mov from the object to the stack, figure the correct instruction
+                // to use for this
+                insn = MIR_MOV;
+                if (field_info->field_type->is_primitive) {
+                    if (field_info->field_type == g_ushort || field_info->field_type == g_char) {
+                        insn = MIR_UEXT8;
+                    } else if (field_info->field_type == g_byte || field_info->field_type == g_bool) {
+                        insn = MIR_UEXT16;
+                    } else if (field_info->field_type == g_sbyte) {
+                        insn = MIR_EXT8;
+                    } else if (field_info->field_type == g_short) {
+                        insn = MIR_EXT16;
+                    } else if (field_info->field_type == g_float) {
+                        insn = MIR_F2D;
+                    } else if (field_info->field_type == g_double) {
+                        insn = MIR_DMOV;
+                    }
+                } else if (field_info->field_type->is_value_type) {
+                    CHECK_FAIL("TODO: value types");
+                }
+
+                MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                MIR_new_insn(ctx->ctx, insn, dst, src));
+
+                if (!field_is_static(field_info)) {
+                    // we no longer need this temp register
+                    jit_pop_temp(ctx);
+                }
+            } break;
 
             case CIL_OPCODE_LDSTR: {
                 int index = FETCH_U4() & 0x00ffffff;
@@ -515,6 +703,23 @@ cleanup:
     return err;
 }
 
+static err_t create_type_import(jitter_context_t* ctx, type_t type) {
+    err_t err = NO_ERROR;
+    buffer_t* name = NULL;
+
+    name = create_buffer();
+    type_full_name(type, name);
+    bprintf(name, "$Type");
+    bputc('\0', name);
+
+    MIR_new_import(ctx->ctx, name->buffer);
+
+cleanup:
+    DESTROY_BUFFER(name);
+
+    return err;
+}
+
 static err_t create_method_proto_and_forward(jitter_context_t* ctx, method_info_t method_info) {
     err_t err = NO_ERROR;
     mir_func_info_t func_info = {};
@@ -556,11 +761,15 @@ err_t jitter_jit_assembly(assembly_t assembly) {
 
     // import static stuff
     {
-        // the set_top_frame
-        {
-            jitter.set_top_frame_proto = MIR_new_proto(jitter.ctx, "$set_top_frame", 0, NULL, 1, MIR_T_P, "frame");
-            jitter.set_top_frame = MIR_new_import(jitter.ctx, "set_top_frame");
-        }
+        jitter.set_top_frame_proto = MIR_new_proto(jitter.ctx, "$set_top_frame", 0, NULL, 1, MIR_T_P, "frame");
+        jitter.set_top_frame = MIR_new_import(jitter.ctx, "set_top_frame");
+
+        jitter.throw_proto = MIR_new_proto(jitter.ctx, "$throw", 0, NULL, 1, MIR_T_P, "exception");
+        jitter.throw = MIR_new_import(jitter.ctx, "throw");
+
+        MIR_type_t restype = MIR_T_P;
+        jitter.gc_new_proto = MIR_new_proto(jitter.ctx, "gc_new_proto", 1, &restype, 1, MIR_T_P, "type");
+        jitter.gc_new = MIR_new_import(jitter.ctx, "gc_new");
     }
 
     // TODO: import methods
@@ -569,6 +778,9 @@ err_t jitter_jit_assembly(assembly_t assembly) {
     // along side their prototypes
     for (int i = 0; i < assembly->types_count; i++) {
         type_t type = &assembly->types[i];
+
+        create_type_import(&jitter, type);
+
         for (int j = 0; j < type->methods_count; j++) {
             method_info_t method_info = &type->methods[j];
             CHECK_AND_RETHROW(create_method_proto_and_forward(&jitter, method_info));

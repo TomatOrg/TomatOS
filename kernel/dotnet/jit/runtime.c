@@ -1,4 +1,6 @@
 #include <proc/proc.h>
+#include <dotnet/method_info.h>
+#include <dotnet/gc/gc.h>
 #include "runtime.h"
 
 static THREAD_LOCAL stack_frame_t* m_stack_top;

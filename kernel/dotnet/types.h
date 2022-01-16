@@ -65,4 +65,6 @@ type_t get_intermediate_type(type_t T);
 
 type_t get_direct_base_class(type_t T);
 
+bool is_type_compatible_with(type_t T, type_t U);
+
 bool is_type_assignable_to(type_t from, type_t to);

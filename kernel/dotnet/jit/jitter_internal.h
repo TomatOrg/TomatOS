@@ -16,6 +16,10 @@ typedef struct jit_stack {
     int i;
     int max_i;
 
+    // temp registers
+    int temp;
+    int max_temp;
+
     // for managed objects the pointer is stored on the stack so we
     // can scan for it when needed
     int o;
@@ -32,4 +36,12 @@ typedef struct jitter_context {
     // current frame
     MIR_item_t set_top_frame;
     MIR_item_t set_top_frame_proto;
+
+    // This allows to allocate new objects
+    MIR_item_t gc_new;
+    MIR_item_t gc_new_proto;
+
+    // This allows us to throw an exception
+    MIR_item_t throw;
+    MIR_item_t throw_proto;
 } jitter_context_t;

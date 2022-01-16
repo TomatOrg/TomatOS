@@ -15,3 +15,5 @@ typedef struct stack_frame {
 } stack_frame_t;
 
 void set_top_frame(stack_frame_t* frame);
+
+void* newobj(type_t type);
