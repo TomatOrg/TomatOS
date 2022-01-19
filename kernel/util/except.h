@@ -44,7 +44,7 @@ typedef enum err {
         if (!(check)) { \
             err = error; \
             IF(HAS_ARGS(__VA_ARGS__))(ERROR(__VA_ARGS__)); \
-            ERROR("Check failed with error %R in function %s (%s:%d)", err, __FUNCTION__, __FILENAME__, __LINE__); \
+            ERROR("Check failed with error %R in function %s (%s:%d)", err, __FUNCTION__, __FILE__, __LINE__); \
             goto label; \
         } \
     } while(0)
@@ -53,15 +53,9 @@ typedef enum err {
 #define CHECK_LABEL(check, label, ...)              CHECK_ERROR_LABEL(check, ERROR_CHECK_FAILED, label, ## __VA_ARGS__)
 #define CHECK(check, ...)                           CHECK_ERROR_LABEL(check, ERROR_CHECK_FAILED, cleanup, ## __VA_ARGS__)
 
-#ifdef __PENTAGON_DEBUG__
-    #define DEBUG_CHECK_ERROR(check, error, ...)              CHECK_ERROR_LABEL(check, error, cleanup, ## __VA_ARGS__)
-    #define DEBUG_CHECK_LABEL(check, label, ...)              CHECK_ERROR_LABEL(check, ERROR_CHECK_FAILED, label, ## __VA_ARGS__)
-    #define DEBUG_CHECK(check, ...)                           CHECK_ERROR_LABEL(check, ERROR_CHECK_FAILED, cleanup, ## __VA_ARGS__)
-#else
-    #define DEBUG_CHECK_ERROR(check, error, ...)              ({ (void)check; })
-    #define DEBUG_CHECK_LABEL(check, label, ...)              ({ (void)check; })
-    #define DEBUG_CHECK(check, ...)                           ({ (void)check; })
-#endif
+#define DEBUG_CHECK_ERROR(check, error, ...)              CHECK_ERROR_LABEL(check, error, cleanup, ## __VA_ARGS__)
+#define DEBUG_CHECK_LABEL(check, label, ...)              CHECK_ERROR_LABEL(check, ERROR_CHECK_FAILED, label, ## __VA_ARGS__)
+#define DEBUG_CHECK(check, ...)                           CHECK_ERROR_LABEL(check, ERROR_CHECK_FAILED, cleanup, ## __VA_ARGS__)
 
 //----------------------------------------------------------------------------------------------------------------------
 // A check that fails without a condition
@@ -80,7 +74,7 @@ typedef enum err {
     do { \
         err = error; \
         if (IS_ERROR(err)) { \
-            ERROR("\trethrown at %s (%s:%d)", __FUNCTION__, __FILENAME__, __LINE__); \
+            ERROR("\trethrown at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
             goto label; \
         } \
     } while(0)
@@ -98,21 +92,10 @@ typedef enum err {
         }                       \
     } while(0)
 
-#ifdef __PENTAGON_DEBUG__
-
 #define ASSERT(check) \
     do { \
         if (!(check)) { \
-           ERROR("Assert failed at %s (%s:%d)", __FUNCTION__, __FILENAME__, __LINE__); \
+           ERROR("Assert failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
             __builtin_trap(); \
         } \
     } while(0)
-
-#else
-
-#define ASSERT(check) \
-    do { \
-        (void)check; \
-    } while(0);
-
-#endif
