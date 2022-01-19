@@ -315,6 +315,40 @@ cleanup:
     return err;
 }
 
+static bool validate_binary_comparison_or_branch(type_t a, type_t b, int opcode) {
+    if (a == g_int) {
+        return b == g_int || b == g_nint;
+    } else if (a == g_long) {
+        return b == g_long;
+    } else if (a == g_nint) {
+        if (
+            (
+                opcode == CIL_OPCODE_BEQ || opcode == CIL_OPCODE_BEQ_S ||
+                opcode == CIL_OPCODE_BNE_UN || opcode == CIL_OPCODE_BNE_UN_S ||
+                opcode == CIL_OPCODE_CEQ
+            ) && (b->is_by_ref || b->is_pointer)) {
+            return true;
+        }
+        return b == g_int || b == g_nint;
+    } else if (a == g_double) {
+        return b == g_double;
+    } else if (a->is_by_ref || a->is_pointer) {
+        if (
+            (
+                opcode == CIL_OPCODE_BEQ || opcode == CIL_OPCODE_BEQ_S ||
+                opcode == CIL_OPCODE_BNE_UN || opcode == CIL_OPCODE_BNE_UN_S ||
+                opcode == CIL_OPCODE_CEQ
+            ) && b == g_nint) {
+            return true;
+        }
+        return b->is_by_ref || b->is_pointer;
+    } else if (!a->is_value_type) {
+        return !b->is_value_type;
+    } else {
+        return false;
+    }
+}
+
 static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info) {
     err_t err = NO_ERROR;
     buffer_t* method_info_string = NULL;
@@ -346,6 +380,18 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
     uint8_t* code = method_info->il;
     uint8_t* code_end = code + method_info->il_size;
     do {
+        // get the label we need to jump to
+        uint32_t cil = code - method_info->il;
+        int i = hmgeti(ctx->stack.labels, cil);
+        MIR_insn_t label;
+        if (i == -1) {
+            label = MIR_new_label(ctx->ctx);
+            hmput(ctx->stack.labels, cil, label);
+        } else {
+            label = ctx->stack.labels[i].value;
+        }
+        MIR_append_insn(ctx->ctx, ctx->func->func_item, label);
+
         // Fetch opcode, also handle the extended form
         uint16_t opcode = *code++;
         if (opcode == CIL_OPCODE_PREFIX1) {
@@ -353,7 +399,7 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
             opcode |= *code++;
         }
 
-        printf("[*] \t%s", cil_opcode_to_str(opcode));
+        printf("[*] \t%04x: %s", cil, cil_opcode_to_str(opcode));
 
         int32_t i4;
         int64_t min;
@@ -363,6 +409,53 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Base instructions
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            case CIL_OPCODE_BEQ: insn = MIR_BEQ; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGE: insn = MIR_BGE; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGE_UN: insn = MIR_UBGE; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGT: insn = MIR_BGT; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGT_UN: insn = MIR_UBGT; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLE: insn = MIR_BLE; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLE_UN: insn = MIR_UBLE; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLT: insn = MIR_BLT; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLT_UN: insn = MIR_UBLT; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BNE_UN: insn = MIR_BNE; i4 = FETCH_I4(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BEQ_S: insn = MIR_BEQ; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGE_S: insn = MIR_BGE; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGE_UN_S: insn = MIR_UBGE; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGT_S: insn = MIR_BGT; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BGT_UN_S: insn = MIR_UBGT; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLE_S: insn = MIR_BLE; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLE_UN_S: insn = MIR_UBLE; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLT_S: insn = MIR_BLT; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BLT_UN_S: insn = MIR_UBLT; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            case CIL_OPCODE_BNE_UN_S: insn = MIR_BNE; i4 = (int32_t)FETCH_I1(); goto cil_opcode_bcc;
+            cil_opcode_bcc: {
+                CHECK(arrlen(ctx->stack.stack) >= 2);
+                type_t typeb = arrlast(ctx->stack.stack).type;
+                MIR_op_t b = jit_pop(ctx);
+                type_t typea = arrlast(ctx->stack.stack).type;
+                MIR_op_t a = jit_pop(ctx);
+                CHECK(validate_binary_comparison_or_branch(typea, typeb, opcode));
+
+                // add the offset
+                i4 += (int32_t)(code - method_info->il);
+                printf(" L%04x", i4);
+
+                // get the label we need to jump to
+                i = hmgeti(ctx->stack.labels, i4);
+                if (i == -1) {
+                    hmput(ctx->stack.labels, i4, MIR_new_label(ctx->ctx));
+                    i = hmgeti(ctx->stack.labels, i4);
+                }
+
+                // append the instruction
+                MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                MIR_new_insn(ctx->ctx, insn,
+                                             MIR_new_label_op(ctx->ctx, ctx->stack.labels[i].value),
+                                             a,
+                                             b));
+            } break;
 
             case CIL_OPCODE_CALL: {
                 // get the method call
@@ -807,6 +900,8 @@ cleanup:
 
     arrfree(ctx->stack.stack);
     memset(&ctx->stack, 0, sizeof(ctx->stack));
+    hmfree(ctx->stack.labels);
+    hmfree(ctx->stack.stacks_by_cil);
 
     return err;
 }
@@ -908,10 +1003,10 @@ cleanup:
     if (jitter.ctx != NULL) {
         MIR_finish_module(jitter.ctx);
 
-//        buffer_t* buffer = create_buffer();
-//        MIR_output(jitter.ctx, buffer);
-//        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
-//        destroy_buffer(buffer);
+        buffer_t* buffer = create_buffer();
+        MIR_output(jitter.ctx, buffer);
+        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
+        destroy_buffer(buffer);
 
         MIR_finish(jitter.ctx);
     }

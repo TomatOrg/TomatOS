@@ -12,6 +12,16 @@ typedef struct stack_item {
 typedef struct jit_stack {
     stack_item_t* stack;
 
+    struct {
+        uint32_t key;
+        stack_item_t* value;
+    }* stacks_by_cil;
+
+    struct {
+        uint32_t key;
+        MIR_insn_t value;
+    }* labels;
+
     // for integer types we just use normal registers
     int i;
     int max_i;
