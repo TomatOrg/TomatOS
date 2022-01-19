@@ -74,6 +74,11 @@ struct type {
 };
 
 /**
+ * Checks if the type has the given field
+ */
+bool type_has_field(type_t type, field_info_t info);
+
+/**
  * Returns a Type object that represents an array of the current type.
  */
 type_t make_array_type(type_t type);

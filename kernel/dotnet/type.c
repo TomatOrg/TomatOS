@@ -3,8 +3,24 @@
 
 #include <mem/malloc.h>
 #include <util/string.h>
+#include <dotnet/field_info.h>
 
 #include <stdalign.h>
+
+bool type_has_field(type_t type, field_info_t info) {
+    // for value types
+    if (type->is_by_ref) {
+        type = type->element_type;
+    }
+
+    do {
+        if (info->declaring_type == type) {
+            return true;
+        }
+        type = type->base_type;
+    } while (type != NULL);
+    return false;
+}
 
 type_t make_array_type(type_t type) {
     if (type->by_ref_type != NULL) {
@@ -81,6 +97,7 @@ type_t make_pointer_type(type_t type) {
     new_type->managed_size = type->stack_size;
     new_type->is_pointer = true;
     new_type->is_value_type = true;
+    new_type->is_primitive = true;
     new_type->element_type = type;
 
     type->pointer_type = new_type;

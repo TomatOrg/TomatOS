@@ -239,8 +239,8 @@ static bool is_signature_type_compatible_with(type_t T, type_t U) {
     if (T == U) {
         return true;
     }
-        // TODO: 2
-    else if (T->by_ref_type && get_direct_base_class(T) == U) {
+    // TODO: 2
+    else if (!T->is_value_type && get_direct_base_class(T) == U) {
         return true;
     }
     // TODO: 4

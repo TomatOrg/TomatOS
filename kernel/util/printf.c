@@ -36,6 +36,10 @@
 
 #include "printf.h"
 #include "except.h"
+#include "dotnet/dotnet.h"
+#include "buffer.h"
+#include "dotnet/type.h"
+#include "stb_ds.h"
 
 
 // define this globally (e.g. gcc -DPRINTF_INCLUDE_CONFIG_H ...) to include the
@@ -801,6 +805,41 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         format++;
         break;
       }
+
+      case 'T': {
+          type_t type = va_arg(va, type_t);
+          buffer_t* bfr = create_buffer();
+          type_full_name(type, bfr);
+
+          unsigned int l =  arrlen(bfr->buffer);
+          if (precision) {
+              l = MIN(l, precision);
+          }
+          // pre padding
+          if (flags & FLAGS_PRECISION) {
+              l = (l < precision ? l : precision);
+          }
+          if (!(flags & FLAGS_LEFT)) {
+              while (l++ < width) {
+                  out(' ', buffer, idx++, maxlen);
+              }
+          }
+          // string output
+          const char* p = bfr->buffer;
+          while ((*p != 0) && (!(flags & FLAGS_PRECISION) || precision--)) {
+              out(*(p++), buffer, idx++, maxlen);
+          }
+          // post padding
+          if (flags & FLAGS_LEFT) {
+              while (l++ < width) {
+                  out(' ', buffer, idx++, maxlen);
+              }
+          }
+          format++;
+
+          DESTROY_BUFFER(bfr);
+          break;
+      } break;
 
       case 'R': {
           err_t err = va_arg(va, int);

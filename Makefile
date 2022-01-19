@@ -13,7 +13,7 @@ BUILD_DIR	:= $(OUT_DIR)/build
 # General configurations
 #-----------------------------------------------------------------------------------------------------------------------
 
-CFLAGS		:= -Werror 
+CFLAGS		:= -Werror -std=gnu11
 CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
@@ -46,12 +46,12 @@ CFLAGS		+= -DMIR_NO_SCAN
 # Targets
 ########################################################################################################################
 
+all: $(BIN_DIR)/pentagon.elf
+
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:%.o=%.d)
 BINS ?=
 -include $(DEPS)
-
-all: $(BIN_DIR)/pentagon.elf
 
 $(BIN_DIR)/pentagon.elf: $(BINS) $(OBJS)
 	@echo LD $@

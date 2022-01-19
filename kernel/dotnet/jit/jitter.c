@@ -48,6 +48,9 @@ static MIR_reg_t jit_push_temp(jitter_context_t* ctx) {
         // can reuse reg
         reg = MIR_reg(ctx->ctx, temp_name, ctx->func);
     }
+
+    ctx->stack.temp++;
+
     return reg;
 }
 
@@ -353,6 +356,8 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
         printf("[*] \t%s", cil_opcode_to_str(opcode));
 
         int32_t i4;
+        int64_t min;
+        int64_t max;
         MIR_insn_code_t insn;
         switch (opcode) {
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -407,23 +412,52 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
             case CIL_OPCODE_CONV_U1: insn = MIR_UEXT8; goto cil_opcode_conv;
             case CIL_OPCODE_CONV_U2: insn = MIR_UEXT16; goto cil_opcode_conv;
             case CIL_OPCODE_CONV_U4: insn = MIR_UEXT32; goto cil_opcode_conv;
-            case CIL_OPCODE_CONV_I8:
-            case CIL_OPCODE_CONV_U8:
-            case CIL_OPCODE_CONV_I:
-            case CIL_OPCODE_CONV_U:
-                break; // nothing to do
+            case CIL_OPCODE_CONV_I8: insn = MIR_MOV; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_U8: insn = MIR_MOV; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_I: insn = MIR_MOV; goto cil_opcode_conv;
+            case CIL_OPCODE_CONV_U: insn = MIR_MOV; goto cil_opcode_conv;
             cil_opcode_conv: {
                 type_t type = arrlast(ctx->stack.stack).type;
-                CHECK (type == g_int || type == g_nint || type == g_long);
+                CHECK (type->is_pointer || type == g_int || type == g_nint || type == g_long);
                 MIR_op_t src = jit_pop(ctx);
-                MIR_op_t dst = jit_push(ctx, g_int);
+                MIR_op_t dst;
+                if (opcode == CIL_OPCODE_CONV_I8 || opcode == CIL_OPCODE_CONV_U8) {
+                    dst = jit_push(ctx, g_long);
+                } else if (opcode == CIL_OPCODE_CONV_I || opcode == CIL_OPCODE_CONV_U) {
+                    dst = jit_push(ctx, g_nint);
+                } else {
+                    dst = jit_push(ctx, g_int);
+                }
                 MIR_append_insn(ctx->ctx, ctx->func->func_item,
-                                MIR_new_insn(ctx->ctx, MIR_EXT8, dst, src));
+                                MIR_new_insn(ctx->ctx, insn, dst, src));
             } break;
 
-            // TODO: CIL_OPCODE_CONV_R4
-            // TODO: CIL_OPCODE_CONV_R8
-            // TODO: CIL_OPCODE_CONV_R_UN
+            case CIL_OPCODE_CONV_OVF_I1: insn = MIR_EXT8; min = INT8_MIN; max = INT8_MAX; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_I2: insn = MIR_EXT16; min = INT16_MIN; max = INT16_MAX; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_I4: insn = MIR_EXT32; min = INT32_MIN; max = INT32_MAX; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_U1: insn = MIR_UEXT8; min = 0; max = UINT8_MAX; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_U2: insn = MIR_UEXT16; min = 0; max = UINT16_MAX; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_U4: insn = MIR_UEXT32; min = 0; max = UINT32_MAX; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_I8: insn = MIR_MOV; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_U8: insn = MIR_MOV; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_I: insn = MIR_MOV; goto cil_opcode_conv_ovf;
+            case CIL_OPCODE_CONV_OVF_U: insn = MIR_MOV; goto cil_opcode_conv_ovf;
+            cil_opcode_conv_ovf: {
+                type_t type = arrlast(ctx->stack.stack).type;
+                CHECK (type->is_pointer || type == g_int || type == g_nint || type == g_long);
+                MIR_op_t src = jit_pop(ctx);
+                // TODO: overflow stuff...
+                MIR_op_t dst;
+                if (opcode == CIL_OPCODE_CONV_OVF_I8 || opcode == CIL_OPCODE_CONV_OVF_U8) {
+                    dst = jit_push(ctx, g_long);
+                } else if (opcode == CIL_OPCODE_CONV_OVF_I || opcode == CIL_OPCODE_CONV_OVF_U) {
+                    dst = jit_push(ctx, g_nint);
+                } else {
+                    dst = jit_push(ctx, g_int);
+                }
+                MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                MIR_new_insn(ctx->ctx, insn, dst, src));
+            } break;
 
             case CIL_OPCODE_DUP: {
                 CHECK(arrlen(ctx->stack.stack) >= 1);
@@ -535,8 +569,11 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                 DESTROY_BUFFER(temp_buffer);
 
                 // pop the value, but check that it is compatible before doing so
-                CHECK(is_type_compatible_with(arrlast(ctx->stack.stack).type, field_info->declaring_type));
-                MIR_op_t pos = jit_pop(ctx);
+                CHECK(arrlen(ctx->stack.stack) >= 1);
+                type_t obj_type = arrlast(ctx->stack.stack).type;
+                CHECK((obj_type->is_by_ref && obj_type->element_type->is_value_type) || !obj_type->is_value_type);
+                CHECK(type_has_field(obj_type, field_info));
+                MIR_op_t obj = jit_pop(ctx);
 
                 // get the source operand
                 MIR_op_t src;
@@ -549,9 +586,18 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                     MIR_append_insn(ctx->ctx, ctx->func->func_item,
                                     MIR_new_insn(ctx->ctx, MIR_MOV,
                                                  MIR_new_reg_op(ctx->ctx, base),
-                                                 pos));
+                                                 obj));
 
-                    src = MIR_new_mem_op(ctx->ctx, get_param_mir_type(field_info->field_type),
+                    // figure the type for this thing
+                    MIR_type_t typ = MIR_T_UNDEF;
+                    if (field_info->field_type->is_primitive) {
+                        typ = get_param_mir_type(field_info->field_type);
+                    } else if (field_info->field_type->is_value_type) {
+                        CHECK_FAIL("TODO VALUE TYPES");
+                    } else {
+                        typ = MIR_T_P;
+                    }
+                    src = MIR_new_mem_op(ctx->ctx, typ,
                                    field_info->offset, base, 0, 0);
                 }
 
@@ -634,6 +680,68 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                                 MIR_new_insn(ctx->ctx, MIR_MOV,
                                              dst,
                                              MIR_new_ref_op(ctx->ctx, item)));
+            } break;
+
+            case CIL_OPCODE_STFLD: {
+                token_t token = { .packed = FETCH_U4() };
+                field_info_t field_info = assembly_get_field_info_by_token(method_info->assembly, token);
+                CHECK_ERROR(field_info != NULL, ERROR_NOT_FOUND);
+
+                // for debug
+                temp_buffer = create_buffer();
+                type_full_name(field_info->declaring_type, temp_buffer);
+                printf(" %.*s.%s", arrlen(temp_buffer->buffer), temp_buffer->buffer, field_info->name);
+                DESTROY_BUFFER(temp_buffer);
+
+                CHECK(arrlen(ctx->stack.stack) >= 2);
+
+                // check the value is fine and pop it
+                CHECK(is_type_assignable_to(arrlast(ctx->stack.stack).type, field_info->field_type));
+                MIR_op_t value = jit_pop(ctx);
+
+                // make sure the object is either a reference type or a by-ref type
+                type_t obj_type = arrlast(ctx->stack.stack).type;
+                CHECK((obj_type->is_by_ref && obj_type->element_type->is_value_type) || !obj_type->is_value_type);
+                CHECK(type_has_field(obj_type, field_info));
+                MIR_op_t obj = jit_pop(ctx);
+
+                // get the source operand
+                MIR_op_t dst;
+                if (field_is_static(field_info)) {
+                    CHECK_FAIL("TODO: Static variable");
+                } else {
+                    // we need a temp register to hold the base, since we need to first read
+                    // it from the pointer stack
+                    MIR_reg_t base = jit_push_temp(ctx);
+                    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                    MIR_new_insn(ctx->ctx, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->ctx, base),
+                                                 obj));
+
+                    // figure the type for this thing
+                    MIR_type_t typ = MIR_T_UNDEF;
+                    if (field_info->field_type->is_primitive) {
+                        typ = get_param_mir_type(field_info->field_type);
+                    } else if (field_info->field_type->is_value_type) {
+                        CHECK_FAIL("TODO VALUE TYPES");
+                    } else {
+                        typ = MIR_T_P;
+                    }
+                    dst = MIR_new_mem_op(ctx->ctx, typ,
+                                         field_info->offset, base, 0, 0);
+                }
+
+                if (field_info->field_type->is_primitive || !field_info->field_type->is_value_type) {
+                    MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                    MIR_new_insn(ctx->ctx, MIR_MOV, dst, value));
+                } else if (field_info->field_type->is_value_type) {
+                    CHECK_FAIL("TODO: value types");
+                }
+
+                if (!field_is_static(field_info)) {
+                    // we no longer need this temp register
+                    jit_pop_temp(ctx);
+                }
             } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -800,10 +908,10 @@ cleanup:
     if (jitter.ctx != NULL) {
         MIR_finish_module(jitter.ctx);
 
-        buffer_t* buffer = create_buffer();
-        MIR_output(jitter.ctx, buffer);
-        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
-        destroy_buffer(buffer);
+//        buffer_t* buffer = create_buffer();
+//        MIR_output(jitter.ctx, buffer);
+//        printf("%.*s", arrlen(buffer->buffer), buffer->buffer);
+//        destroy_buffer(buffer);
 
         MIR_finish(jitter.ctx);
     }
