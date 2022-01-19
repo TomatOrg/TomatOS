@@ -236,7 +236,7 @@ cleanup:
     return err;
 }
 
-static err_t jit_newobj(jitter_context_t* ctx, method_info_t ctor, MIR_op_t* out_op) {
+static err_t jit_newobj(jitter_context_t* ctx, method_info_t ctor, MIR_reg_t* out_reg) {
     err_t err = NO_ERROR;
     buffer_t* name = NULL;
 
@@ -282,36 +282,13 @@ static err_t jit_newobj(jitter_context_t* ctx, method_info_t ctor, MIR_op_t* out
 
 cleanup:
     DESTROY_BUFFER(name);
-    return err;
-}
 
-static err_t jit_throw(jitter_context_t* ctx, type_t exception_type) {
-    err_t err = NO_ERROR;
-
-    // find the correct ctor
-    method_info_t ctor = NULL;
-    for (int i = 0; i < exception_type->methods_count; i++) {
-        method_info_t method_info = &exception_type->methods[i];
-        if (strcmp(method_info->name, ".ctor") == 0) {
-            if (method_info->parameters_count == 1) {
-                ctor = method_info;
-                break;
-            }
-        }
+    if (out_reg != NULL) {
+        *out_reg = temp;
+    } else {
+        jit_pop_temp(ctx);
     }
-    CHECK_ERROR(ctor != NULL, ERROR_NOT_FOUND);
 
-    MIR_op_t op;
-    CHECK_AND_RETHROW(jit_newobj(ctx, ctor, &op));
-
-    // call the actual throw function
-    MIR_append_insn(ctx->ctx, ctx->func->func_item,
-                    MIR_new_call_insn(ctx->ctx, 3,
-                                      MIR_new_ref_op(ctx->ctx, ctx->throw_proto),
-                                      MIR_new_ref_op(ctx->ctx, ctx->throw),
-                                      op));
-
-cleanup:
     return err;
 }
 
@@ -775,6 +752,29 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                                              MIR_new_ref_op(ctx->ctx, item)));
             } break;
 
+            case CIL_OPCODE_NEWOBJ: {
+                token_t token = { .packed = FETCH_U4() };
+                method_info_t ctor = assembly_get_method_info_by_token(method_info->assembly, token);
+                CHECK_ERROR(ctor != NULL, ERROR_NOT_FOUND);
+
+                // for debug
+                temp_buffer = create_buffer();
+                method_full_name(ctor, temp_buffer);
+                printf(" %.*s", arrlen(temp_buffer->buffer), temp_buffer->buffer);
+                DESTROY_BUFFER(temp_buffer);
+
+                // emit the code for the new object
+                MIR_reg_t obj_reg = 0;
+                CHECK_AND_RETHROW(jit_newobj(ctx, ctor, &obj_reg));
+
+                // push it to the stack rather than having it in a reg
+                MIR_op_t obj = jit_push(ctx, ctor->declaring_type);
+                MIR_append_insn(ctx->ctx, ctx->func->func_item,
+                                MIR_new_insn(ctx->ctx, MIR_MOV,
+                                             obj,
+                                             MIR_new_reg_op(ctx->ctx, obj_reg)));
+            } break;
+
             case CIL_OPCODE_STFLD: {
                 token_t token = { .packed = FETCH_U4() };
                 field_info_t field_info = assembly_get_field_info_by_token(method_info->assembly, token);
@@ -836,6 +836,10 @@ static err_t jitter_jit_method(jitter_context_t* ctx, method_info_t method_info)
                     jit_pop_temp(ctx);
                 }
             } break;
+
+//            case CIL_OPCODE_THROW: {
+//
+//            } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Default opcode
