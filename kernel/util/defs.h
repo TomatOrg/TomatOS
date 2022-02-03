@@ -37,6 +37,20 @@
         _a > _b ? _a : _b; \
     })
 
+#define SAFE_INC(var) \
+    ({ \
+        typeof(var) __old = var; \
+        CHECK (!__builtin_add_overflow(var, 1, &var)); \
+        __old; \
+    })
+
+#define SAFE_ADD(var, value) \
+    ({ \
+        typeof(var) __result;\
+        CHECK (!__builtin_add_overflow((var), (value), &__result)); \
+        __result; \
+    })
+
 #define PACKED __attribute__((packed))
 #define UNUSED __attribute__((unused))
 

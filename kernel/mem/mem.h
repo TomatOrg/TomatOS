@@ -12,14 +12,16 @@
 #define HIGHER_HALF_START               (0xffff800000000000ull)
 
 // contains direct mapping between virtual and physical addresses, we reserve
-// a total of 64tb for the whole physical address space (which should be enough...)
-#define DIRECT_MAP_SIZE                 (SIZE_16TB)
+// a total of 512GB, this is enough for the newest intel cpus which have 39bits of
+// physical memory
+#define DIRECT_MAP_SIZE                 (SIZE_512GB)
 #define DIRECT_MAP_START                (HIGHER_HALF_START)
 #define DIRECT_MAP_END                  (HIGHER_HALF_START + DIRECT_MAP_SIZE)
 
 // the buddy tree used for the physical allocator of the kernel
-#define BUDDY_TREE_SIZE                 (SIZE_256GB) /* Should be more than enough for at least 16TB of physical memory */
-#define BUDDY_TREE_START                (DIRECT_MAP_END + SIZE_1TB)
+// This only needs ~4GB but we will give it twice as much just for the lols
+#define BUDDY_TREE_SIZE                 (SIZE_8GB)
+#define BUDDY_TREE_START                (DIRECT_MAP_END + SIZE_1GB)
 #define BUDDY_TREE_END                  (BUDDY_TREE_START + BUDDY_TREE_SIZE)
 
 // This is the area the recursive paging exist on

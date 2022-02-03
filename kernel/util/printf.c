@@ -36,9 +36,7 @@
 
 #include "printf.h"
 #include "except.h"
-#include "dotnet/dotnet.h"
 #include "buffer.h"
-#include "dotnet/type.h"
 #include "stb_ds.h"
 
 
@@ -806,40 +804,35 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         break;
       }
 
-      case 'T': {
-          type_t type = va_arg(va, type_t);
-          buffer_t* bfr = create_buffer();
-          type_full_name(type, bfr);
+      case 'S': {
+          size_t i = va_arg(va, size_t);
 
-          unsigned int l =  arrlen(bfr->buffer);
-          if (precision) {
-              l = MIN(l, precision);
+          static char* sizes[] = { "B", "KB", "MB", "GB", "TB" };
+          size_t div = 0;
+          size_t rem = 0;
+
+          while (i >= 1024 && div < ARRAY_LEN(sizes)) {
+              rem = (i % 1024);
+              div++;
+              i /= 1024;
           }
-          // pre padding
-          if (flags & FLAGS_PRECISION) {
-              l = (l < precision ? l : precision);
+
+          idx = _ntoa_long(out, buffer, idx, maxlen, i, false, 10, precision, width, flags);
+
+          if ((rem * 100) / 1024 != 0) {
+              out('.', buffer, idx++, maxlen);
+
+              idx = _ntoa_long(out, buffer, idx, maxlen, i, false, 10, precision, width, flags);
           }
-          if (!(flags & FLAGS_LEFT)) {
-              while (l++ < width) {
-                  out(' ', buffer, idx++, maxlen);
-              }
+
+          const char* s = sizes[div];
+          while ((*s != 0) && (!(flags & FLAGS_PRECISION) || precision--)) {
+              out(*(s++), buffer, idx++, maxlen);
           }
-          // string output
-          const char* p = bfr->buffer;
-          while ((*p != 0) && (!(flags & FLAGS_PRECISION) || precision--)) {
-              out(*(p++), buffer, idx++, maxlen);
-          }
-          // post padding
-          if (flags & FLAGS_LEFT) {
-              while (l++ < width) {
-                  out(' ', buffer, idx++, maxlen);
-              }
-          }
+
           format++;
-
-          DESTROY_BUFFER(bfr);
           break;
-      } break;
+      }
 
       case 'R': {
           err_t err = va_arg(va, int);
@@ -904,7 +897,7 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         break;
       }
 
-      case 'S' : {
+      case 'W' : {
         const wchar_t* p = va_arg(va, wchar_t*);
         if (p == NULL) {
             p = L"(null)";
@@ -974,6 +967,10 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
 ///////////////////////////////////////////////////////////////////////////////
 
 static ticketlock_t m_printf_lock = INIT_TICKETLOCK();
+
+void reset_trace_lock() {
+    m_printf_lock = INIT_TICKETLOCK();
+}
 
 int printf_(const char* format, ...)
 {

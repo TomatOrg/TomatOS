@@ -4,19 +4,6 @@
 #include <stdbool.h>
 #include <limits.h>
 
-int strncmp(const char* s1, const char* s2, size_t n ) {
-    while (n && *s1 && (*s1 == *s2)) {
-        ++s1;
-        ++s2;
-        --n;
-    }
-    if ( n == 0 ) {
-        return 0;
-    } else {
-        return (*(unsigned char *)s1 - *(unsigned char *)s2);
-    }
-}
-
 #define alias_load(T, p) \
     ({ \
         T value; \
@@ -302,4 +289,48 @@ unsigned long strtoul(const char* nptr, char** endptr, int base) {
     }
 
     return acc;
+}
+
+int strncmp(const char* s1, const char* s2, size_t n ) {
+    while (n && *s1 && (*s1 == *s2)) {
+        ++s1;
+        ++s2;
+        --n;
+    }
+    if ( n == 0 ) {
+        return 0;
+    } else {
+        return (*(unsigned char *)s1 - *(unsigned char *)s2);
+    }
+}
+
+int tolower(int c) {
+    if (isupper(c)) return c | 32;
+    return c;
+}
+
+int strcasecmp(const char* s1, const char* s2) {
+    while (*s1 && (tolower(*s1) == tolower(*s2))) {
+        ++s1;
+        ++s2;
+    }
+    return (*(unsigned char *)s1 - *(unsigned char *)s2);
+}
+
+char* strchr(const char* s, int c) {
+    do {
+        if (*s == c) {
+            return (char*)s;
+        }
+    } while (*s++);
+    return (0);
+}
+
+char* strcat(char* destination, const char* source) {
+    char* ptr = destination + strlen(destination);
+    while (*source != '\0') {
+        *ptr++ = *source++;
+    }
+    *ptr = '\0';
+    return destination;
 }

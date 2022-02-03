@@ -7,6 +7,8 @@
  */
 void trace_init();
 
+void reset_trace_lock();
+
 void trace_hex(const void* data, size_t size);
 
 #define TRACE(fmt, ...) printf("[*] " fmt "\n\r", ## __VA_ARGS__)

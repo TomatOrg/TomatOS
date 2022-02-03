@@ -726,6 +726,7 @@ err_t init_palloc() {
     CHECK(size <= BUDDY_TREE_SIZE);
 
     // map the whole buddy map, allocate it right now since we don't wanna mess too much with demand paging...
+    TRACE("Reserving %S for buddy tree", size);
     CHECK_AND_RETHROW(vmm_alloc((void*)BUDDY_TREE_START, size / PAGE_SIZE, MAP_WRITE | MAP_UNMAP_DIRECT));
     memset((void*)BUDDY_TREE_START, 0, size);
 

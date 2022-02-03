@@ -11,5 +11,8 @@
 #define strcmp __builtin_strcmp
 #define strcpy __builtin_strcpy
 #define strlen __builtin_strlen
+#define strchr __builtin_strchr
+#define strcat __builtin_strcat
+#define strcasecmp __builtin_strcasecmp
 
 unsigned long int strtoul(const char *nptr, char **endptr, int base);

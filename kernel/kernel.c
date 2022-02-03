@@ -6,24 +6,21 @@
 #include <util/string.h>
 #include <util/defs.h>
 
+#include <mem/malloc.h>
+#include <mem/mem.h>
+#include <mem/vmm.h>
+
+#include <sync/ticketlock.h>
+
 #include <arch/intrin.h>
 #include <arch/regs.h>
 #include <arch/gdt.h>
 #include <arch/idt.h>
 
+#include <stdatomic.h>
+#include <stdalign.h>
 #include <stddef.h>
 
-#include <stdalign.h>
-#include <mem/mem.h>
-#include <dotnet/gc/gc.h>
-#include <mem/vmm.h>
-#include <sync/ticketlock.h>
-#include <stdatomic.h>
-#include <dotnet/jit/jitter_internal.h>
-#include <mem/stack.h>
-#include <mem/malloc.h>
-#include <dotnet/assembly.h>
-#include <dotnet/jit/jitter.h>
 
 alignas(16)
 static char m_entry_stack[SIZE_2MB] = {0};
@@ -69,6 +66,25 @@ void* get_stivale2_tag(uint64_t tag_id) {
             return tag;
         }
     }
+    return NULL;
+}
+
+struct stivale2_module* get_stivale2_module(const char* name) {
+    static struct stivale2_struct_tag_modules* modules = NULL;
+    if (modules == NULL) {
+        modules = get_stivale2_tag(STIVALE2_STRUCT_TAG_MODULES_ID);
+    }
+
+    if (modules != NULL) {
+        // get the corlib first
+        for (int i = 0; i < modules->module_count; i++) {
+            struct stivale2_module* module = &modules->modules[i];
+            if (strcmp(module->string, name) == 0) {
+                return module;
+            }
+        }
+    }
+
     return NULL;
 }
 
@@ -129,29 +145,6 @@ cleanup:
     while(1) asm ("hlt");
 }
 
-/**
- * Get a stivale2 module
- *
- * @param name      [IN] The name of the module we want
- */
-static struct stivale2_module* get_stivale2_module(const char* name) {
-    static struct stivale2_struct_tag_modules* modules = NULL;
-    if (modules == NULL) {
-        modules = get_stivale2_tag(STIVALE2_STRUCT_TAG_MODULES_ID);
-    }
-
-    if (modules != NULL) {
-        // get the corlib first
-        for (int i = 0; i < modules->module_count; i++) {
-            struct stivale2_module* module = &modules->modules[i];
-            if (strcmp(module->string, name) == 0) {
-                return module;
-            }
-        }
-    }
-
-    return NULL;
-}
 
 void _start(struct stivale2_struct* stivale2) {
     err_t err = NO_ERROR;
@@ -169,6 +162,13 @@ void _start(struct stivale2_struct* stivale2) {
     m_stivale2 = stivale2;
     trace_init();
     TRACE("Hello from pentagon!");
+
+    TRACE("Kernel address map:");
+    TRACE("\t%p-%p (%S): Kernel direct map", DIRECT_MAP_START, DIRECT_MAP_END, DIRECT_MAP_SIZE);
+    TRACE("\t%p-%p (%S): Buddy Tree", BUDDY_TREE_START, BUDDY_TREE_END, BUDDY_TREE_SIZE);
+    TRACE("\t%p-%p (%S): Recursive paging", RECURSIVE_PAGING_START, RECURSIVE_PAGING_END, RECURSIVE_PAGING_SIZE);
+    TRACE("\t%p-%p (%S): Stack pool", STACK_POOL_START, STACK_POOL_END, STACK_POOL_SIZE);
+    TRACE("\t%p-%p (%S): Kernel heap", KERNEL_HEAP_START, KERNEL_HEAP_END, KERNEL_HEAP_SIZE);
 
     // initialize the whole memory subsystem for the current CPU,
     // will initialize the rest afterwards
@@ -204,18 +204,9 @@ void _start(struct stivale2_struct* stivale2) {
         TRACE("Bootloader doesn't support SMP startup!");
     }
 
-    // get the corlib module
-    struct stivale2_module* corelib = get_stivale2_module("CoreLib.dll");
-    CHECK_ERROR(corelib != NULL, ERROR_NOT_FOUND, "CoreLib.dll not found!");
-    TRACE("Loading CoreLib");
-    assembly_t corlib = NULL;
-    CHECK_AND_RETHROW(load_assembly_from_blob(&corlib, (void*)corelib->begin, corelib->end - corelib->begin));
-
-    // now that we are done with the bootloader we
-    // can reclaim all memory
-    CHECK_AND_RETHROW(palloc_reclaim());
-
-    CHECK_AND_RETHROW(jitter_jit_assembly(g_corlib));
+    // load the corlib
+    struct stivale2_module* module = get_stivale2_module("corlib.dll");
+    CHECK_ERROR(module != NULL, ERROR_NOT_FOUND);
 
 cleanup:
 
