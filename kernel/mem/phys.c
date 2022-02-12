@@ -1,11 +1,14 @@
-#include <stdalign.h>
-#include <util/string.h>
-#include <sync/ticketlock.h>
-#include <util/stb_ds.h>
 #include "phys.h"
+
 #include "early.h"
 #include "mem.h"
 #include "vmm.h"
+
+#include <sync/spinlock.h>
+#include <util/string.h>
+#include <util/stb_ds.h>
+
+#include <stdalign.h>
 
 /**
  * Code is based on https://github.com/spaskalev/buddy_alloc
@@ -598,9 +601,9 @@ static buddy_tree_pos_t position_for_address(const void* addr) {
 extern void* memset(void* dest, int val, size_t n);
 
 /**
- * The lock to protect ourselves
+ * The spinlock to protect ourselves
  */
-static ticketlock_t m_palloc_lock = INIT_TICKETLOCK();
+static spinlock_t m_palloc_lock = INIT_SPINLOCK();
 
 static err_t mark_range(uintptr_t base, size_t length) {
     err_t err = NO_ERROR;
@@ -795,13 +798,13 @@ void* palloc(size_t size) {
         return NULL;
     }
 
-    ticketlock_lock(&m_palloc_lock);
+    spinlock_lock(&m_palloc_lock);
 
     size_t target_depth = depth_for_size(size);
     buddy_tree_pos_t pos = buddy_tree_find_free(target_depth);
     if (!buddy_tree_valid(pos)) {
         // no slot was found
-        ticketlock_unlock(&m_palloc_lock);
+        spinlock_unlock(&m_palloc_lock);
         return NULL;
     }
 
@@ -811,7 +814,10 @@ void* palloc(size_t size) {
     // Get the actual pointer value
     void* ptr = address_for_position(pos);
 
-    ticketlock_unlock(&m_palloc_lock);
+    spinlock_unlock(&m_palloc_lock);
+
+    // memset to zero
+    memset(ptr, 0, size);
 
     return ptr;
 }
@@ -822,11 +828,11 @@ void pfree(void* base) {
         return;
     }
 
-    ticketlock_lock(&m_palloc_lock);
+    spinlock_lock(&m_palloc_lock);
 
     buddy_tree_pos_t pos = position_for_address(base);
     ASSERT (buddy_tree_valid(pos));
     buddy_tree_release(pos);
 
-    ticketlock_unlock(&m_palloc_lock);
+    spinlock_unlock(&m_palloc_lock);
 }

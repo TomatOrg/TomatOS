@@ -44,3 +44,28 @@ typedef union msr_pat {
     uint64_t packed;
 } PACKED msr_pat_t;
 STATIC_ASSERT(sizeof(msr_pat_t) == sizeof(uint64_t));
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define MSR_IA32_APIC_BASE  0x0000001B
+
+typedef union msr_apic_base {
+    struct {
+        uint64_t _reserved1 : 8;
+        uint64_t bsp : 1;
+        uint64_t _reserved2 : 1;
+        uint64_t extd : 1;
+        uint64_t en : 1;
+        uint64_t apic_base : 52;
+    };
+    uint64_t packed;
+} PACKED msr_apic_base_t;
+STATIC_ASSERT(sizeof(msr_apic_base_t) == sizeof(uint64_t));
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define MSR_IA32_FS_BASE  0xC0000100
+
+#define MSR_IA32_GS_BASE  0xC0000101
+
+#define MSR_IA32_TSC_AUX  0xC0000103

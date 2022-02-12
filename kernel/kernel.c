@@ -1,18 +1,28 @@
 #include "kernel.h"
 
 #include "stivale2.h"
+#include "threading/scheduler.h"
+
+#include <threading/cpu_local.h>
+#include <threading/thread.h>
+
+#include <debug/debug.h>
 
 #include <util/except.h>
 #include <util/string.h>
+#include <util/elf64.h>
 #include <util/defs.h>
 
 #include <mem/malloc.h>
 #include <mem/mem.h>
 #include <mem/vmm.h>
 
-#include <sync/ticketlock.h>
+#include <time/delay.h>
+#include <time/timer.h>
+#include <acpi/acpi.h>
 
 #include <arch/intrin.h>
+#include <arch/apic.h>
 #include <arch/regs.h>
 #include <arch/gdt.h>
 #include <arch/idt.h>
@@ -20,7 +30,6 @@
 #include <stdatomic.h>
 #include <stdalign.h>
 #include <stddef.h>
-
 
 alignas(16)
 static char m_entry_stack[SIZE_2MB] = {0};
@@ -88,6 +97,22 @@ struct stivale2_module* get_stivale2_module(const char* name) {
     return NULL;
 }
 
+void* get_kernel_file() {
+    static void* kernel = NULL;
+    if (kernel == NULL) {
+        struct stivale2_struct_tag_kernel_file* f = get_stivale2_tag(STIVALE2_STRUCT_TAG_KERNEL_FILE_ID);
+        if (f == NULL) {
+            struct stivale2_struct_tag_kernel_file_v2* f2 = get_stivale2_tag(STIVALE2_STRUCT_TAG_KERNEL_FILE_V2_ID);
+            if (f2 != NULL) {
+                kernel = (void*)f2->kernel_file;
+            }
+        } else {
+            kernel = (void*)f->kernel_file;
+        }
+    }
+    return kernel;
+}
+
 /**
  * Enable CPU features we need
  * - Write Protection
@@ -115,6 +140,15 @@ static int m_startup_count = 0;
  */
 static bool m_smp_error = false;
 
+/**
+ * Start the scheduler
+ */
+static bool m_start_scheduler = false;
+
+size_t get_cpu_count() {
+    return m_startup_count;
+}
+
 static void per_cpu_start(struct stivale2_smp_info* info) {
     err_t err = NO_ERROR;
 
@@ -123,9 +157,14 @@ static void per_cpu_start(struct stivale2_smp_info* info) {
     init_gdt();
     init_idt();
     init_vmm_per_cpu();
+    CHECK_AND_RETHROW(init_apic());
+    CHECK_AND_RETHROW(init_cpu_locals());
 
     // move to higher half
     info = PHYS_TO_DIRECT(info);
+
+    // make sure this is valid
+    CHECK(info->lapic_id == get_apic_id());
 
     // we are ready!
     TRACE("\tCPU #%d", info->lapic_id);
@@ -134,6 +173,7 @@ cleanup:
     if (IS_ERROR(err)) {
         // set that we got an error
         atomic_store(&m_smp_error, true);
+        TRACE("\tError on CPU #%d");
     }
 
     // we done with this CPU
@@ -141,10 +181,29 @@ cleanup:
 
     // wait until the kernel wakes us
     // up to start scheduling
-    asm ("cli");
-    while(1) asm ("hlt");
+    while (!atomic_load_explicit(&m_start_scheduler, memory_order_relaxed)) {
+        __builtin_ia32_pause();
+    }
+
+    // start scheduling!
+    TRACE("\tCPU #%d", info->lapic_id);
+    scheduler_startup();
+
+    // we should not have reached here
+    ERROR("Should not have reached here?!");
+    _disable();
+    while (1) asm("hlt");
 }
 
+static void start_thread() {
+    err_t err = NO_ERROR;
+
+    TRACE("Entered kernel thread!");
+
+cleanup:
+    ASSERT(!IS_ERROR(err));
+    TRACE("Bai Bai!");
+}
 
 void _start(struct stivale2_struct* stivale2) {
     err_t err = NO_ERROR;
@@ -156,12 +215,14 @@ void _start(struct stivale2_struct* stivale2) {
     // now setup idt/gdt
     init_gdt();
     init_idt();
+    early_init_apic();
 
     // Quickly setup everything so we can
     // start debugging already
     m_stivale2 = stivale2;
     trace_init();
     TRACE("Hello from pentagon!");
+    TRACE("\tBootloader: %s (%s)", stivale2->bootloader_brand, stivale2->bootloader_version);
 
     TRACE("Kernel address map:");
     TRACE("\t%p-%p (%S): Kernel direct map", DIRECT_MAP_START, DIRECT_MAP_END, DIRECT_MAP_SIZE);
@@ -171,11 +232,28 @@ void _start(struct stivale2_struct* stivale2) {
     TRACE("\t%p-%p (%S): Kernel heap", KERNEL_HEAP_START, KERNEL_HEAP_END, KERNEL_HEAP_SIZE);
 
     // initialize the whole memory subsystem for the current CPU,
-    // will initialize the rest afterwards
+    // will initialize the rest afterwards, init_vmm also initializes
+    // the apic (since it needs to be mapped before the switch)
     CHECK_AND_RETHROW(init_vmm());
     CHECK_AND_RETHROW(init_palloc());
     vmm_switch_allocator();
     CHECK_AND_RETHROW(init_malloc());
+
+    // load symbols for nicer debugging
+    // NOTE: must be done after allocators are done
+    debug_load_symbols(get_kernel_file());
+
+    // initialize misc kernel utilities
+    CHECK_AND_RETHROW(init_acpi());
+    CHECK_AND_RETHROW(init_delay());
+    CHECK_AND_RETHROW(init_timer());
+
+    // initialize the smp subsystem
+    CHECK_AND_RETHROW(init_cpu_locals());
+
+    //
+    // Do SMP startup
+    //
 
     struct stivale2_struct_tag_smp* smp = get_stivale2_tag(STIVALE2_STRUCT_TAG_SMP_ID);
     if (smp != NULL) {
@@ -183,6 +261,7 @@ void _start(struct stivale2_struct* stivale2) {
         for (int i = 0; i < smp->cpu_count; i++) {
             if (smp->smp_info[i].lapic_id == smp->bsp_lapic_id) {
                 TRACE("\tCPU #%d - BSP", smp->bsp_lapic_id);
+                CHECK(smp->bsp_lapic_id == get_apic_id());
                 continue;
             }
 
@@ -205,16 +284,26 @@ void _start(struct stivale2_struct* stivale2) {
     }
 
     // load the corlib
-    struct stivale2_module* module = get_stivale2_module("corlib.dll");
-    CHECK_ERROR(module != NULL, ERROR_NOT_FOUND);
+//    struct stivale2_module* module = get_stivale2_module("corlib.dll");
+//    CHECK_ERROR(module != NULL, ERROR_NOT_FOUND);
 
-cleanup:
-
-    if (IS_ERROR(err)) {
-        ERROR("Error in kernel initializing!");
-    }
+    // reclaim memory
+    CHECK_AND_RETHROW(palloc_reclaim());
 
     TRACE("Kernel init done");
-    asm ("cli");
-    while(1) asm ("hlt");
+
+    TRACE("Starting up the scheduler");
+    atomic_store_explicit(&m_start_scheduler, true, memory_order_release);
+    TRACE("\tCPU #%d - BSP", get_apic_id());
+    scheduler_startup();
+
+cleanup:
+    if (IS_ERROR(err)) {
+        ERROR("Error in kernel initializing!");
+    } else {
+        ERROR("Should not have reached here?!");
+    }
+
+    _disable();
+    while (1) asm("hlt");
 }

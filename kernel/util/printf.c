@@ -30,15 +30,16 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <sync/ticketlock.h>
-
 #include "printf.h"
 #include "except.h"
 #include "buffer.h"
 #include "stb_ds.h"
 
+#include <stdbool.h>
+#include <stdint.h>
+
+#include <sync/spinlock.h>
+#include <debug/debug.h>
 
 // define this globally (e.g. gcc -DPRINTF_INCLUDE_CONFIG_H ...) to include the
 // printf_config.h header file
@@ -944,6 +945,38 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         break;
       }
 
+      case 'P': {
+          width = sizeof(void*) * 2U;
+          uintptr_t value = ((uintptr_t)va_arg(va, void*));
+          symbol_t* symbol = debug_lookup_symbol(value);
+          if (symbol == NULL || value - symbol->address != 0) {
+              idx = _ntoa_long(out, buffer, idx, maxlen, (unsigned long)value, false, 16U, precision, width, flags);
+          } else {
+              const char* p = symbol->name;
+              unsigned int l = _strnlen_s(p, precision ? precision : (size_t)-1);
+              // pre padding
+              if (flags & FLAGS_PRECISION) {
+                  l = (l < precision ? l : precision);
+              }
+              if (!(flags & FLAGS_LEFT)) {
+                  while (l++ < width) {
+                      out(' ', buffer, idx++, maxlen);
+                  }
+              }
+              // string output
+              while ((*p != 0) && (!(flags & FLAGS_PRECISION) || precision--)) {
+                  out(*(p++), buffer, idx++, maxlen);
+              }
+              // post padding
+              if (flags & FLAGS_LEFT) {
+                  while (l++ < width) {
+                      out(' ', buffer, idx++, maxlen);
+                  }
+              }
+          }
+          format++;
+      } break;
+
       case '%' :
         out('%', buffer, idx++, maxlen);
         format++;
@@ -966,10 +999,10 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static ticketlock_t m_printf_lock = INIT_TICKETLOCK();
+static spinlock_t m_printf_lock = INIT_SPINLOCK();
 
 void reset_trace_lock() {
-    m_printf_lock = INIT_TICKETLOCK();
+    m_printf_lock = INIT_SPINLOCK();
 }
 
 int printf_(const char* format, ...)
@@ -977,9 +1010,9 @@ int printf_(const char* format, ...)
   va_list va;
   va_start(va, format);
   char buffer[1];
-  ticketlock_lock(&m_printf_lock);
+    spinlock_lock(&m_printf_lock);
   const int ret = _vsnprintf(_out_char, buffer, (size_t)-1, format, va);
-  ticketlock_unlock(&m_printf_lock);
+    spinlock_unlock(&m_printf_lock);
   va_end(va);
   return ret;
 }
@@ -1008,9 +1041,9 @@ int snprintf_(char* buffer, size_t count, const char* format, ...)
 int vprintf_(const char* format, va_list va)
 {
   char buffer[1];
-  ticketlock_lock(&m_printf_lock);
+    spinlock_lock(&m_printf_lock);
   int ret = _vsnprintf(_out_char, buffer, (size_t)-1, format, va);
-  ticketlock_unlock(&m_printf_lock);
+    spinlock_unlock(&m_printf_lock);
   return ret;
 }
 

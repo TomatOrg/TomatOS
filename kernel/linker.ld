@@ -5,6 +5,13 @@ ENTRY(_start)
 
 SECTIONS
 {
+    . = 0x0;
+    .cpu_local (NOLOAD) :
+    {
+        KEEP(*(.cpu_local*))
+    }
+    __cpu_local_size = .;
+
     . = 0xffffffff80000000;
 
     .text : ALIGN(4096) {

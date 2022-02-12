@@ -4,9 +4,10 @@
 
 typedef struct spinlock {
     bool locked;
+    bool status;
 } spinlock_t;
 
-#define INIT_SPINLOCK() ((spinlock_t){ .locked = false })
+#define INIT_SPINLOCK() ((spinlock_t){ .locked = false, .status = false })
 
 void spinlock_lock(spinlock_t* spinlock);
 

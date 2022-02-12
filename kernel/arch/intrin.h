@@ -1,106 +1,197 @@
-/*
-        Compatibility <intrin.h> header for GCC -- GCC equivalents of intrinsic
-        Microsoft Visual C++ functions. Originally developed for the ReactOS
-        (<http://www.reactos.org/>) and TinyKrnl (<http://www.tinykrnl.org/>)
-        projects.
+#pragma once
 
-        Copyright (c) 2006 KJK::Hyperion <hackbunny@reactos.com>
+#include <x86intrin.h>
 
-        Permission is hereby granted, free of charge, to any person obtaining a
-        copy of this software and associated documentation files (the
-   "Software"), to deal in the Software without restriction, including without
-   limitation the rights to use, copy, modify, merge, publish, distribute,
-   sublicense, and/or sell copies of the Software, and to permit persons to whom
-   the Software is furnished to do so, subject to the following conditions:
+#include <stdint.h>
 
-        The above copyright notice and this permission notice shall be included
-   in all copies or substantial portions of the Software.
+static __inline__ __attribute__((always_inline)) void _disable(void) {
+    __asm__("cli");
+}
 
-        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-   THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-        FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-        DEALINGS IN THE SOFTWARE.
-*/
+static __inline__ __attribute__((always_inline)) void _enable(void) {
+    __asm__("sti");
+}
 
-#ifndef KJK_INTRIN_H_
-#define KJK_INTRIN_H_
+static __inline__ __attribute__((always_inline)) unsigned char __inbyte(
+        const unsigned short Port) {
+    unsigned char byte;
+    __asm__ __volatile__("inb %w[Port], %b[byte]"
+    : [byte] "=a"(byte)
+    : [Port] "Nd"(Port));
+    return byte;
+}
 
-#ifndef __GNUC__
-#error Unsupported compiler
-#endif
+static __inline__ __attribute__((always_inline)) unsigned short __inword(
+        const unsigned short Port) {
+    unsigned short word;
+    __asm__ __volatile__("inw %w[Port], %w[word]"
+    : [word] "=a"(word)
+    : [Port] "Nd"(Port));
+    return word;
+}
 
-/*
-        FIXME: review all "memory" clobbers, add/remove to match Visual C++
-        behavior: some "obvious" memory barriers are not present in the Visual
-   C++ implementation - e.g. __stosX; on the other hand, some memory barriers
-   that *are* present could have been missed
-*/
+static __inline__ __attribute__((always_inline)) unsigned long __indword(
+        const unsigned short Port) {
+    unsigned long dword;
+    __asm__ __volatile__("inl %w[Port], %k[dword]"
+    : [dword] "=a"(dword)
+    : [Port] "Nd"(Port));
+    return dword;
+}
 
-/*
-        NOTE: this is a *compatibility* header. Some functions may look wrong at
-        first, but they're only "as wrong" as they would be on Visual C++. Our
-        priority is compatibility
+static __inline__ __attribute__((always_inline)) void __inbytestring(
+        unsigned short Port, unsigned char *Buffer, unsigned long Count) {
+    __asm__ __volatile__("rep; insb"
+    : [Buffer] "=D"(Buffer), [Count] "=c"(Count)
+    : "d"(Port), "[Buffer]"(Buffer), "[Count]"(Count)
+    : "memory");
+}
 
-        NOTE: unlike most people who write inline asm for GCC, I didn't pull the
-        constraints and the uses of __volatile__ out of my... hat. Do not touch
-        them. I hate cargo cult programming
+static __inline__ __attribute__((always_inline)) void __inwordstring(
+        unsigned short Port, unsigned short *Buffer, unsigned long Count) {
+    __asm__ __volatile__("rep; insw"
+    : [Buffer] "=D"(Buffer), [Count] "=c"(Count)
+    : "d"(Port), "[Buffer]"(Buffer), "[Count]"(Count)
+    : "memory");
+}
 
-        NOTE: be very careful with declaring "memory" clobbers. Some "obvious"
-        barriers aren't there in Visual C++ (e.g. __stosX)
+static __inline__ __attribute__((always_inline)) void __indwordstring(
+        unsigned short Port, unsigned long *Buffer, unsigned long Count) {
+    __asm__ __volatile__("rep; insl"
+    : [Buffer] "=D"(Buffer), [Count] "=c"(Count)
+    : "d"(Port), "[Buffer]"(Buffer), "[Count]"(Count)
+    : "memory");
+}
 
-        NOTE: review all intrinsics with a return value, add/remove __volatile__
-        where necessary. If an intrinsic whose value is ignored generates a
-   no-op under Visual C++, __volatile__ must be omitted; if it always generates
-   code (for example, if it has side effects), __volatile__ must be specified.
-   GCC will only optimize out non-volatile asm blocks with outputs, so
-   input-only blocks are safe. Oddities such as the non-volatile 'rdmsr' are
-   intentional and follow Visual C++ behavior
+static __inline__ __attribute__((always_inline)) void __outbyte(
+        unsigned short const Port, const unsigned char Data) {
+    __asm__ __volatile__("outb %b[Data], %w[Port]"
+    :
+    : [Port] "Nd"(Port), [Data] "a"(Data));
+}
 
-        NOTE: on GCC 4.1.0, please use the __sync_* built-ins for barriers and
-        atomic operations. Test the version like this:
+static __inline__ __attribute__((always_inline)) void __outword(
+        unsigned short const Port, const unsigned short Data) {
+    __asm__ __volatile__("outw %w[Data], %w[Port]"
+    :
+    : [Port] "Nd"(Port), [Data] "a"(Data));
+}
 
-        #if (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__) >
-   40100
-                ...
+static __inline__ __attribute__((always_inline)) void __outdword(
+        unsigned short const Port, const unsigned long Data) {
+    __asm__ __volatile__("outl %k[Data], %w[Port]"
+    :
+    : [Port] "Nd"(Port), [Data] "a"(Data));
+}
 
-        Pay attention to the type of barrier. Make it match with what Visual C++
-        would use in the same case
-*/
+static __inline__ __attribute__((always_inline)) void __outbytestring(
+        unsigned short const Port, const unsigned char *const Buffer,
+        const unsigned long Count) {
+    __asm__ __volatile__("rep; outsb"
+    :
+    : [Port] "d"(Port), [Buffer] "S"(Buffer), "c"(Count));
+}
 
-// HAS_BUILTIN is used to prevent the redefining of some buildin function in clang:
-// e.g.:
-// ./intrin_x86.h:837:69: error: definition of builtin function '__rdtsc'
-// static __inline__ __attribute__((always_inline)) unsigned long long
-// __rdtsc(void)
-#ifdef __clang__
-#define HAS_BUILTIN(x) __has_builtin(x)
-#else
-#define HAS_BUILTIN(x) 0
-#endif
+static __inline__ __attribute__((always_inline)) void __outwordstring(
+        unsigned short const Port, const unsigned short *const Buffer,
+        const unsigned long Count) {
+    __asm__ __volatile__("rep; outsw"
+    :
+    : [Port] "d"(Port), [Buffer] "S"(Buffer), "c"(Count));
+}
 
-#if defined(__i386__)
-#include "intrin_x86.h"
-#elif defined(_PPC_)
-#include "intrin_ppc.h"
-#elif defined(_MIPS_)
-#include "intrin_mips.h"
-#elif defined(__x86_64__)
-/* TODO: the x64 architecture shares most of the i386 intrinsics. It should be
- * easy to support */
-#include "intrin_x86_64.h"
-#else
-#error Unsupported architecture
-#endif
+static __inline__ __attribute__((always_inline)) void __outdwordstring(
+        unsigned short const Port, const unsigned long *const Buffer,
+        const unsigned long Count) {
+    __asm__ __volatile__("rep; outsl"
+    :
+    : [Port] "d"(Port), [Buffer] "S"(Buffer), "c"(Count));
+}
+static __inline__ __attribute__((always_inline)) unsigned long __readcr0(void) {
+    unsigned long value;
+    __asm__ __volatile__("mov %%cr0, %[value]" : [value] "=q"(value));
+    return value;
+}
 
-/*** Miscellaneous ***/
-/* BUGBUG: only good for use in macros. Cannot be taken the address of */
-#define __noop(...) ((void)0)
+static __inline__ __attribute__((always_inline)) unsigned long __readcr2(void) {
+    unsigned long value;
+    __asm__ __volatile__("mov %%cr2, %[value]" : [value] "=q"(value));
+    return value;
+}
 
-/* TODO: __assume. GCC only supports the weaker __builtin_expect */
+static __inline__ __attribute__((always_inline)) unsigned long __readcr3(void) {
+    unsigned long value;
+    __asm__ __volatile__("mov %%cr3, %[value]" : [value] "=q"(value));
+    return value;
+}
 
-#endif
+static __inline__ __attribute__((always_inline)) unsigned long __readcr4(void) {
+    unsigned long value;
+    __asm__ __volatile__("mov %%cr4, %[value]" : [value] "=q"(value));
+    return value;
+}
 
-/* END_OF_BUFFER */
+static __inline__ __attribute__((always_inline)) unsigned long __readcr8(void) {
+    unsigned long value;
+    __asm__ __volatile__("mov %%cr8, %[value]" : [value] "=q"(value));
+    return value;
+}
+
+static __inline__ __attribute__((always_inline)) void __writecr0(
+        const unsigned long long Data) {
+    __asm__("mov %[Data], %%cr0"
+    :
+    : [Data] "q"((const unsigned long)(Data & 0xFFFFFFFF))
+    : "memory");
+}
+
+static __inline__ __attribute__((always_inline)) void __writecr3(
+        const unsigned long long Data) {
+    __asm__("mov %[Data], %%cr3"
+    :
+    : [Data] "q"((const unsigned long)(Data & 0xFFFFFFFF))
+    : "memory");
+}
+
+static __inline__ __attribute__((always_inline)) void __writecr4(
+        const unsigned long long Data) {
+    __asm__("mov %[Data], %%cr4"
+    :
+    : [Data] "q"((const unsigned long)(Data & 0xFFFFFFFF))
+    : "memory");
+}
+
+static __inline__ __attribute__((always_inline)) void __writecr8(
+        const unsigned long long Data) {
+    __asm__("mov %[Data], %%cr8"
+    :
+    : [Data] "q"((const unsigned long)(Data & 0xFFFFFFFF))
+    : "memory");
+}
+
+
+static __inline__ __attribute__((always_inline)) void __invlpg(
+        void *const Address) {
+    __asm__("invlpg %[Address]" : : [Address] "m"(*((unsigned char *)(Address))));
+}
+
+static __inline__ __attribute__((always_inline)) unsigned long long __readmsr(
+        const int reg) {
+    uint32_t low;
+    uint32_t high;
+    __asm__ __volatile__("rdmsr" : "=d"(high), "=a"(low) : "c"(reg));
+    return (uint64_t)high << 32 | low;
+}
+
+static __inline__ __attribute__((always_inline)) void __writemsr(
+        const unsigned long Register, const unsigned long long Value) {
+    __asm__ __volatile__("wrmsr" : : "d"((uint32_t)(Value >> 32)), "a"((uint32_t)Value), "c"(Register));
+}
+
+static __inline__ __attribute__((always_inline)) void __cpuid(
+        int CPUInfo[], const int InfoType) {
+    __asm__ __volatile__("cpuid"
+    : "=a"(CPUInfo[0]), "=b"(CPUInfo[1]), "=c"(CPUInfo[2]),
+    "=d"(CPUInfo[3])
+    : "a"(InfoType));
+}

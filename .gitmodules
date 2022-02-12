@@ -4,3 +4,6 @@
 [submodule "lib/mir"]
 	path = lib/mir
 	url = git@github.com:vnmakarov/mir.git
+[submodule "lib/zydis"]
+	path = lib/zydis
+	url = git@github.com:zyantific/zydis.git

@@ -1,13 +1,14 @@
-#include <sync/ticketlock.h>
-#include <util/string.h>
 #include "malloc.h"
 
 #include "tlsf.h"
 #include "mem.h"
 
+#include <sync/spinlock.h>
+#include <util/string.h>
+
 static tlsf_t m_tlsf;
 
-static ticketlock_t m_tlsf_lock = INIT_TICKETLOCK();
+static spinlock_t m_tlsf_lock = INIT_SPINLOCK();
 
 err_t init_malloc() {
     err_t err = NO_ERROR;
@@ -19,10 +20,16 @@ cleanup:
     return err;
 }
 
+void check_malloc() {
+    spinlock_lock(&m_tlsf_lock);
+    tlsf_check(m_tlsf);
+    spinlock_unlock(&m_tlsf_lock);
+}
+
 void* malloc(size_t size) {
-    ticketlock_lock(&m_tlsf_lock);
+    spinlock_lock(&m_tlsf_lock);
     void* ptr = tlsf_malloc(m_tlsf, size);
-    ticketlock_unlock(&m_tlsf_lock);
+    spinlock_unlock(&m_tlsf_lock);
     if (ptr != NULL) {
         memset(ptr, 0, size);
     }
@@ -30,14 +37,14 @@ void* malloc(size_t size) {
 }
 
 void* realloc(void* ptr, size_t size) {
-    ticketlock_lock(&m_tlsf_lock);
+    spinlock_lock(&m_tlsf_lock);
     ptr = tlsf_realloc(m_tlsf, ptr, size);
-    ticketlock_unlock(&m_tlsf_lock);
+    spinlock_unlock(&m_tlsf_lock);
     return ptr;
 }
 
 void free(void* ptr) {
-    ticketlock_lock(&m_tlsf_lock);
+    spinlock_lock(&m_tlsf_lock);
     tlsf_free(m_tlsf, ptr);
-    ticketlock_unlock(&m_tlsf_lock);
+    spinlock_unlock(&m_tlsf_lock);
 }

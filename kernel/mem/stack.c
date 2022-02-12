@@ -2,13 +2,13 @@
 
 #include "mem.h"
 
-#include <sync/ticketlock.h>
+#include <sync/spinlock.h>
 #include <util/string.h>
 
 /**
  * Protects the stack allocator
  */
-static ticketlock_t m_stack_alloc_lock = INIT_TICKETLOCK();
+static spinlock_t m_stack_alloc_lock = INIT_SPINLOCK();
 
 /**
  * This points to the next stack that we can allocate
@@ -23,7 +23,7 @@ static list_t m_stack_free_list = INIT_LIST(m_stack_free_list);
 void* alloc_stack() {
     void* ret = NULL;
 
-    ticketlock_lock(&m_stack_alloc_lock);
+    spinlock_lock(&m_stack_alloc_lock);
 
     list_entry_t* stack = list_pop(&m_stack_free_list);
     if (stack != NULL) {
@@ -49,7 +49,7 @@ void* alloc_stack() {
     ret += SIZE_2MB;
 
 cleanup:
-    ticketlock_unlock(&m_stack_alloc_lock);
+    spinlock_unlock(&m_stack_alloc_lock);
 
     if (ret != NULL) {
         // access the first page just so we can
@@ -61,11 +61,11 @@ cleanup:
 }
 
 void free_stack(void* stack) {
-    ticketlock_lock(&m_stack_alloc_lock);
+    spinlock_lock(&m_stack_alloc_lock);
 
     // get the entry from the end of the stack
     list_entry_t* entry = (list_entry_t*)stack - 1;
-    list_push(&m_stack_free_list, entry);
+    list_add(&m_stack_free_list, entry);
 
-    ticketlock_unlock(&m_stack_alloc_lock);
+    spinlock_unlock(&m_stack_alloc_lock);
 }

@@ -8,6 +8,7 @@
 
 #include "mem.h"
 #include "early.h"
+#include "arch/apic.h"
 
 // The recursive page table addresses
 #define PAGE_TABLE_PML1            ((page_entry_t*)0xFFFFFF0000000000ull)
@@ -148,6 +149,10 @@ err_t init_vmm() {
         if (pmr->permissions & STIVALE2_PMR_EXECUTABLE) perms |= MAP_EXEC;
         CHECK_AND_RETHROW(vmm_map(phys, (void*)pmr->base, pmr->length / PAGE_SIZE, perms));
     }
+
+    // map everything else that needs to be mapped at
+    // this point
+    CHECK_AND_RETHROW(init_apic());
 
     // setup everything on this cpu
     init_vmm_per_cpu();
@@ -362,8 +367,6 @@ err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present) 
         // is the stack guard
         uintptr_t index = (ALIGN_DOWN(fault_address - STACK_POOL_START, SIZE_1MB) / SIZE_1MB) % 3;
         CHECK(index != 0, "Tried to access stack guard page (index=%d)", index);
-
-        TRACE("Stack allocation %p", fault_address);
 
         // we are good, map the page
         CHECK_AND_RETHROW(vmm_alloc((void*) ALIGN_DOWN(fault_address, PAGE_SIZE), 1, MAP_WRITE | MAP_UNMAP_DIRECT));

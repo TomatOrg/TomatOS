@@ -62,6 +62,9 @@
 
 #define STATIC_ASSERT(x) _Static_assert(x, #x)
 
+#define LIKELY(cond)        __builtin_expect ((cond), 0)
+#define UNLIKELY(cond)      __builtin_expect ((cond), 1)
+
 #define arrend(arr) \
     ({ \
         typeof(arr) __arr = arr; \

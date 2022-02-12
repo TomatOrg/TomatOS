@@ -2,6 +2,10 @@
 
 #include <util/defs.h>
 
+#include "intrin.h"
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #define CPUID_EXTENDED_CPU_SIG 0x80000001
 
 typedef union cpuid_extended_cpu_sig_edx {
@@ -20,6 +24,20 @@ typedef union cpuid_extended_cpu_sig_edx {
     uint32_t packed;
 } PACKED cpuid_extended_cpu_sig_edx_t;
 STATIC_ASSERT(sizeof(cpuid_extended_cpu_sig_edx_t) == sizeof(uint32_t));
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define CPUID_EXTENDED_TIME_STAMP_COUNTER  0x80000007
+
+typedef union cpuid_extended_time_stamp_counter_edx {
+    struct {
+        uint32_t _reserved : 8;
+        uint32_t invariant_tsc : 1;
+        uint32_t _reserved1 : 23;
+    };
+    uint32_t packed;
+} PACKED cpuid_extended_time_stamp_counter_edx_t;
+STATIC_ASSERT(sizeof(cpuid_extended_time_stamp_counter_edx_t) == sizeof(uint32_t));
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

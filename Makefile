@@ -18,8 +18,8 @@ CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
-CFLAGS 		+= -O1 -g
-CFLAGS		+= -ffreestanding -flto -static -fshort-wchar
+CFLAGS 		+= -Os -flto -g -mtune=nehalem -march=nehalem
+CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mno-red-zone -nostdlib
 CFLAGS		+= -lgcc
 CFLAGS		+= -Tkernel/linker.ld
@@ -33,14 +33,29 @@ CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_FLOAT
 CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_EXPONENTIAL
 
 #-----------------------------------------------------------------------------------------------------------------------
+# Zydis
+#-----------------------------------------------------------------------------------------------------------------------
+
+SRCS 		+= $(shell find lib/zydis/dependencies/zycore/src -name '*.c')
+CFLAGS		+= -Ilib/zydis/dependencies/zycore/include
+
+SRCS 		+= $(shell find lib/zydis/src -name '*.c')
+CFLAGS		+= -Ilib/zydis/include
+CFLAGS		+= -Ilib/zydis/src
+
+CFLAGS 		+= -DZYAN_NO_LIBC
+CFLAGS 		+= -DZYCORE_STATIC_BUILD
+CFLAGS 		+= -DZYDIS_STATIC_BUILD
+
+#-----------------------------------------------------------------------------------------------------------------------
 # Mir library
 #-----------------------------------------------------------------------------------------------------------------------
 
-# Add MIR sources
-SRCS 		+= lib/mir/mir.c
-SRCS 		+= lib/mir/mir-gen.c
-
-CFLAGS		+= -DMIR_NO_SCAN
+## Add MIR sources
+#SRCS 		+= lib/mir/mir.c
+#SRCS 		+= lib/mir/mir-gen.c
+#
+#CFLAGS		+= -DMIR_NO_SCAN
 
 ########################################################################################################################
 # Targets

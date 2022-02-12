@@ -6,6 +6,8 @@
 
 err_t init_malloc();
 
+void check_malloc();
+
 void* malloc(size_t size);
 
 void* realloc(void* ptr, size_t size);
