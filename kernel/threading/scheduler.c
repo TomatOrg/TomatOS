@@ -42,6 +42,9 @@
 
 #include <stdatomic.h>
 
+#undef CPU_LOCAL
+#define CPU_LOCAL
+
 // little helper to deal with the global run queue
 typedef struct thread_queue {
     thread_t* head;
@@ -375,6 +378,117 @@ void scheduler_ready_thread(thread_t* thread) {
 
     // Put in the run queue
     run_queue_put(thread, true);
+}
+
+static bool cas_from_preempted(thread_t* thread) {
+    thread_status_t old = THREAD_STATUS_PREEMPTED;
+    return atomic_compare_exchange_weak(&thread->status, &old, THREAD_STATUS_WAITING);
+}
+
+static bool cas_to_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
+    ASSERT(new == (old | THREAD_SUSPEND));
+    return atomic_compare_exchange_weak(&thread->status, &old, new);
+}
+
+static void cas_from_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
+    bool success = false;
+    if (new == (old & ~THREAD_SUSPEND)) {
+        if (atomic_compare_exchange_weak(&thread->status, &old, new)) {
+            success = true;
+        }
+    }
+    ASSERT(success);
+}
+
+suspend_state_t scheduler_suspend_thread(thread_t* thread) {
+    bool stopped = false;
+
+    for (int i = 0;; i++) {
+        thread_status_t status = get_thread_status(thread);
+        switch (status) {
+            case THREAD_STATUS_DEAD:
+                // nothing to suspend.
+                return (suspend_state_t){ .dead = true };
+
+            case THREAD_STATUS_PREEMPTED:
+                // We (or someone else) suspended the thread. Claim
+                // ownership of it by transitioning it to
+                // THREAD_STATUS_WAITING
+                if (!cas_from_preempted(thread)) {
+                    break;
+                }
+
+                // We stopped the thread, so we have to ready it later
+                stopped = true;
+
+                status = THREAD_STATUS_WAITING;
+
+                // fallthrough
+
+            case THREAD_STATUS_RUNNABLE:
+            case THREAD_STATUS_WAITING:
+                // Claim goroutine by setting suspend bit.
+                // This may race with execution or readying of thread.
+                // The scan bit keeps it from transition state.
+                if (!cas_to_suspend(thread, status, status | THREAD_SUSPEND)) {
+                    break;
+                }
+
+                // Clear the preemption request.
+                thread->preempt_stop = false;
+                thread->preempt = false;
+
+                // The thread is already at a safe-point
+                // and we've now locked that in.
+                return (suspend_state_t) { .thread = thread, .stopped = stopped };
+
+            case THREAD_STATUS_RUNNING:
+                // Optimization: if there is already a pending preemption request
+                // (from the previous loop iteration), don't bother with the atomics.
+                if (thread->preempt_stop) {
+                    break;
+                }
+
+                // Temporarily block state transitions.
+                if (!cas_to_suspend(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNING | THREAD_SUSPEND)) {
+                    break;
+                }
+
+                // Request synchronous preemption.
+                thread->preempt_stop = true;
+                thread->preempt = true;
+
+                // Prepare for asynchronous preemption.
+                // TODO: this
+                cas_from_suspend(thread, THREAD_STATUS_RUNNING | THREAD_SUSPEND, THREAD_STATUS_RUNNING);
+
+                // Send asynchronous preemption. We do this
+                // after CASing the thread back to THREAD_STATUS_RUNNING
+                // because preemptM may be synchronous and we
+                // don't want to catch the thread just spinning on
+                // its status.
+                // TODO: scheduler_preempt(thread); or something
+        }
+
+        for (int x = 0; x < 10; x++) {
+            __builtin_ia32_pause();
+        }
+    }
+}
+
+void scheduler_resume_thread(suspend_state_t state) {
+    if (state.dead) {
+        return;
+    }
+
+    // switch back to non-suspend state
+    thread_status_t status = get_thread_status(state.thread);
+    cas_from_suspend(state.thread, status, status & ~THREAD_SUSPEND);
+
+    if (state.stopped) {
+        // We stopped it, so we need to re-schedule it.
+        scheduler_ready_thread(state.thread);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

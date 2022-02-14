@@ -30,11 +30,26 @@ typedef enum thread_status {
     THREAD_STATUS_WAITING,
 
     /**
+     * Means the thread stopped itself for a suspend
+     * preemption. IT is like THREAD_STATUS_WAITING, but
+     * nothing is yet responsible for readying it. some
+     * suspend must CAS the status to THREAD_STATUS_WAITING
+     * to take responsibility for readying this thread
+     */
+    THREAD_STATUS_PREEMPTED,
+
+    /**
      * Means this thread is currently unused. It may be
      * just exited, on a free list, or just being initialized.
      * It is not executing user code.
      */
     THREAD_STATUS_DEAD,
+
+    /**
+     * Indicates someone wants to suspend this thread (probably the
+     * garbage collector).
+     */
+    THREAD_SUSPEND = 0x1000,
 } thread_status_t;
 
 typedef struct thread {
@@ -54,6 +69,12 @@ typedef struct thread {
     //
     // scheduling related
     //
+
+    // preemption signal
+    bool preempt;
+
+    // transition to THREAD_STATUS_PREEMPTED on preemption, otherwise just deschedule
+    bool preempt_stop;
 
     // The current status of the thread
     thread_status_t status;
@@ -78,6 +99,11 @@ typedef struct waiting_thread {
 } waiting_thread_t;
 
 /**
+ * For thread-locals
+ */
+#define THREAD_LOCAL _Thread_local
+
+/**
  * Acquire a new waiting thread descriptor
  */
 waiting_thread_t* acquire_waiting_thread();
@@ -89,6 +115,17 @@ waiting_thread_t* acquire_waiting_thread();
  */
 void release_waiting_thread(waiting_thread_t* wt);
 
+typedef void(*thread_entry_t)(void* ctx);
+
+thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...);
+
+/**
+ * Called upon a thread exit
+ *
+ * @param thread    [IN] The thread that exited
+ */
+void thread_exit(thread_t* thread);
+
 /**
  * Get the status of a thread atomically
  *
@@ -98,6 +135,10 @@ thread_status_t get_thread_status(thread_t* thread);
 
 /**
  * Compare and swap the thread state atomically
+ *
+ * @remark
+ * This will suspend until the thread status is equals to old and only then try to
+ * set it to new, if that fails it will continue to try until it has a success.
  *
  * @param thread    [IN] The target thread
  * @param old       [IN] The old status
