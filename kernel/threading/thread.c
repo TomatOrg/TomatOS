@@ -39,8 +39,8 @@
 #include <util/string.h>
 
 #include "scheduler.h"
-#include "dotnet/gc/slot.h"
 #include "time/timer.h"
+#include "arch/apic.h"
 
 #include <stdatomic.h>
 
@@ -220,6 +220,8 @@ static CPU_LOCAL int32_t m_free_threads_count = 0;
 static thread_t* get_free_thread() {
     thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
 
+    __writecr8(PRIORITY_NO_PREEMPT);
+
 retry:
     // If we have no threads and there are threads in the global free list pull
     // some threads to us, only take up to 32 entries
@@ -243,13 +245,15 @@ retry:
     // take a thread from the local list
     thread_t* thread = thread_list_pop(free_threads);
     if (thread == NULL) {
-        return NULL;
+        goto cleanup;
     }
     m_free_threads_count--;
 
     // clear the TLS area for the new thread
     memset((void*)(thread->tcb - m_tls_size), 0, m_tls_size);
 
+cleanup:
+    __writecr8(PRIORITY_NORMAL);
     return thread;
 }
 
@@ -257,30 +261,34 @@ static thread_t* alloc_thread() {
     err_t err = NO_ERROR;
 
     thread_t* thread = malloc(sizeof(thread_t));
-    if (thread == NULL) return NULL;
+    CHECK(thread != NULL);
 
     // allocate the tcb
-    thread->tcb = (uintptr_t) malloc(m_tls_size);
+    thread->tcb = (uintptr_t) malloc(m_tls_size + sizeof(void*));
     CHECK(thread->tcb != 0);
     thread->tcb += m_tls_size;
 
-    // initialize important thread stuff
-    CHECK_AND_RETHROW(init_slot_queues());
+    // set the tcb base in the tcb (part of sysv)
+    *(uintptr_t*)thread->tcb = thread->tcb;
 
 cleanup:
     if (IS_ERROR(err)) {
         if (thread != NULL) {
-            free((void*)(thread->tcb - m_tls_size));
+            if (thread->tcb != 0) {
+                free((void*)(thread->tcb - m_tls_size));
+            }
             free(thread);
+            thread = NULL;
         }
     }
+
     return thread;
 }
 
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     thread_t* thread = get_free_thread();
     if (thread == NULL) {
-
+        thread = alloc_thread();
     }
 
     return thread;
@@ -293,6 +301,6 @@ void thread_exit(thread_t* thread) {
     // TODO: put in the free list?
 
     // schedule something else
-    scheduler_startup();
+    scheduler_drop_current();
 }
 

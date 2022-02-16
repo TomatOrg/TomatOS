@@ -205,6 +205,18 @@ cleanup:
     TRACE("Bai Bai!");
 }
 
+static void test_a() {
+    while (true) {
+        TRACE("A");
+    }
+}
+
+static void test_b() {
+    while (true) {
+        TRACE("B");
+    }
+}
+
 void _start(struct stivale2_struct* stivale2) {
     err_t err = NO_ERROR;
 
@@ -291,6 +303,8 @@ void _start(struct stivale2_struct* stivale2) {
     CHECK_AND_RETHROW(palloc_reclaim());
 
     TRACE("Kernel init done");
+
+    lapic_set_deadline(10000000);
 
     TRACE("Starting up the scheduler");
     atomic_store_explicit(&m_start_scheduler, true, memory_order_release);

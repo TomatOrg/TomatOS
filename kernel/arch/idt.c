@@ -698,6 +698,7 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
 
     switch (ctx->int_num) {
         case IRQ_PREEMPT: {
+            TRACE("GOT PREEMPT");
             scheduler_on_schedule(ctx);
             lapic_eoi();
         } break;
@@ -714,8 +715,8 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
             scheduler_on_park(ctx);
         } break;
 
-        case IRQ_STARTUP: {
-            scheduler_on_startup(ctx);
+        case IRQ_DROP: {
+            scheduler_on_drop(ctx);
         } break;
 
         default: {

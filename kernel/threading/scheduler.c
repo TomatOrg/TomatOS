@@ -42,9 +42,6 @@
 
 #include <stdatomic.h>
 
-#undef CPU_LOCAL
-#define CPU_LOCAL
-
 // little helper to deal with the global run queue
 typedef struct thread_queue {
     thread_t* head;
@@ -524,7 +521,11 @@ static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_tim
     cas_thread_state(thread, THREAD_STATUS_RUNNABLE, THREAD_STATUS_RUNNING);
 
     if (!inherit_time) {
+        // add another tick
         m_scheduler_tick++;
+
+        // set a new timeslice of 10 milliseconds
+        lapic_set_deadline(10 * 1000);
     }
 
     // set the gprs context
@@ -619,6 +620,7 @@ static void schedule(interrupt_context_t* ctx) {
 
 void scheduler_on_schedule(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
+    m_current_thread = NULL;
 
     // save the state and set the thread to runnable
     current_thread->ctx = *ctx;
@@ -635,6 +637,7 @@ void scheduler_on_schedule(interrupt_context_t* ctx) {
 
 void scheduler_on_yield(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
+    m_current_thread = NULL;
 
     // save the state and set the thread to runnable
     current_thread->ctx = *ctx;
@@ -649,6 +652,7 @@ void scheduler_on_yield(interrupt_context_t* ctx) {
 
 void scheduler_on_park(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
+    m_current_thread = NULL;
 
     // save the state and set the thread to runnable
     current_thread->ctx = *ctx;
@@ -666,7 +670,14 @@ void scheduler_on_park(interrupt_context_t* ctx) {
     schedule(ctx);
 }
 
-void scheduler_on_startup(interrupt_context_t* ctx) {
+void scheduler_on_drop(interrupt_context_t* ctx) {
+    thread_t* current_thread = get_current_thread();
+    m_current_thread = NULL;
+
+    if (current_thread != NULL) {
+        // TODO: release this, something with ref counts or idk
+    }
+
     schedule(ctx);
 }
 
@@ -698,12 +709,21 @@ void scheduler_park() {
         : "memory");
 }
 
-void scheduler_startup() {
+void scheduler_drop_current() {
     asm volatile (
         "int %0"
         :
-        : "i"(IRQ_STARTUP)
+        : "i"(IRQ_DROP)
         : "memory");
+}
+
+void scheduler_startup() {
+    // set to normal running priority
+    __writecr8(PRIORITY_NO_PREEMPT);
+
+    // drop the current thread in favor of starting
+    // the scheduler
+    scheduler_drop_current();
 }
 
 thread_t* get_current_thread() {

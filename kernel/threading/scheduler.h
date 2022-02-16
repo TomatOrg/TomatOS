@@ -54,7 +54,7 @@ void scheduler_on_yield(interrupt_context_t* ctx);
 
 void scheduler_on_park(interrupt_context_t* ctx);
 
-void scheduler_on_startup(interrupt_context_t* ctx);
+void scheduler_on_drop(interrupt_context_t* ctx);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Call the scheduler to do stuff
@@ -78,7 +78,12 @@ void scheduler_yield();
 void scheduler_park();
 
 /**
- * Reuqest a schedule without saving the context of the current thread
+ * Drop the current thread and schedule a new one instead
+ */
+void scheduler_drop_current();
+
+/**
+ * Startup the scheduler
  */
 void scheduler_startup();
 

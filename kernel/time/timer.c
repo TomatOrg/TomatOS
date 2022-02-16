@@ -42,6 +42,10 @@ cleanup:
     return err;
 }
 
+uint64_t get_tsc_freq() {
+    return m_tsc_micro_freq;
+}
+
 uint64_t microtime() {
     uint64_t value = _rdtsc() / m_tsc_micro_freq;
     _mm_lfence();

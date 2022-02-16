@@ -69,3 +69,5 @@ STATIC_ASSERT(sizeof(msr_apic_base_t) == sizeof(uint64_t));
 #define MSR_IA32_GS_BASE  0xC0000101
 
 #define MSR_IA32_TSC_AUX  0xC0000103
+
+#define MSR_IA32_TSC_DEADLINE  0x000006E0

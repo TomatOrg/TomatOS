@@ -2,6 +2,8 @@
 
 #include "intrin.h"
 #include "msr.h"
+#include "time/timer.h"
+#include "cpuid.h"
 
 #include <util/defs.h>
 #include <mem/mem.h>
@@ -116,7 +118,8 @@ typedef union lapic_lvt_timer {
         uint32_t _reserved1 : 3;
         uint32_t mask : 1;
         uint32_t timer_mode : 1;
-        uint32_t _reserved2 : 14;
+        uint32_t tsc_deadline : 1;
+        uint32_t _reserved2 : 13;
     };
     uint32_t packed;
 } PACKED lapic_lvt_timer_t;
@@ -189,12 +192,24 @@ err_t init_apic() {
                                   MAP_WRITE));
     }
 
-    // enable lapic
+    // enable lapic by configuring the svr
     lapic_svr_t svr = {
         .software_enable = 1,
         .spurious_vector = IRQ_SPURIOUS,
     };
     lapic_write(XAPIC_SPURIOUS_VECTOR_OFFSET, svr.packed);
+
+    // validate tsc deadline is supported
+    cpuid_version_info_ecx_t version_info_ecx;
+    cpuid(CPUID_VERSION_INFO, NULL, NULL, &version_info_ecx.packed, NULL);
+    CHECK(version_info_ecx.TSC_Deadline);
+
+    // enable the local timer
+    lapic_lvt_timer_t timer = {
+        .vector = IRQ_PREEMPT,
+        .tsc_deadline = 1,
+    };
+    lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
 
     // TODO: program wires
 
@@ -251,4 +266,8 @@ void lapic_send_ipi_lowest_priority(uint8_t vector) {
 
 size_t get_apic_id() {
     return lapic_read(XAPIC_ID_OFFSET) >> 24;
+}
+
+void lapic_set_deadline(uint64_t microseconds) {
+    __writemsr(MSR_IA32_TSC_DEADLINE, __builtin_ia32_rdtsc() + microseconds * get_tsc_freq());
 }

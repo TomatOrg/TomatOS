@@ -2,37 +2,51 @@
 
 #include "util/except.h"
 
+typedef enum priority {
+    /**
+     * Normal running priority, allows the GC to be called
+     */
+    PRIORITY_NORMAL = 0x5,
+
+    /**
+     * Priority that does not have preemption, useful for cases where you don't
+     * want to disable interrupts
+     */
+    PRIORITY_NO_PREEMPT = 0x6,
+} priority_t;
+
 /**
  * These are ordered by interrupt priority
  */
 typedef enum irq {
     /**
-     * Preempting IRQ, comes from a time slice
+     * Preempting IRQ, comes from a time slice preemption, this is
+     * blocked by GC priority and above
      */
-    IRQ_PREEMPT     = 0xF0,
+    IRQ_PREEMPT     = 0x60,
 
     /**
      * Schedule irq, will schedule a new thread, see the
      * scheduler on the difference from yield, comes from int
      * so no need for eoi
      */
-    IRQ_SCHEDULE    = 0xF1,
+    IRQ_SCHEDULE    = 0xF0,
 
     /**
      * Yield irq, will yield the current thread, comes
      * from a normal int so no need to eoi
      */
-    IRQ_YIELD       = 0xF2,
+    IRQ_YIELD       = 0xF1,
 
     /**
      * Parks the current thread
      */
-    IRQ_PARK        = 0xF3,
+    IRQ_PARK        = 0xF2,
 
     /**
      * Startup the scheduler
      */
-    IRQ_STARTUP     = 0xF4,
+    IRQ_DROP     = 0xF3,
 
     /**
      * Spurious interrupt, have it the highest to
@@ -73,3 +87,8 @@ void lapic_send_ipi_lowest_priority(uint8_t vector);
  * Get the apic id of the current cpu
  */
 size_t get_apic_id();
+
+/**
+ * Set the deadline in microseconds since now
+ */
+void lapic_set_deadline(uint64_t microseconds);
