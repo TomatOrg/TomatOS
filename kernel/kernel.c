@@ -207,12 +207,14 @@ cleanup:
 
 static void test_a() {
     while (true) {
+        microdelay(1000000);
         TRACE("A");
     }
 }
 
 static void test_b() {
     while (true) {
+        microdelay(1000000);
         TRACE("B");
     }
 }
@@ -304,7 +306,16 @@ void _start(struct stivale2_struct* stivale2) {
 
     TRACE("Kernel init done");
 
-    thread_t* thread = create_thread(start_thread, NULL, "start_thread");
+    thread_t* thread;
+//    thread_t* thread = create_thread(start_thread, NULL, "start_thread");
+//    CHECK(thread != NULL);
+//    scheduler_ready_thread(thread);
+
+    thread = create_thread(test_a, NULL, "test/a");
+    CHECK(thread != NULL);
+    scheduler_ready_thread(thread);
+
+    thread = create_thread(test_b, NULL, "test/b");
     CHECK(thread != NULL);
     scheduler_ready_thread(thread);
 

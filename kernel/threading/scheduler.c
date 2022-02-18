@@ -551,10 +551,13 @@ static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_tim
 
         // set a new timeslice of 10 milliseconds
         lapic_set_deadline(10 * 1000);
+    } else if (m_scheduler_tick == 0) {
+        // this is the first tick, set an initial timeslice
+        lapic_set_deadline(10 * 1000);
     }
 
     // set the gprs context
-    *ctx = thread->ctx;
+    restore_thread_context(thread, ctx);
 
     // TODO: set fpu context
 
@@ -648,7 +651,7 @@ void scheduler_on_schedule(interrupt_context_t* ctx) {
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     // save the state and set the thread to runnable
-    current_thread->ctx = *ctx;
+    save_thread_context(current_thread, ctx);
 
     // put the thread on the global run queue
     if (current_thread->preempt_stop) {
@@ -676,7 +679,7 @@ void scheduler_on_yield(interrupt_context_t* ctx) {
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     // save the state and set the thread to runnable
-    current_thread->ctx = *ctx;
+    save_thread_context(current_thread, ctx);
     cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
 
     // put the thread on the local run queue
@@ -693,7 +696,7 @@ void scheduler_on_park(interrupt_context_t* ctx) {
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     // save the state and set the thread to runnable
-    current_thread->ctx = *ctx;
+    save_thread_context(current_thread, ctx);
 
     // put the thread into a waiting state
     cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);

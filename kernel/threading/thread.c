@@ -41,6 +41,7 @@
 #include "scheduler.h"
 #include "time/timer.h"
 #include "arch/apic.h"
+#include "mem/stack.h"
 
 #include <stdatomic.h>
 
@@ -165,46 +166,48 @@ void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new
     }
 }
 
-void save_thread_context(thread_registers_t* src, interrupt_context_t* dst) {
-    dst->r15 = src->r15;
-    dst->r14 = src->r14;
-    dst->r13 = src->r13;
-    dst->r12 = src->r12;
-    dst->r11 = src->r11;
-    dst->r10 = src->r10;
-    dst->r9 = src->r9;
-    dst->r8 = src->r8;
-    dst->rbp = src->rbp;
-    dst->rdi = src->rdi;
-    dst->rsi = src->rsi;
-    dst->rdx = src->rdx;
-    dst->rcx = src->rcx;
-    dst->rbx = src->rbx;
-    dst->rax = src->rax;
-    dst->rip = src->rip;
-    dst->rflags = src->rflags;
-    dst->rsp = src->rsp;
+void save_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
+    thread_registers_t* regs = &target->regs;
+    regs->r15 = ctx->r15;
+    regs->r14 = ctx->r14;
+    regs->r13 = ctx->r13;
+    regs->r12 = ctx->r12;
+    regs->r11 = ctx->r11;
+    regs->r10 = ctx->r10;
+    regs->r9 = ctx->r9;
+    regs->r8 = ctx->r8;
+    regs->rbp = ctx->rbp;
+    regs->rdi = ctx->rdi;
+    regs->rsi = ctx->rsi;
+    regs->rdx = ctx->rdx;
+    regs->rcx = ctx->rcx;
+    regs->rbx = ctx->rbx;
+    regs->rax = ctx->rax;
+    regs->rip = ctx->rip;
+    regs->rflags = ctx->rflags;
+    regs->rsp = ctx->rsp;
 }
 
-void interrupt_context_to_thread_registers(interrupt_context_t* src, thread_registers_t* dst) {
-    dst->r15 = src->r15;
-    dst->r14 = src->r14;
-    dst->r13 = src->r13;
-    dst->r12 = src->r12;
-    dst->r11 = src->r11;
-    dst->r10 = src->r10;
-    dst->r9 = src->r9;
-    dst->r8 = src->r8;
-    dst->rbp = src->rbp;
-    dst->rdi = src->rdi;
-    dst->rsi = src->rsi;
-    dst->rdx = src->rdx;
-    dst->rcx = src->rcx;
-    dst->rbx = src->rbx;
-    dst->rax = src->rax;
-    dst->rip = src->rip;
-    dst->rflags = src->rflags;
-    dst->rsp = src->rsp;
+void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
+    thread_registers_t* regs = &target->regs;
+    ctx->r15 = regs->r15;
+    ctx->r14 = regs->r14;
+    ctx->r13 = regs->r13;
+    ctx->r12 = regs->r12;
+    ctx->r11 = regs->r11;
+    ctx->r10 = regs->r10;
+    ctx->r9 = regs->r9;
+    ctx->r8 = regs->r8;
+    ctx->rbp = regs->rbp;
+    ctx->rdi = regs->rdi;
+    ctx->rsi = regs->rsi;
+    ctx->rdx = regs->rdx;
+    ctx->rcx = regs->rcx;
+    ctx->rbx = regs->rbx;
+    ctx->rax = regs->rax;
+    ctx->rip = regs->rip;
+    ctx->rflags = regs->rflags;
+    ctx->rsp = regs->rsp;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -333,19 +336,26 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
         thread = alloc_thread();
     }
 
+    thread->regs.rip = (uint64_t) entry;
+    thread->regs.rflags = BIT1 | BIT9 | BIT21; // Always 1 bit, Interrupt enable flag, Able to use CPUID instruction
+    thread->regs.rsp = (uint64_t)alloc_stack();
+
+    // we want the return address to be thread_exit
+    // and the stack to be aligned to 16 bytes + 8
+    // as per the sys-v abi (http://www.x86-64.org/documentation/abi.pdf)
+    PUSH64(thread->regs.rsp, 0);
+    PUSH64(thread->regs.rsp, 0);
+    PUSH64(thread->regs.rsp, thread_exit);
+
     // set the state as waiting
     cas_thread_state(thread, THREAD_STATUS_IDLE, THREAD_STATUS_WAITING);
 
     return thread;
 }
 
-void thread_exit(thread_t* thread) {
-    // set the thread as dead
-    cas_thread_state(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_DEAD);
-
-    // TODO: put in the free list?
-
-    // schedule something else
+void thread_exit() {
+    // simply signal the scheduler to drop the current thread, it will
+    // release the thread properly on its on
     scheduler_drop_current();
 }
 

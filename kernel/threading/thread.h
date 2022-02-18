@@ -82,7 +82,7 @@ typedef struct thread {
     //
 
     // gprs
-    thread_registers_t ctx;
+    thread_registers_t regs;
 
     // thread control block
     uintptr_t tcb;
@@ -148,7 +148,7 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...);
  *
  * @param thread    [IN] The thread that exited
  */
-void thread_exit(thread_t* thread);
+void thread_exit();
 
 /**
  * Get the status of a thread atomically
@@ -170,6 +170,6 @@ thread_status_t get_thread_status(thread_t* thread);
  */
 void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new);
 
-void save_thread_context(thread_t* target, interrupt_context_t* dst);
+void save_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx);
 
-void interrupt_context_to_thread_registers(interrupt_context_t* src, thread_registers_t* dst);
+void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx);
