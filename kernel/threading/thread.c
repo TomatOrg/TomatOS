@@ -165,6 +165,48 @@ void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new
     }
 }
 
+void save_thread_context(thread_registers_t* src, interrupt_context_t* dst) {
+    dst->r15 = src->r15;
+    dst->r14 = src->r14;
+    dst->r13 = src->r13;
+    dst->r12 = src->r12;
+    dst->r11 = src->r11;
+    dst->r10 = src->r10;
+    dst->r9 = src->r9;
+    dst->r8 = src->r8;
+    dst->rbp = src->rbp;
+    dst->rdi = src->rdi;
+    dst->rsi = src->rsi;
+    dst->rdx = src->rdx;
+    dst->rcx = src->rcx;
+    dst->rbx = src->rbx;
+    dst->rax = src->rax;
+    dst->rip = src->rip;
+    dst->rflags = src->rflags;
+    dst->rsp = src->rsp;
+}
+
+void interrupt_context_to_thread_registers(interrupt_context_t* src, thread_registers_t* dst) {
+    dst->r15 = src->r15;
+    dst->r14 = src->r14;
+    dst->r13 = src->r13;
+    dst->r12 = src->r12;
+    dst->r11 = src->r11;
+    dst->r10 = src->r10;
+    dst->r9 = src->r9;
+    dst->r8 = src->r8;
+    dst->rbp = src->rbp;
+    dst->rdi = src->rdi;
+    dst->rsi = src->rsi;
+    dst->rdx = src->rdx;
+    dst->rcx = src->rcx;
+    dst->rbx = src->rbx;
+    dst->rax = src->rax;
+    dst->rip = src->rip;
+    dst->rflags = src->rflags;
+    dst->rsp = src->rsp;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TLS initialization
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -220,7 +262,7 @@ static CPU_LOCAL int32_t m_free_threads_count = 0;
 static thread_t* get_free_thread() {
     thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
 
-    __writecr8(PRIORITY_NO_PREEMPT);
+    preempt_state_t preempt = scheduler_preempt_disable();
 
 retry:
     // If we have no threads and there are threads in the global free list pull
@@ -253,7 +295,7 @@ retry:
     memset((void*)(thread->tcb - m_tls_size), 0, m_tls_size);
 
 cleanup:
-    __writecr8(PRIORITY_NORMAL);
+    scheduler_preempt_enable(preempt);
     return thread;
 }
 
@@ -290,6 +332,9 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     if (thread == NULL) {
         thread = alloc_thread();
     }
+
+    // set the state as waiting
+    cas_thread_state(thread, THREAD_STATUS_IDLE, THREAD_STATUS_WAITING);
 
     return thread;
 }

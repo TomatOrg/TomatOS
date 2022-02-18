@@ -32,17 +32,32 @@ typedef struct suspend_state {
 } suspend_state_t;
 
 /**
+ * suspends the thread at a safe point and returns the
+ * state of the suspended thread. The caller gets read access
+ * to the thread until it calls resume.
  *
- *
- * @param thread
+ * @param thread    [IN] The thread to suspend
  */
 suspend_state_t scheduler_suspend_thread(thread_t* thread);
 
 /**
+ * Resumes a thread that was previously suspended.
  *
- * @param thread
+ * @param state     [IN] The state of the thread to resume
  */
 void scheduler_resume_thread(suspend_state_t status);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Preemption stuff
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct preempt_state {
+    uint8_t priority;
+} preempt_state_t;
+
+preempt_state_t scheduler_preempt_disable(void);
+
+void scheduler_preempt_enable(preempt_state_t state);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Callbacks from interrupts to the scheduler

@@ -121,8 +121,16 @@ static void global_run_queue_put_batch(thread_queue_t* batch, int32_t n) {
     batch->head = NULL;
 }
 
+/**
+ * Put a thread on the global runnable queue.
+ *
+ * @remark
+ * The scheduler spinlock must be help while calling this function
+ *
+ * @param thread [IN] The thread to put
+ */
 static void global_run_queue_put(thread_t* thread) {
-
+    thread_queue_push_back(&m_global_run_queue, thread);
     m_global_run_queue_size++;
 }
 
@@ -368,11 +376,17 @@ bool scheduler_can_spin(int i) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void scheduler_ready_thread(thread_t* thread) {
+    preempt_state_t preempt = scheduler_preempt_disable();
+
+    ASSERT((get_thread_status(thread) & ~THREAD_SUSPEND) == THREAD_STATUS_WAITING);
+
     // Mark as runnable
     cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
 
     // Put in the run queue
     run_queue_put(thread, true);
+
+    scheduler_preempt_enable(preempt);
 }
 
 static bool cas_from_preempted(thread_t* thread) {
@@ -483,6 +497,20 @@ void scheduler_resume_thread(suspend_state_t state) {
         // We stopped it, so we need to re-schedule it.
         scheduler_ready_thread(state.thread);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Preemption
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+preempt_state_t scheduler_preempt_disable(void) {
+    preempt_state_t state = { .priority = __readcr8() };
+    __writecr8(PRIORITY_NO_PREEMPT);
+    return state;
+}
+
+void scheduler_preempt_enable(preempt_state_t state) {
+    __writecr8(state.priority);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -687,7 +715,7 @@ void scheduler_on_drop(interrupt_context_t* ctx) {
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     if (current_thread != NULL) {
-        // TODO: release this, something with ref counts or idk
+        TRACE("TODO: release this, something with ref counts or idk");
     }
 
     schedule(ctx);
@@ -731,7 +759,7 @@ void scheduler_drop_current() {
 
 void scheduler_startup() {
     // set to normal running priority
-    __writecr8(PRIORITY_NO_PREEMPT);
+    __writecr8(PRIORITY_NORMAL);
 
     // drop the current thread in favor of starting
     // the scheduler

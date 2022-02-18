@@ -304,6 +304,10 @@ void _start(struct stivale2_struct* stivale2) {
 
     TRACE("Kernel init done");
 
+    thread_t* thread = create_thread(start_thread, NULL, "start_thread");
+    CHECK(thread != NULL);
+    scheduler_ready_thread(thread);
+
     TRACE("Starting up the scheduler");
     atomic_store_explicit(&m_start_scheduler, true, memory_order_release);
     TRACE("\tCPU #%d - BSP", get_apic_id());

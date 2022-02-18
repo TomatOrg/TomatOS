@@ -52,6 +52,27 @@ typedef enum thread_status {
     THREAD_SUSPEND = 0x1000,
 } thread_status_t;
 
+typedef struct thread_registers {
+    uint64_t r15;
+    uint64_t r14;
+    uint64_t r13;
+    uint64_t r12;
+    uint64_t r11;
+    uint64_t r10;
+    uint64_t r9;
+    uint64_t r8;
+    uint64_t rbp;
+    uint64_t rdi;
+    uint64_t rsi;
+    uint64_t rdx;
+    uint64_t rcx;
+    uint64_t rbx;
+    uint64_t rax;
+    uint64_t rip;
+    uint64_t rflags;
+    uint64_t rsp;
+} thread_registers_t;
+
 typedef struct thread {
     // the thread name
     char name[64];
@@ -61,7 +82,7 @@ typedef struct thread {
     //
 
     // gprs
-    interrupt_context_t ctx;
+    thread_registers_t ctx;
 
     // thread control block
     uintptr_t tcb;
@@ -148,3 +169,7 @@ thread_status_t get_thread_status(thread_t* thread);
  * @param new       [IN] The new status
  */
 void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new);
+
+void save_thread_context(thread_t* target, interrupt_context_t* dst);
+
+void interrupt_context_to_thread_registers(interrupt_context_t* src, thread_registers_t* dst);
