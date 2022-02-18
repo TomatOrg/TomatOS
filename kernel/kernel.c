@@ -304,8 +304,6 @@ void _start(struct stivale2_struct* stivale2) {
 
     TRACE("Kernel init done");
 
-    lapic_set_deadline(10000000);
-
     TRACE("Starting up the scheduler");
     atomic_store_explicit(&m_start_scheduler, true, memory_order_release);
     TRACE("\tCPU #%d - BSP", get_apic_id());

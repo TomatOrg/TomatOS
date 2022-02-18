@@ -247,11 +247,8 @@ static void run_queue_put(thread_t* thread, bool next) {
     if (next) {
         thread_t** runnext = get_cpu_local_base(&m_run_next);
         thread_t* old_next = m_run_next;
-    retry_next:
         // try to change the old thread to the new one
-        if (!atomic_compare_exchange_weak(runnext, &old_next, thread)) {
-            goto retry_next;
-        }
+        while (!atomic_compare_exchange_weak(runnext, &old_next, thread));
 
         // no thread was supposed to run next, just return
         if (old_next == NULL) {
@@ -267,26 +264,27 @@ static void run_queue_put(thread_t* thread, bool next) {
     uint32_t* run_queue_head = get_cpu_local_base(&m_run_queue_head);
     uint32_t* run_queue_tail = get_cpu_local_base(&m_run_queue_tail);
     uint32_t head, tail;
-retry:
-    // start with a fast path
-    head = atomic_load_explicit(run_queue_head, memory_order_acquire);
-    tail = m_run_queue_tail;
-    if (tail - head < ARRAY_LEN(m_run_queue)) {
-        m_run_queue[tail % ARRAY_LEN(m_run_queue)] = thread;
-        atomic_store_explicit(run_queue_tail, tail + 1, memory_order_release);
-        return;
-    }
 
-    // if we failed with fast path try the slow path
-    if (run_queue_put_slow(thread, head, tail, run_queue_head)) {
-        // we put threads on the global queue, wakeup a cpu if
-        // possible to run them
-        wake_cpu();
-        return;
-    }
+    do {
+        // start with a fast path
+        head = atomic_load_explicit(run_queue_head, memory_order_acquire);
+        tail = m_run_queue_tail;
+        if (tail - head < ARRAY_LEN(m_run_queue)) {
+            m_run_queue[tail % ARRAY_LEN(m_run_queue)] = thread;
+            atomic_store_explicit(run_queue_tail, tail + 1, memory_order_release);
+            return;
+        }
 
-    // if failed both try again
-    goto retry;
+        // if we failed with fast path try the slow path
+        if (run_queue_put_slow(thread, head, tail, run_queue_head)) {
+            // we put threads on the global queue, wakeup a cpu if
+            // possible to run them
+            wake_cpu();
+            return;
+        }
+
+        // if failed both try again
+    } while (true);
 }
 
 /**
@@ -456,12 +454,11 @@ suspend_state_t scheduler_suspend_thread(thread_t* thread) {
                 thread->preempt = true;
 
                 // Prepare for asynchronous preemption.
-                // TODO: this
                 cas_from_suspend(thread, THREAD_STATUS_RUNNING | THREAD_SUSPEND, THREAD_STATUS_RUNNING);
 
                 // Send asynchronous preemption. We do this
                 // after CASing the thread back to THREAD_STATUS_RUNNING
-                // because preemptM may be synchronous and we
+                // because preempt may be synchronous and we
                 // don't want to catch the thread just spinning on
                 // its status.
                 // TODO: scheduler_preempt(thread); or something
@@ -544,46 +541,44 @@ static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_tim
 static thread_t* find_runnable(bool* inherit_time) {
     thread_t* thread = NULL;
 
-top:
-    // try the local run queue first
-    thread = run_queue_get(inherit_time);
-    if (thread != NULL) {
-        return thread;
-    }
-
-    // try the global run queue
-    if (m_global_run_queue_size != 0) {
-        lock_scheduler();
-        thread = global_run_queue_get();
-        unlock_scheduler();
+    while (true) {
+        // try the local run queue first
+        thread = run_queue_get(inherit_time);
         if (thread != NULL) {
-            *inherit_time = false;
             return thread;
         }
+
+        // try the global run queue
+        if (m_global_run_queue_size != 0) {
+            lock_scheduler();
+            thread = global_run_queue_get();
+            unlock_scheduler();
+            if (thread != NULL) {
+                *inherit_time = false;
+                return thread;
+            }
+        }
+
+        // TODO: steal work from other cpus
+
+        // mark this cpu as idle
+        lock_scheduler();
+        m_idle_cpus |= 1 << get_apic_id();
+        m_idle_cpus_count++;
+        unlock_scheduler();
+
+        // wait for next interrupt, we are already running from interrupt
+        // context so we need to re-enable interrupts first
+        _enable();
+        asm ("hlt");
+        _disable();
+
+        // remove from idle cpus since we might have work to do
+        lock_scheduler();
+        m_idle_cpus &= 1 << get_apic_id();
+        m_idle_cpus_count--;
+        unlock_scheduler();
     }
-
-    // TODO: steal work from other cpus
-
-    // mark this cpu as idle
-    lock_scheduler();
-    m_idle_cpus |= 1 << get_apic_id();
-    m_idle_cpus_count++;
-    unlock_scheduler();
-
-    // wait for next interrupt, we are already running from interrupt
-    // context so we need to re-enable interrupts first
-    _enable();
-    asm ("hlt");
-    _disable();
-
-    // remove from idle cpus since we might have work to do
-    lock_scheduler();
-    m_idle_cpus &= 1 << get_apic_id();
-    m_idle_cpus_count--;
-    unlock_scheduler();
-
-    // retry everything
-    goto top;
 }
 
 static void schedule(interrupt_context_t* ctx) {
@@ -622,14 +617,25 @@ void scheduler_on_schedule(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
+    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
+
     // save the state and set the thread to runnable
     current_thread->ctx = *ctx;
-    cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
 
     // put the thread on the global run queue
-    lock_scheduler();
-    global_run_queue_put(current_thread);
-    unlock_scheduler();
+    if (current_thread->preempt_stop) {
+        // set as preempted, don't add back to queue
+        cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_PREEMPTED);
+
+    } else {
+        // set the thread to be runnable
+        cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
+
+        // put in the global run queue
+        lock_scheduler();
+        global_run_queue_put(current_thread);
+        unlock_scheduler();
+    }
 
     // now schedule a new thread
     schedule(ctx);
@@ -638,6 +644,8 @@ void scheduler_on_schedule(interrupt_context_t* ctx) {
 void scheduler_on_yield(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
+
+    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     // save the state and set the thread to runnable
     current_thread->ctx = *ctx;
@@ -653,6 +661,8 @@ void scheduler_on_yield(interrupt_context_t* ctx) {
 void scheduler_on_park(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
+
+    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     // save the state and set the thread to runnable
     current_thread->ctx = *ctx;
@@ -673,6 +683,8 @@ void scheduler_on_park(interrupt_context_t* ctx) {
 void scheduler_on_drop(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
+
+    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     if (current_thread != NULL) {
         // TODO: release this, something with ref counts or idk

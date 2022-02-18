@@ -117,6 +117,9 @@ void release_waiting_thread(waiting_thread_t* wt);
 
 typedef void(*thread_entry_t)(void* ctx);
 
+/**
+ * Create a new thread
+ */
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...);
 
 /**
