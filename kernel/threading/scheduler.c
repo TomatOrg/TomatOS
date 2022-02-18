@@ -34,6 +34,7 @@
 
 #include "cpu_local.h"
 #include "kernel.h"
+#include "util/stb_ds.h"
 
 #include <sync/spinlock.h>
 #include <arch/intrin.h>
@@ -165,22 +166,25 @@ static void wake_cpu() {
 
     // get an idle cpu from the queue
     lock_scheduler();
-    if (m_idle_cpus == 0) {
-        // no idle cpu
-        unlock_scheduler();
-        return;
-    }
-    uint8_t apic_id = __builtin_clz(m_idle_cpus);
+    uint8_t apic_id = __builtin_ffs(m_idle_cpus);
     unlock_scheduler();
 
-    // send an ipi to schedule threads from the global run queue
-    // to the found cpu
-    lapic_send_ipi(IRQ_SCHEDULE, apic_id);
+    if (apic_id == 0) {
+        // no cpu to wake up
+        return;
+    } else {
+        // send an ipi to schedule threads from the global run queue
+        // to the found cpu
+        lapic_send_ipi(IRQ_SCHEDULE, apic_id - 1);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Local run queue
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#undef CPU_LOCAL
+#define CPU_LOCAL
 
 // The head and tail for the local run queue
 static uint32_t CPU_LOCAL m_run_queue_head;
@@ -351,6 +355,88 @@ static bool run_queue_empty() {
             return head == tail && next == NULL;
         }
     }
+}
+
+/**
+ * Grab items from the run queue of another cpu
+ *
+ * @param cpu_id            [IN] The other cpu to take from
+ * @param steal_run_next    [IN] Should we attempt to take the next item
+ */
+static uint32_t run_queue_grab(int cpu_id, bool steal_run_next) {
+    uint32_t* run_queue_head = get_cpu_base(cpu_id, &m_run_queue_head);
+    uint32_t* run_queue_tail = get_cpu_base(cpu_id, &m_run_queue_tail);
+    thread_t** run_queue = get_cpu_base(cpu_id, &m_run_queue);
+    thread_t** run_next = get_cpu_base(cpu_id, &m_run_next);
+
+    while (true) {
+        // get the head and tail
+        uint32_t h = atomic_load_explicit(run_queue_head, memory_order_acquire);
+        uint32_t t = atomic_load_explicit(run_queue_tail, memory_order_acquire);
+
+        // calculate the amount to take
+        uint32_t n = t - h;
+        n = n - n / 2;
+
+        // if there is nothing to take try to take the
+        // next thread to run
+        if (n == 0) {
+            if (steal_run_next) {
+                // Try to steal from run_queue_next
+                thread_t* next = *run_next;
+                if (next != NULL) {
+                    if (!atomic_compare_exchange_weak(run_next, &next, NULL)) {
+                        continue;
+                    }
+                    m_run_queue[m_run_queue_tail % ARRAY_LEN(m_run_queue)] = next;
+                    return 1;
+                }
+            }
+            return 0;
+        }
+
+        // don't take more than half of the items
+        if (n > ARRAY_LEN(m_run_queue) / 2) {
+            continue;
+        }
+
+        // take the items we want
+        for (int i = 0; i < n; i++) {
+            thread_t* thread = run_queue[(h + i) % ARRAY_LEN(m_run_queue)];
+            m_run_queue[(m_run_queue_tail + i) % ARRAY_LEN(m_run_queue)] = thread;
+        }
+
+        // Try and increment the head since we taken from the queue
+        if (atomic_compare_exchange_weak(run_queue_head, &h, h + n)) {
+            return n;
+        }
+    }
+}
+
+/**
+ * Steal from the run queue of another cpu
+ *
+ * @param cpu_id            [IN] The cpu to steal from
+ * @param steal_run_next    [IN] Should we steal from the next thread
+ */
+static thread_t* run_queue_steal(int cpu_id, bool steal_run_next) {
+    uint32_t t = m_run_queue_tail;
+    uint32_t n = run_queue_grab(cpu_id, steal_run_next);
+    if (n == 0) {
+        // we failed to grab
+        return NULL;
+    }
+    n--;
+
+    // take the first thread
+    thread_t* thread = m_run_queue[(t + n) % ARRAY_LEN(m_run_queue)];
+    if (n == 0) {
+        // we only took a single thread, no need to queue it
+        return thread;
+    }
+
+    get_cpu_local_base();
+    uint32_t h = atomic_load_explicit()
 }
 
 bool scheduler_can_spin(int i) {
@@ -566,8 +652,111 @@ static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_tim
 }
 
 //----------------------------------------------------------------------------------------------------------------------
+// random order for randomizing work stealing
+//----------------------------------------------------------------------------------------------------------------------
+
+typedef struct random_enum {
+    uint32_t i;
+    uint32_t count;
+    uint32_t pos;
+    uint32_t inc;
+} random_enum_t;
+
+static uint32_t m_random_order_count = 0;
+static uint32_t* m_random_order_coprimes = NULL;
+
+static uint32_t gcd(uint32_t a, uint32_t b) {
+    while (b != 0) {
+        uint32_t t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+static void random_order_init(int count) {
+    m_random_order_count = count;
+    for (int i = 0; i <= count; i++) {
+        if (gcd(i, count) == 1) {
+            arrpush(m_random_order_coprimes, i);
+        }
+    }
+}
+
+static random_enum_t random_order_start(uint32_t i) {
+    return (random_enum_t) {
+        .count = m_random_order_count,
+        .pos = i % m_random_order_count,
+        .inc = m_random_order_coprimes[i % arrlen(m_random_order_coprimes)]
+    };
+}
+
+static bool random_enum_done(random_enum_t* e) {
+    return e->i == e->count;
+}
+
+static void random_enum_next(random_enum_t* e) {
+    e->i++;
+    e->pos = (e->pos + e->inc) % e->count;
+}
+
+static uint32_t random_enum_position(random_enum_t* e) {
+    return e->pos;
+}
+
+static uint64_t CPU_LOCAL m_fast_rand;
+
+__uint128_t mul64(uint64_t a, uint64_t b) {
+    return (__uint128_t)a * b;
+}
+
+/**
+ * Implements wyrand
+ */
+uint32_t fastrandom() {
+    m_fast_rand += 0xa0761d6478bd642f;
+    __uint128_t i = mul64(m_fast_rand, m_fast_rand ^ 0xe7037ed1a0b428db);
+    uint64_t hi = (uint64_t)(i >> 64);
+    uint64_t lo = (uint64_t)i;
+    return (uint32_t)(hi ^ lo);
+}
+
+//----------------------------------------------------------------------------------------------------------------------
 // Scheduler itself
 //----------------------------------------------------------------------------------------------------------------------
+
+/**
+ * CPU is out of work nad is actively looking for work
+ */
+static bool CPU_LOCAL m_spinning;
+
+/**
+ * Number of spinning CPUs in the system
+ */
+static uint32_t m_number_spinning = 0;
+
+static thread_t* steal_work(bool* inherit_time) {
+    for (int i = 0; i < 4; i++) {
+
+
+        for (random_enum_t e = random_order_start(fastrandom()); !random_enum_done(&e); random_enum_next(&e)) {
+            // get the cpu to steal from
+            int cpu = random_enum_position(&e);
+            if (cpu == get_apic_id()) {
+                continue;
+            }
+
+            // Don't bother to attempt to steal if the cpu is in sleep
+            if (m_idle_cpus & cpu) {
+                continue;
+            }
+
+
+        }
+    }
+
+    return NULL;
+}
 
 static thread_t* find_runnable(bool* inherit_time) {
     thread_t* thread = NULL;
@@ -576,6 +765,7 @@ static thread_t* find_runnable(bool* inherit_time) {
         // try the local run queue first
         thread = run_queue_get(inherit_time);
         if (thread != NULL) {
+            m_spinning = false;
             return thread;
         }
 
@@ -586,11 +776,32 @@ static thread_t* find_runnable(bool* inherit_time) {
             unlock_scheduler();
             if (thread != NULL) {
                 *inherit_time = false;
+                m_spinning = false;
                 return thread;
             }
         }
 
-        // TODO: steal work from other cpus
+        //
+        // Steal work from other cpus.
+        //
+        // limit the number of spinning ms to half the number of busy cpus.
+        // This is necessary to prevent excessive CPU consumption when
+        // cpu count > 1 but the kernel parallelism is low.
+        //
+        if (m_spinning || 2 * atomic_load(&m_number_spinning) < get_cpu_count() - atomic_load(&m_idle_cpus_count)) {
+            if (!m_spinning) {
+                m_spinning = true;
+                atomic_fetch_add(&m_number_spinning, 1);
+            }
+
+            // try to steal some work
+            thread = steal_work(inherit_time);
+            if (thread != NULL) {
+                *inherit_time = false;
+                m_spinning = false;
+                return thread;
+            }
+        }
 
         // mark this cpu as idle
         lock_scheduler();

@@ -145,8 +145,10 @@ static bool m_smp_error = false;
  */
 static bool m_start_scheduler = false;
 
+static size_t m_cpu_count = 1;
+
 size_t get_cpu_count() {
-    return m_startup_count;
+    return m_cpu_count;
 }
 
 static void per_cpu_start(struct stivale2_smp_info* info) {
@@ -262,17 +264,29 @@ void _start(struct stivale2_struct* stivale2) {
     CHECK_AND_RETHROW(init_delay());
     CHECK_AND_RETHROW(init_timer());
 
-    // initialize the smp subsystem
-    CHECK_AND_RETHROW(init_cpu_locals());
-
     //
     // Do SMP startup
     //
 
+    // get the smp tag
     struct stivale2_struct_tag_smp* smp = get_stivale2_tag(STIVALE2_STRUCT_TAG_SMP_ID);
+
+    // if we have the smp tag then we are SMP, set the cpu count
+    if (smp != NULL) {
+        m_cpu_count = smp->cpu_count;
+    }
+
+    // initialize per cpu variables
+    CHECK_AND_RETHROW(init_cpu_locals());
+
+    // now actually do smp startup
     if (smp != NULL) {
         TRACE("SMP Startup");
         for (int i = 0; i < smp->cpu_count; i++) {
+
+            // right now we assume that the apic id is always less than the cpu count
+            CHECK(smp->smp_info[i].lapic_id < smp->cpu_count);
+
             if (smp->smp_info[i].lapic_id == smp->bsp_lapic_id) {
                 TRACE("\tCPU #%d - BSP", smp->bsp_lapic_id);
                 CHECK(smp->bsp_lapic_id == get_apic_id());
@@ -295,6 +309,7 @@ void _start(struct stivale2_struct* stivale2) {
         TRACE("Done CPU startup");
     } else {
         TRACE("Bootloader doesn't support SMP startup!");
+        CHECK(get_apic_id() == 0);
     }
 
     // load the corlib
