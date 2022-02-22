@@ -95,6 +95,8 @@ static thread_t* thread_queue_pop(thread_queue_t* q) {
 // Global run queue
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define RUN_QUEUE_LEN 256
+
 // The global run queue
 static thread_queue_t m_global_run_queue;
 static int32_t m_global_run_queue_size;
@@ -135,17 +137,44 @@ static void global_run_queue_put(thread_t* thread) {
     m_global_run_queue_size++;
 }
 
+static void run_queue_put(thread_t* thread, bool next);
+
 /**
  * Get a thread from the global run queue
  */
-static thread_t* global_run_queue_get() {
+static thread_t* global_run_queue_get(int max) {
     if (m_global_run_queue_size == 0) {
         return NULL;
     }
 
-    // take one from the queue
-    m_global_run_queue_size -= 1;
-    return thread_queue_pop(&m_global_run_queue);
+    int n = m_global_run_queue_size / get_cpu_count() + 1;
+    if (n > m_global_run_queue_size) {
+        n = m_global_run_queue_size;
+    }
+
+    if (max > 0 && n > max) {
+        n = max;
+    }
+
+    if (n > RUN_QUEUE_LEN / 2) {
+        n = RUN_QUEUE_LEN / 2;
+    }
+
+    // we are going to take n items
+    m_global_run_queue_size -= n;
+
+    // take the initial one
+    thread_t* thread = thread_queue_pop(&m_global_run_queue);
+    n--;
+
+    // take the rest
+    for (; n > 0; n--) {
+        thread_t* thread1 = thread_queue_pop(&m_global_run_queue);
+        run_queue_put(thread1, false);
+    }
+
+    // return the initial one
+    return thread;
 }
 
 static void lock_scheduler() {
@@ -183,18 +212,24 @@ static void wake_cpu() {
 // Local run queue
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#undef CPU_LOCAL
-#define CPU_LOCAL
+typedef struct local_run_queue {
+    uint32_t head;
+    uint32_t tail;
+    thread_t* queue[256];
+    thread_t* next;
+} local_run_queue_t;
 
-// The head and tail for the local run queue
-static uint32_t CPU_LOCAL m_run_queue_head;
-static uint32_t CPU_LOCAL m_run_queue_tail;
+static local_run_queue_t* m_run_queues;
 
-// the local run queue elements
-static thread_t* CPU_LOCAL m_run_queue[256];
+__attribute__((const))
+static local_run_queue_t* get_run_queue() {
+    return &m_run_queues[get_cpu_id()];
+}
 
-// the next thread to run
-static thread_t* CPU_LOCAL m_run_next;
+__attribute__((const))
+static local_run_queue_t* get_run_queue_of(int cpu_id) {
+    return &m_run_queues[cpu_id];
+}
 
 /**
  * Slow path for run queue, called when we failed to add items to the local run queue,
@@ -207,18 +242,19 @@ static thread_t* CPU_LOCAL m_run_next;
  * @param run_queue_head    [IN] Absolute address of the run_queue, already resolved
  *                               by caller so pass it to us instead of needing to recalculate it
  */
-static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32_t tail, uint32_t* run_queue_head) {
-    thread_t* batch[ARRAY_LEN(m_run_queue) / 2 + 1];
+static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32_t tail) {
+    local_run_queue_t* rq = get_run_queue();
+    thread_t* batch[RUN_QUEUE_LEN / 2 + 1];
 
     // First grab a batch from the local queue
     int32_t n = tail - head;
     n = n / 2;
 
     for (int i = 0; i < n; i++) {
-        batch[i] = m_run_queue[(head + tail) % ARRAY_LEN(m_run_queue)];
+        batch[i] = rq->queue[(head + i) % RUN_QUEUE_LEN];
     }
 
-    if (!atomic_compare_exchange_weak_explicit(run_queue_head, &head, head + n, memory_order_release, memory_order_relaxed)) {
+    if (!atomic_compare_exchange_weak_explicit(&rq->head, &head, head + n, memory_order_release, memory_order_relaxed)) {
         return false;
     }
 
@@ -255,12 +291,17 @@ static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32_t tail, u
  * @param next          [IN] Should the thread be put in the head or tail of the runnable queue
  */
 static void run_queue_put(thread_t* thread, bool next) {
+    local_run_queue_t* rq = get_run_queue();
+
     // we want this thread to run next
     if (next) {
-        thread_t** runnext = get_cpu_local_base(&m_run_next);
-        thread_t* old_next = m_run_next;
+        thread_t* old_next = rq->next;
+        thread_t* temp = old_next;
         // try to change the old thread to the new one
-        while (!atomic_compare_exchange_weak(runnext, &old_next, thread));
+        while (!atomic_compare_exchange_weak(&rq->next, &temp, thread)) {
+            old_next = rq->next;
+            temp = old_next;
+        }
 
         // no thread was supposed to run next, just return
         if (old_next == NULL) {
@@ -273,22 +314,20 @@ static void run_queue_put(thread_t* thread, bool next) {
     }
 
     // we need the absolute addresses for these for atomic accesses
-    uint32_t* run_queue_head = get_cpu_local_base(&m_run_queue_head);
-    uint32_t* run_queue_tail = get_cpu_local_base(&m_run_queue_tail);
     uint32_t head, tail;
 
     do {
         // start with a fast path
-        head = atomic_load_explicit(run_queue_head, memory_order_acquire);
-        tail = m_run_queue_tail;
-        if (tail - head < ARRAY_LEN(m_run_queue)) {
-            m_run_queue[tail % ARRAY_LEN(m_run_queue)] = thread;
-            atomic_store_explicit(run_queue_tail, tail + 1, memory_order_release);
+        head = atomic_load_explicit(&rq->head, memory_order_acquire);
+        tail = rq->tail;
+        if (tail - head < RUN_QUEUE_LEN) {
+            rq->queue[tail % RUN_QUEUE_LEN] = thread;
+            atomic_store_explicit(&rq->tail, tail + 1, memory_order_release);
             return;
         }
 
         // if we failed with fast path try the slow path
-        if (run_queue_put_slow(thread, head, tail, run_queue_head)) {
+        if (run_queue_put_slow(thread, head, tail)) {
             // we put threads on the global queue, wakeup a cpu if
             // possible to run them
             wake_cpu();
@@ -306,29 +345,28 @@ static void run_queue_put(thread_t* thread, bool next) {
  * in the current time slice. Otherwise, it should start a new time slice.
  */
 static thread_t* run_queue_get(bool* inherit_time) {
-    thread_t** run_next = get_cpu_local_base(&m_run_next);
+    local_run_queue_t* rq = get_run_queue();
 
     // If there's a run next, it's the next thread to run.
-    thread_t* next = m_run_next;
+    thread_t* next = rq->next;
 
     // If the run next is not NULL and the CAS fails, it could only have been stolen by another cpu,
     // because other cpus can race to set run next to NULL, but only the current cpu can set it.
     // Hence, there's no need to retry this CAS if it falls.
-    if (next != NULL && atomic_compare_exchange_weak(run_next, &next, NULL)) {
+    thread_t* temp_next = next;
+    if (next != NULL && atomic_compare_exchange_weak(&rq->next, &temp_next, NULL)) {
         *inherit_time = true;
         return next;
     }
 
-    uint32_t* run_queue_head = get_cpu_local_base(&m_run_queue_head);
-
     while (true) {
-        uint32_t head = atomic_load_explicit(run_queue_head, memory_order_acquire);
-        uint32_t tail = m_run_queue_tail;
+        uint32_t head = atomic_load_explicit(&rq->head, memory_order_acquire);
+        uint32_t tail = rq->tail;
         if (tail == head) {
             return NULL;
         }
-        thread_t* thread = m_run_queue[head & ARRAY_LEN(m_run_queue)];
-        if (atomic_compare_exchange_weak_explicit(run_queue_head, &head, head + 1, memory_order_release, memory_order_relaxed)) {
+        thread_t* thread = rq->queue[head % RUN_QUEUE_LEN];
+        if (atomic_compare_exchange_weak_explicit(&rq->head, &head, head + 1, memory_order_release, memory_order_relaxed)) {
             *inherit_time = false;
             return thread;
         }
@@ -342,16 +380,12 @@ static bool run_queue_empty() {
     //  3) run_queue_get on cpu empties run_queue_next.
     // Simply observing that run_queue_head == run_queue_tail and then observing
     // that run_next == nil does not mean the queue is empty.
-
-    uint32_t* run_queue_head = get_cpu_local_base(&m_run_queue_head);
-    uint32_t* run_queue_tail = get_cpu_local_base(&m_run_queue_tail);
-    thread_t** run_next = get_cpu_local_base(&m_run_next);
-
+    local_run_queue_t* rq = get_run_queue();
     while (true) {
-        uint32_t head = atomic_load(run_queue_head);
-        uint32_t tail = atomic_load(run_queue_tail);
-        thread_t* next = atomic_load(run_next);
-        if (tail == atomic_load(run_queue_tail)) {
+        uint32_t head = atomic_load(&rq->head);
+        uint32_t tail = atomic_load(&rq->tail);
+        thread_t* next = atomic_load(&rq->next);
+        if (tail == atomic_load(&rq->tail)) {
             return head == tail && next == NULL;
         }
     }
@@ -363,16 +397,13 @@ static bool run_queue_empty() {
  * @param cpu_id            [IN] The other cpu to take from
  * @param steal_run_next    [IN] Should we attempt to take the next item
  */
-static uint32_t run_queue_grab(int cpu_id, bool steal_run_next) {
-    uint32_t* run_queue_head = get_cpu_base(cpu_id, &m_run_queue_head);
-    uint32_t* run_queue_tail = get_cpu_base(cpu_id, &m_run_queue_tail);
-    thread_t** run_queue = get_cpu_base(cpu_id, &m_run_queue);
-    thread_t** run_next = get_cpu_base(cpu_id, &m_run_next);
+static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t batchHead, bool steal_run_next) {
+    local_run_queue_t* orq = get_run_queue_of(cpu_id);
 
     while (true) {
         // get the head and tail
-        uint32_t h = atomic_load_explicit(run_queue_head, memory_order_acquire);
-        uint32_t t = atomic_load_explicit(run_queue_tail, memory_order_acquire);
+        uint32_t h = atomic_load_explicit(&orq->head, memory_order_acquire);
+        uint32_t t = atomic_load_explicit(&orq->tail, memory_order_acquire);
 
         // calculate the amount to take
         uint32_t n = t - h;
@@ -383,31 +414,31 @@ static uint32_t run_queue_grab(int cpu_id, bool steal_run_next) {
         if (n == 0) {
             if (steal_run_next) {
                 // Try to steal from run_queue_next
-                thread_t* next = *run_next;
+                thread_t* next = orq->next;
                 if (next != NULL) {
-                    if (!atomic_compare_exchange_weak(run_next, &next, NULL)) {
+                    if (!atomic_compare_exchange_weak(&orq->next, &next, NULL)) {
                         continue;
                     }
-                    m_run_queue[m_run_queue_tail % ARRAY_LEN(m_run_queue)] = next;
+                    batch[batchHead % RUN_QUEUE_LEN] = next;
                     return 1;
                 }
             }
             return 0;
         }
 
-        // don't take more than half of the items
-        if (n > ARRAY_LEN(m_run_queue) / 2) {
+        // read inconsistent h and t
+        if (n > RUN_QUEUE_LEN / 2) {
             continue;
         }
 
         // take the items we want
         for (int i = 0; i < n; i++) {
-            thread_t* thread = run_queue[(h + i) % ARRAY_LEN(m_run_queue)];
-            m_run_queue[(m_run_queue_tail + i) % ARRAY_LEN(m_run_queue)] = thread;
+            thread_t* thread = orq->queue[(h + i) % RUN_QUEUE_LEN];
+            batch[(batchHead + i) % RUN_QUEUE_LEN] = thread;
         }
 
         // Try and increment the head since we taken from the queue
-        if (atomic_compare_exchange_weak(run_queue_head, &h, h + n)) {
+        if (atomic_compare_exchange_weak(&orq->head, &h, h + n)) {
             return n;
         }
     }
@@ -420,8 +451,10 @@ static uint32_t run_queue_grab(int cpu_id, bool steal_run_next) {
  * @param steal_run_next    [IN] Should we steal from the next thread
  */
 static thread_t* run_queue_steal(int cpu_id, bool steal_run_next) {
-    uint32_t t = m_run_queue_tail;
-    uint32_t n = run_queue_grab(cpu_id, steal_run_next);
+    local_run_queue_t* rq = get_run_queue();
+
+    uint32_t t = rq->tail;
+    uint32_t n = run_queue_grab(cpu_id, rq->queue, t, steal_run_next);
     if (n == 0) {
         // we failed to grab
         return NULL;
@@ -429,14 +462,17 @@ static thread_t* run_queue_steal(int cpu_id, bool steal_run_next) {
     n--;
 
     // take the first thread
-    thread_t* thread = m_run_queue[(t + n) % ARRAY_LEN(m_run_queue)];
+    thread_t* thread = rq->queue[(t + n) % RUN_QUEUE_LEN];
     if (n == 0) {
         // we only took a single thread, no need to queue it
         return thread;
     }
 
-    get_cpu_local_base();
-    uint32_t h = atomic_load_explicit()
+    uint32_t h = atomic_load_explicit(&rq->head, memory_order_acquire);
+    ASSERT(t - h + n < RUN_QUEUE_LEN);
+    atomic_store_explicit(&rq->tail, t + n, memory_order_release);
+
+    return thread;
 }
 
 bool scheduler_can_spin(int i) {
@@ -735,14 +771,15 @@ static bool CPU_LOCAL m_spinning;
  */
 static uint32_t m_number_spinning = 0;
 
-static thread_t* steal_work(bool* inherit_time) {
+static thread_t* steal_work() {
     for (int i = 0; i < 4; i++) {
-
+        // on the last round try to steal next
+        bool steal_next = i == 4 - 1;
 
         for (random_enum_t e = random_order_start(fastrandom()); !random_enum_done(&e); random_enum_next(&e)) {
             // get the cpu to steal from
             int cpu = random_enum_position(&e);
-            if (cpu == get_apic_id()) {
+            if (cpu == get_cpu_id()) {
                 continue;
             }
 
@@ -751,7 +788,10 @@ static thread_t* steal_work(bool* inherit_time) {
                 continue;
             }
 
-
+            thread_t* thread = run_queue_steal(cpu, steal_next);
+            if (thread != NULL) {
+                return thread;
+            }
         }
     }
 
@@ -772,7 +812,7 @@ static thread_t* find_runnable(bool* inherit_time) {
         // try the global run queue
         if (m_global_run_queue_size != 0) {
             lock_scheduler();
-            thread = global_run_queue_get();
+            thread = global_run_queue_get(0);
             unlock_scheduler();
             if (thread != NULL) {
                 *inherit_time = false;
@@ -780,6 +820,12 @@ static thread_t* find_runnable(bool* inherit_time) {
                 return thread;
             }
         }
+
+        // mark this cpu as idle
+        lock_scheduler();
+        m_idle_cpus |= 1 << get_cpu_id();
+        m_idle_cpus_count++;
+        unlock_scheduler();
 
         //
         // Steal work from other cpus.
@@ -795,19 +841,13 @@ static thread_t* find_runnable(bool* inherit_time) {
             }
 
             // try to steal some work
-            thread = steal_work(inherit_time);
+            thread = steal_work();
             if (thread != NULL) {
                 *inherit_time = false;
                 m_spinning = false;
                 return thread;
             }
         }
-
-        // mark this cpu as idle
-        lock_scheduler();
-        m_idle_cpus |= 1 << get_apic_id();
-        m_idle_cpus_count++;
-        unlock_scheduler();
 
         // wait for next interrupt, we are already running from interrupt
         // context so we need to re-enable interrupts first
@@ -817,7 +857,7 @@ static thread_t* find_runnable(bool* inherit_time) {
 
         // remove from idle cpus since we might have work to do
         lock_scheduler();
-        m_idle_cpus &= 1 << get_apic_id();
+        m_idle_cpus &= ~(1 << get_cpu_id());
         m_idle_cpus_count--;
         unlock_scheduler();
     }
@@ -832,7 +872,7 @@ static void schedule(interrupt_context_t* ctx) {
     // by constantly respawning each other.
     if ((m_scheduler_tick % 61) == 0 && m_global_run_queue_size > 0) {
         lock_scheduler();
-        thread = global_run_queue_get();
+        thread = global_run_queue_get(1);
         unlock_scheduler();
     }
 
@@ -975,6 +1015,9 @@ void scheduler_startup() {
     // set to normal running priority
     __writecr8(PRIORITY_NORMAL);
 
+    // enable interrupts
+    _enable();
+
     // drop the current thread in favor of starting
     // the scheduler
     scheduler_drop_current();
@@ -982,4 +1025,17 @@ void scheduler_startup() {
 
 thread_t* get_current_thread() {
     return m_current_thread;
+}
+
+err_t init_scheduler() {
+    err_t err = NO_ERROR;
+
+    // initialize our random for the amount of cores we have
+    random_order_init(get_cpu_count());
+
+    m_run_queues = malloc(get_cpu_count() * sizeof(local_run_queue_t));
+    CHECK(m_run_queues != NULL);
+
+    cleanup:
+    return err;
 }

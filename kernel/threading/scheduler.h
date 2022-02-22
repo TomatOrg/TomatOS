@@ -1,6 +1,7 @@
 #pragma once
 
 #include "thread.h"
+#include "util/except.h"
 
 #include <arch/idt.h>
 
@@ -13,6 +14,8 @@
  * @param i     [IN] Iteration
  */
 bool scheduler_can_spin(int i);
+
+err_t init_scheduler();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Get the current running thread

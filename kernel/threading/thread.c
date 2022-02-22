@@ -336,6 +336,11 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
         thread = alloc_thread();
     }
 
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(thread->name, sizeof(thread->name), fmt, ap);
+    va_end(ap);
+
     thread->regs.rip = (uint64_t) entry;
     thread->regs.rflags = BIT1 | BIT9 | BIT21; // Always 1 bit, Interrupt enable flag, Able to use CPUID instruction
     thread->regs.rsp = (uint64_t)alloc_stack();

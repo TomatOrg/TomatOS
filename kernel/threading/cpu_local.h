@@ -23,3 +23,9 @@ void* get_cpu_local_base(__seg_gs void* ptr);
  * @param ptr       [IN] per-cpu relative pointer
  */
 void* get_cpu_base(int cpu, __seg_gs void* ptr);
+
+/**
+ * Get the id of the current cpu without
+ * reading from the APIC
+ */
+int get_cpu_id();

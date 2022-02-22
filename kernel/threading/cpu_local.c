@@ -7,6 +7,8 @@ extern char __cpu_local_size[];
 
 static void* CPU_LOCAL m_per_cpu_base;
 
+static int CPU_LOCAL m_cpu_id;
+
 /**
  * All the cpus
  */
@@ -29,7 +31,8 @@ err_t init_cpu_locals() {
     }
 
     // set the current cpu pointer in the array
-    m_per_cpu_base_list[get_apic_id()] = ptr;
+    m_cpu_id = get_apic_id();
+    m_per_cpu_base_list[get_cpu_id()] = ptr;
 
 cleanup:
     return err;
@@ -41,4 +44,8 @@ void* get_cpu_local_base(__seg_gs void* ptr) {
 
 void* get_cpu_base(int cpu, __seg_gs void* ptr) {
     return m_per_cpu_base_list[cpu] + (size_t)ptr;
+}
+
+int get_cpu_id() {
+    return m_cpu_id;
 }

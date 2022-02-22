@@ -205,6 +205,7 @@ static void start_thread() {
 cleanup:
     ASSERT(!IS_ERROR(err));
     TRACE("Bai Bai!");
+    while(1);
 }
 
 static void test_a() {
@@ -278,6 +279,7 @@ void _start(struct stivale2_struct* stivale2) {
 
     // initialize per cpu variables
     CHECK_AND_RETHROW(init_cpu_locals());
+    CHECK_AND_RETHROW(init_scheduler());
 
     // now actually do smp startup
     if (smp != NULL) {
@@ -322,9 +324,10 @@ void _start(struct stivale2_struct* stivale2) {
     TRACE("Kernel init done");
 
     thread_t* thread;
-//    thread_t* thread = create_thread(start_thread, NULL, "start_thread");
-//    CHECK(thread != NULL);
-//    scheduler_ready_thread(thread);
+
+    thread = create_thread(start_thread, NULL, "start_thread");
+    CHECK(thread != NULL);
+    scheduler_ready_thread(thread);
 
     thread = create_thread(test_a, NULL, "test/a");
     CHECK(thread != NULL);
