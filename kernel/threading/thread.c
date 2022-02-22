@@ -42,6 +42,7 @@
 #include "time/timer.h"
 #include "arch/apic.h"
 #include "mem/stack.h"
+#include "util/stb_ds.h"
 
 #include <stdatomic.h>
 
@@ -253,6 +254,16 @@ static thread_t* thread_list_pop(thread_list_t* list) {
     return thread;
 }
 
+// all the threads in the system
+static spinlock_t m_all_threads_lock = INIT_SPINLOCK();
+static thread_t** m_all_threads = NULL;
+
+static void add_to_all_threads(thread_t* thread) {
+    spinlock_lock(&m_all_threads_lock);
+    arrpush(m_all_threads, thread);
+    spinlock_unlock(&m_all_threads_lock);
+}
+
 // the global array of free thread descriptors
 static spinlock_t m_global_free_threads_lock = INIT_SPINLOCK();
 static thread_list_t m_global_free_threads;
@@ -334,6 +345,8 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     thread_t* thread = get_free_thread();
     if (thread == NULL) {
         thread = alloc_thread();
+        cas_thread_state(thread, THREAD_STATUS_IDLE, THREAD_STATUS_DEAD);
+        add_to_all_threads(thread);
     }
 
     va_list ap;
@@ -353,9 +366,23 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     PUSH64(thread->regs.rsp, thread_exit);
 
     // set the state as waiting
-    cas_thread_state(thread, THREAD_STATUS_IDLE, THREAD_STATUS_WAITING);
+    cas_thread_state(thread, THREAD_STATUS_DEAD, THREAD_STATUS_WAITING);
 
     return thread;
+}
+
+err_t for_each_thread(thread_callback_t cb, void* ctx) {
+    err_t err = NO_ERROR;
+
+    spinlock_lock(&m_all_threads_lock);
+
+    for (int i = 0; i < arrlen(m_all_threads); i++) {
+        CHECK_AND_RETHROW(cb(m_all_threads[i], ctx));
+    }
+
+cleanup:
+    spinlock_unlock(&m_all_threads_lock);
+    return err;
 }
 
 void thread_exit() {

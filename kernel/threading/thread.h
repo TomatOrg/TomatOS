@@ -2,6 +2,7 @@
 
 #include "sync/spinlock.h"
 #include "arch/idt.h"
+#include "util/except.h"
 
 typedef enum thread_status {
     /**
@@ -142,6 +143,20 @@ typedef void(*thread_entry_t)(void* ctx);
  * Create a new thread
  */
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...);
+
+typedef err_t(*thread_callback_t)(thread_t* thread, void* ctx);
+
+/**
+ * Iterate all the threads in the system in a safe manner
+ *
+ * @remark
+ * This is called with a lock taken, preventing new threads
+ * from being allocated
+ *
+ * @param cb        [IN] The callback
+ * @param ctx       [IN] The context to pass to the callback
+ */
+err_t for_each_thread(thread_callback_t cb, void* ctx);
 
 /**
  * Called upon a thread exit
