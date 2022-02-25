@@ -32,11 +32,11 @@
 
 #include "conditional.h"
 
-void conditional_wait(conditional_t* conditional) {
+void conditional_wait(conditional_t* conditional, mutex_t* mutex) {
     uint32_t ticket = notify_list_add(&conditional->notify);
-    mutex_unlock(&conditional->mutex);
+    mutex_unlock(mutex);
     notify_list_wait(&conditional->notify, ticket);
-    mutex_lock(&conditional->mutex);
+    mutex_lock(mutex);
 }
 
 void conditional_signal(conditional_t* conditional) {

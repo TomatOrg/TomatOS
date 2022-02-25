@@ -18,7 +18,7 @@ CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
-CFLAGS 		+= -Os -flto -g -mtune=nehalem -march=nehalem
+CFLAGS 		+= -Os -flto -g3 -mtune=nehalem -march=nehalem
 CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mno-red-zone -nostdlib
 CFLAGS		+= -lgcc

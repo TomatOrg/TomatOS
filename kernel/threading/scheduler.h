@@ -54,13 +54,9 @@ void scheduler_resume_thread(suspend_state_t status);
 // Preemption stuff
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-typedef struct preempt_state {
-    uint8_t priority;
-} preempt_state_t;
+void scheduler_preempt_disable(void);
 
-preempt_state_t scheduler_preempt_disable(void);
-
-void scheduler_preempt_enable(preempt_state_t state);
+void scheduler_preempt_enable(void);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Callbacks from interrupts to the scheduler

@@ -112,6 +112,11 @@ void debug_load_symbols(void* kernel) {
     Elf64_Ehdr* ehdr = kernel;
     Elf64_Shdr* symtab = NULL;
 
+    if (ehdr->e_shoff == 0) {
+        WARN("debug: kernel has no section table");
+        return;
+    }
+
     // get the tables we need
     Elf64_Shdr* sections = kernel + ehdr->e_shoff;
     for (int i = 0; i < ehdr->e_shnum; i++) {
@@ -120,7 +125,10 @@ void debug_load_symbols(void* kernel) {
             break;
         }
     }
-    if (symtab == NULL) return;
+    if (symtab == NULL) {
+        WARN("debug: kernel has no symbol table");
+        return;
+    }
 
     // get the strtab of the symtab
     char* strtab = kernel + sections[symtab->sh_link].sh_offset;

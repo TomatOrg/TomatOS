@@ -498,7 +498,7 @@ bool scheduler_can_spin(int i) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void scheduler_ready_thread(thread_t* thread) {
-    preempt_state_t preempt = scheduler_preempt_disable();
+    scheduler_preempt_disable();
 
     ASSERT((get_thread_status(thread) & ~THREAD_SUSPEND) == THREAD_STATUS_WAITING);
 
@@ -508,7 +508,7 @@ void scheduler_ready_thread(thread_t* thread) {
     // Put in the run queue
     run_queue_put(thread, true);
 
-    scheduler_preempt_enable(preempt);
+    scheduler_preempt_enable();
 }
 
 static bool cas_from_preempted(thread_t* thread) {
@@ -625,14 +625,14 @@ void scheduler_resume_thread(suspend_state_t state) {
 // Preemption
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-preempt_state_t scheduler_preempt_disable(void) {
-    preempt_state_t state = { .priority = __readcr8() };
+void scheduler_preempt_disable(void) {
+    ASSERT(__readcr8() == PRIORITY_NORMAL);
     __writecr8(PRIORITY_NO_PREEMPT);
-    return state;
 }
 
-void scheduler_preempt_enable(preempt_state_t state) {
-    __writecr8(state.priority);
+void scheduler_preempt_enable(void) {
+    ASSERT(__readcr8() == PRIORITY_NO_PREEMPT);
+    __writecr8(PRIORITY_NORMAL);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -684,7 +684,7 @@ static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_tim
     // TODO: set fpu context
 
     // set the tcb
-    __writemsr(MSR_IA32_FS_BASE, thread->tcb);
+    __writemsr(MSR_IA32_FS_BASE, (uintptr_t)thread->tcb);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

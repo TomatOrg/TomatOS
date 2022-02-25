@@ -45,20 +45,7 @@
 #include "util/stb_ds.h"
 
 #include <stdatomic.h>
-
-
-static bool acquire_preemption() {
-    bool ints = (__readeflags() & BIT9) ? true : false;
-    _disable();
-
-}
-
-static void release_preemption(bool ints) {
-    if (ints) {
-        _enable();
-    }
-}
-
+#include <elf.h>
 
 //
 // Global waiting thread cache
@@ -75,7 +62,7 @@ static uint8_t CPU_LOCAL m_wt_cache_len = 0;
 waiting_thread_t* acquire_waiting_thread() {
     // we disable interrupts in here so we can do stuff
     // atomically on the current core
-    bool ints = acquire_preemption();
+    scheduler_preempt_disable();
 
     // check if we have any local cached
     if (m_wt_cache_len == 0) {
@@ -101,7 +88,7 @@ waiting_thread_t* acquire_waiting_thread() {
     waiting_thread_t* wt = m_wt_cache[--m_wt_cache_len];
     m_wt_cache[m_wt_cache_len] = NULL;
 
-    release_preemption(ints);
+    scheduler_preempt_enable();
 
     return wt;
 }
@@ -220,10 +207,22 @@ void restore_thread_context(thread_t* restrict target, interrupt_context_t* rest
  */
 static size_t m_tls_size = 0;
 
-err_t init_tls() {
+err_t init_tls(void* kernel) {
     err_t err = NO_ERROR;
+    Elf64_Ehdr* ehdr = kernel;
 
-
+    // find the TLS table
+    CHECK(ehdr->e_phoff != 0);
+    Elf64_Phdr* segments = kernel + ehdr->e_phoff;
+    for (int i = 0; i < ehdr->e_phnum; i++) {
+        Elf64_Phdr* segment = &segments[i];
+        if (segment->p_type == PT_TLS) {
+            CHECK(segment->p_filesz == 0); // TODO: preset stuff
+            m_tls_size = segment->p_memsz;
+            TRACE("tls: %d bytes", m_tls_size);
+            break;
+        }
+    }
 
 cleanup:
     return err;
@@ -256,12 +255,12 @@ static thread_t* thread_list_pop(thread_list_t* list) {
 
 // all the threads in the system
 static spinlock_t m_all_threads_lock = INIT_SPINLOCK();
-static thread_t** m_all_threads = NULL;
+thread_t** g_all_threads = NULL;
 
 static void add_to_all_threads(thread_t* thread) {
-    spinlock_lock(&m_all_threads_lock);
-    arrpush(m_all_threads, thread);
-    spinlock_unlock(&m_all_threads_lock);
+    lock_all_threads();
+    arrpush(g_all_threads, thread);
+    unlock_all_threads();
 }
 
 // the global array of free thread descriptors
@@ -276,7 +275,7 @@ static CPU_LOCAL int32_t m_free_threads_count = 0;
 static thread_t* get_free_thread() {
     thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
 
-    preempt_state_t preempt = scheduler_preempt_disable();
+    scheduler_preempt_disable();
 
 retry:
     // If we have no threads and there are threads in the global free list pull
@@ -306,10 +305,12 @@ retry:
     m_free_threads_count--;
 
     // clear the TLS area for the new thread
-    memset((void*)(thread->tcb - m_tls_size), 0, m_tls_size);
+    // super important, the tcb itself must not be cleared, the gc
+    // relies on the values to be consistent!
+    memset((void*)((uintptr_t)thread->tcb - m_tls_size), 0, m_tls_size);
 
 cleanup:
-    scheduler_preempt_enable(preempt);
+    scheduler_preempt_enable();
     return thread;
 }
 
@@ -320,12 +321,12 @@ static thread_t* alloc_thread() {
     CHECK(thread != NULL);
 
     // allocate the tcb
-    thread->tcb = (uintptr_t) malloc(m_tls_size + sizeof(void*));
-    CHECK(thread->tcb != 0);
-    thread->tcb += m_tls_size;
+    void* tcb_bottom = malloc(m_tls_size + sizeof(thread_control_block_t));
+    CHECK(tcb_bottom != 0);
+    thread->tcb = tcb_bottom + m_tls_size;
 
     // set the tcb base in the tcb (part of sysv)
-    *(uintptr_t*)thread->tcb = thread->tcb;
+    thread->tcb->tcb = thread->tcb;
 
 cleanup:
     if (IS_ERROR(err)) {
@@ -371,18 +372,12 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     return thread;
 }
 
-err_t for_each_thread(thread_callback_t cb, void* ctx) {
-    err_t err = NO_ERROR;
-
+void lock_all_threads() {
     spinlock_lock(&m_all_threads_lock);
+}
 
-    for (int i = 0; i < arrlen(m_all_threads); i++) {
-        CHECK_AND_RETHROW(cb(m_all_threads[i], ctx));
-    }
-
-cleanup:
+void unlock_all_threads() {
     spinlock_unlock(&m_all_threads_lock);
-    return err;
 }
 
 void thread_exit() {

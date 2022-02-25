@@ -3,6 +3,7 @@
 #include "sync/spinlock.h"
 #include "arch/idt.h"
 #include "util/except.h"
+#include "dotnet/gc.h"
 
 typedef enum thread_status {
     /**
@@ -74,6 +75,11 @@ typedef struct thread_registers {
     uint64_t rsp;
 } thread_registers_t;
 
+typedef struct thread_control_block {
+    struct thread_control_block* tcb;
+    gc_local_data_t gc_local_data;
+} thread_control_block_t;
+
 typedef struct thread {
     // the thread name
     char name[64];
@@ -86,7 +92,7 @@ typedef struct thread {
     thread_registers_t regs;
 
     // thread control block
-    uintptr_t tcb;
+    thread_control_block_t* tcb;
 
     //
     // scheduling related
@@ -125,6 +131,10 @@ typedef struct waiting_thread {
  */
 #define THREAD_LOCAL _Thread_local
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Waiting thread item
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Acquire a new waiting thread descriptor
  */
@@ -137,6 +147,10 @@ waiting_thread_t* acquire_waiting_thread();
  */
 void release_waiting_thread(waiting_thread_t* wt);
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Thread creation and destruction
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 typedef void(*thread_entry_t)(void* ctx);
 
 /**
@@ -144,26 +158,29 @@ typedef void(*thread_entry_t)(void* ctx);
  */
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...);
 
-typedef err_t(*thread_callback_t)(thread_t* thread, void* ctx);
-
-/**
- * Iterate all the threads in the system in a safe manner
- *
- * @remark
- * This is called with a lock taken, preventing new threads
- * from being allocated
- *
- * @param cb        [IN] The callback
- * @param ctx       [IN] The context to pass to the callback
- */
-err_t for_each_thread(thread_callback_t cb, void* ctx);
-
 /**
  * Called upon a thread exit
  *
  * @param thread    [IN] The thread that exited
  */
 void thread_exit();
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// All thread iteration
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * All the threads in the system are part of this array
+ */
+extern thread_t** g_all_threads;
+
+void lock_all_threads();
+
+void unlock_all_threads();
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Thread status
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /**
  * Get the status of a thread atomically
@@ -185,6 +202,22 @@ thread_status_t get_thread_status(thread_t* thread);
  */
 void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new);
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Thread context
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 void save_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx);
 
 void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Thread local stuff
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Initialize TLS for the kernel, must be called before
+ * threads are created
+ *
+ * @param kernel    [IN] The kernel image
+ */
+err_t init_tls(void* kernel);

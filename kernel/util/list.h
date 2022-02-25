@@ -14,6 +14,8 @@
 #define LIST_FOR_EACH_ENTRY(pos, head, member) \
 	for (pos = LIST_FIRST_ENTRY(head, typeof(*pos), member); !LIST_ENTRY_IS_HEAD(pos, head, member); pos = LIST_NEXT_ENTRY(pos, member))
 
+#define LIST_FOR_EACH_ENTRY_SAFE(pos, n, head, member) \
+	for (pos = LIST_FIRST_ENTRY(head, typeof(*pos), member), n = LIST_NEXT_ENTRY(pos, member); !LIST_ENTRY_IS_HEAD(pos, head, member); pos = n, n = LIST_NEXT_ENTRY(n, member))
 
 /**
  * an entry in a list

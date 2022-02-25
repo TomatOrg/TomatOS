@@ -4,11 +4,10 @@
 #include "notify_list.h"
 
 typedef struct conditional {
-    mutex_t mutex;
     notify_list_t notify;
 } conditional_t;
 
-void conditional_wait(conditional_t* conditional);
+void conditional_wait(conditional_t* conditional, mutex_t* mutex);
 
 void conditional_signal(conditional_t* conditional);
 

@@ -202,24 +202,25 @@ static void start_thread() {
 
     TRACE("Entered kernel thread!");
 
+    // start the gc
+    CHECK_AND_RETHROW(init_gc());
+
+    type_t type = {
+        .managed_size = sizeof(object_t),
+        .managed_pointer_offsets = NULL
+    };
+
+    // allocate something
+    gc_new(&type, 1);
+    gc_new(&type, 1);
+    gc_new(&type, 1);
+    gc_new(&type, 1);
+    gc_wait();
+
 cleanup:
     ASSERT(!IS_ERROR(err));
     TRACE("Bai Bai!");
     while(1);
-}
-
-static void test_a() {
-    while (true) {
-        microdelay(1000000);
-        TRACE("A");
-    }
-}
-
-static void test_b() {
-    while (true) {
-        microdelay(1000000);
-        TRACE("B");
-    }
 }
 
 void _start(struct stivale2_struct* stivale2) {
@@ -258,7 +259,9 @@ void _start(struct stivale2_struct* stivale2) {
 
     // load symbols for nicer debugging
     // NOTE: must be done after allocators are done
-    debug_load_symbols(get_kernel_file());
+    void* kernel = get_kernel_file();
+    CHECK(kernel != NULL);
+    debug_load_symbols(kernel);
 
     // initialize misc kernel utilities
     CHECK_AND_RETHROW(init_acpi());
@@ -280,6 +283,7 @@ void _start(struct stivale2_struct* stivale2) {
     // initialize per cpu variables
     CHECK_AND_RETHROW(init_cpu_locals());
     CHECK_AND_RETHROW(init_scheduler());
+    CHECK_AND_RETHROW(init_tls(kernel));
 
     // now actually do smp startup
     if (smp != NULL) {
@@ -323,17 +327,12 @@ void _start(struct stivale2_struct* stivale2) {
 
     TRACE("Kernel init done");
 
-    thread_t* thread;
+    // must have preemption, this is fine because we don't actually
+    // have the timer setup yet, so it will not actually preempt
+    __writecr8(PRIORITY_NORMAL);
 
-    thread = create_thread(start_thread, NULL, "start_thread");
-    CHECK(thread != NULL);
-    scheduler_ready_thread(thread);
-
-    thread = create_thread(test_a, NULL, "test/a");
-    CHECK(thread != NULL);
-    scheduler_ready_thread(thread);
-
-    thread = create_thread(test_b, NULL, "test/b");
+    // create the kernel start thread
+    thread_t* thread = create_thread(start_thread, NULL, "kernel/start_thread");
     CHECK(thread != NULL);
     scheduler_ready_thread(thread);
 
