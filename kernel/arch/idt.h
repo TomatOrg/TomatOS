@@ -9,6 +9,8 @@
  */
 void init_idt();
 
+#define INTERRUPT __attribute__ ((target("general-regs-only")))
+
 typedef struct interrupt_context {
     uint64_t r15;
     uint64_t r14;

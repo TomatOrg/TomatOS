@@ -56,7 +56,7 @@ typedef struct thread_queue {
  * @param q     [IN] The main queue
  * @param q2    [IN] The queue to empty
  */
-static void thread_queue_push_back_all(thread_queue_t* q, thread_queue_t* q2) {
+INTERRUPT static void thread_queue_push_back_all(thread_queue_t* q, thread_queue_t* q2) {
     if (q2->tail == NULL) {
         return;
     }
@@ -70,7 +70,7 @@ static void thread_queue_push_back_all(thread_queue_t* q, thread_queue_t* q2) {
     q->tail = q2->tail;
 }
 
-static void thread_queue_push_back(thread_queue_t* q, thread_t* thread) {
+INTERRUPT static void thread_queue_push_back(thread_queue_t* q, thread_t* thread) {
     thread->sched_link = NULL;
     if (q->tail != NULL) {
         q->tail->sched_link = thread;
@@ -80,7 +80,7 @@ static void thread_queue_push_back(thread_queue_t* q, thread_t* thread) {
     q->tail = thread;
 }
 
-static thread_t* thread_queue_pop(thread_queue_t* q) {
+INTERRUPT static thread_t* thread_queue_pop(thread_queue_t* q) {
     thread_t* thread = q->head;
     if (thread != NULL) {
         q->head = thread->sched_link;
@@ -117,7 +117,7 @@ static spinlock_t m_scheduler_lock = INIT_SPINLOCK();
  * @param batch [IN] The thread batch to put
  * @param n     [IN] The number of threads in the batch
  */
-static void global_run_queue_put_batch(thread_queue_t* batch, int32_t n) {
+INTERRUPT static void global_run_queue_put_batch(thread_queue_t* batch, int32_t n) {
     thread_queue_push_back_all(&m_global_run_queue, batch);
     m_global_run_queue_size += n;
     batch->tail = NULL;
@@ -132,7 +132,7 @@ static void global_run_queue_put_batch(thread_queue_t* batch, int32_t n) {
  *
  * @param thread [IN] The thread to put
  */
-static void global_run_queue_put(thread_t* thread) {
+INTERRUPT static void global_run_queue_put(thread_t* thread) {
     thread_queue_push_back(&m_global_run_queue, thread);
     m_global_run_queue_size++;
 }
@@ -142,7 +142,7 @@ static void run_queue_put(thread_t* thread, bool next);
 /**
  * Get a thread from the global run queue
  */
-static thread_t* global_run_queue_get(int max) {
+INTERRUPT static thread_t* global_run_queue_get(int max) {
     if (m_global_run_queue_size == 0) {
         return NULL;
     }
@@ -177,18 +177,18 @@ static thread_t* global_run_queue_get(int max) {
     return thread;
 }
 
-static void lock_scheduler() {
+INTERRUPT static void lock_scheduler() {
     spinlock_lock(&m_scheduler_lock);
 }
 
-static void unlock_scheduler() {
+INTERRUPT static void unlock_scheduler() {
     spinlock_unlock(&m_scheduler_lock);
 }
 
 /**
  * Tried to wake a cpu for running threads
  */
-static void wake_cpu() {
+INTERRUPT static void wake_cpu() {
     if (atomic_load(&m_idle_cpus_count) == 0) {
         return;
     }
@@ -222,12 +222,12 @@ typedef struct local_run_queue {
 static local_run_queue_t* m_run_queues;
 
 __attribute__((const))
-static local_run_queue_t* get_run_queue() {
+INTERRUPT static local_run_queue_t* get_run_queue() {
     return &m_run_queues[get_cpu_id()];
 }
 
 __attribute__((const))
-static local_run_queue_t* get_run_queue_of(int cpu_id) {
+INTERRUPT static local_run_queue_t* get_run_queue_of(int cpu_id) {
     return &m_run_queues[cpu_id];
 }
 
@@ -242,7 +242,7 @@ static local_run_queue_t* get_run_queue_of(int cpu_id) {
  * @param run_queue_head    [IN] Absolute address of the run_queue, already resolved
  *                               by caller so pass it to us instead of needing to recalculate it
  */
-static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32_t tail) {
+INTERRUPT static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32_t tail) {
     local_run_queue_t* rq = get_run_queue();
     thread_t* batch[RUN_QUEUE_LEN / 2 + 1];
 
@@ -290,7 +290,7 @@ static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32_t tail) {
  * @param thread        [IN] The thread to queue
  * @param next          [IN] Should the thread be put in the head or tail of the runnable queue
  */
-static void run_queue_put(thread_t* thread, bool next) {
+INTERRUPT static void run_queue_put(thread_t* thread, bool next) {
     local_run_queue_t* rq = get_run_queue();
 
     // we want this thread to run next
@@ -344,7 +344,7 @@ static void run_queue_put(thread_t* thread, bool next) {
  * If inheritTime is set to true if should inherit the remaining time
  * in the current time slice. Otherwise, it should start a new time slice.
  */
-static thread_t* run_queue_get(bool* inherit_time) {
+INTERRUPT static thread_t* run_queue_get(bool* inherit_time) {
     local_run_queue_t* rq = get_run_queue();
 
     // If there's a run next, it's the next thread to run.
@@ -373,7 +373,7 @@ static thread_t* run_queue_get(bool* inherit_time) {
     }
 }
 
-static bool run_queue_empty() {
+INTERRUPT static bool run_queue_empty() {
     // Defend against a race where
     //  1) cpu has thread in run_next but run_queue_head == run_queue_tail
     //  2) run_queue_put on cpu kicks thread to the run_queue
@@ -397,7 +397,7 @@ static bool run_queue_empty() {
  * @param cpu_id            [IN] The other cpu to take from
  * @param steal_run_next    [IN] Should we attempt to take the next item
  */
-static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t batchHead, bool steal_run_next) {
+INTERRUPT static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t batchHead, bool steal_run_next) {
     local_run_queue_t* orq = get_run_queue_of(cpu_id);
 
     while (true) {
@@ -450,7 +450,7 @@ static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t batchHead,
  * @param cpu_id            [IN] The cpu to steal from
  * @param steal_run_next    [IN] Should we steal from the next thread
  */
-static thread_t* run_queue_steal(int cpu_id, bool steal_run_next) {
+INTERRUPT static thread_t* run_queue_steal(int cpu_id, bool steal_run_next) {
     local_run_queue_t* rq = get_run_queue();
 
     uint32_t t = rq->tail;
@@ -511,17 +511,17 @@ void scheduler_ready_thread(thread_t* thread) {
     scheduler_preempt_enable();
 }
 
-static bool cas_from_preempted(thread_t* thread) {
+INTERRUPT static bool cas_from_preempted(thread_t* thread) {
     thread_status_t old = THREAD_STATUS_PREEMPTED;
     return atomic_compare_exchange_weak(&thread->status, &old, THREAD_STATUS_WAITING);
 }
 
-static bool cas_to_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
+INTERRUPT static bool cas_to_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
     ASSERT(new == (old | THREAD_SUSPEND));
     return atomic_compare_exchange_weak(&thread->status, &old, new);
 }
 
-static void cas_from_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
+INTERRUPT static void cas_from_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
     bool success = false;
     if (new == (old & ~THREAD_SUSPEND)) {
         if (atomic_compare_exchange_weak(&thread->status, &old, new)) {
@@ -660,7 +660,7 @@ static int32_t CPU_LOCAL m_scheduler_tick;
  * @param thread            [IN] The thread to run
  * @param inherit_time      [IN] Should the time slice be inherited or should we make a new one
  */
-static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_time) {
+INTERRUPT static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_time) {
     // set the current thread
     m_current_thread = thread;
 
@@ -682,9 +682,6 @@ static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_tim
     restore_thread_context(thread, ctx);
 
     // TODO: set fpu context
-
-    // set the tcb
-    __writemsr(MSR_IA32_FS_BASE, (uintptr_t)thread->tcb);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -701,7 +698,7 @@ typedef struct random_enum {
 static uint32_t m_random_order_count = 0;
 static uint32_t* m_random_order_coprimes = NULL;
 
-static uint32_t gcd(uint32_t a, uint32_t b) {
+INTERRUPT static uint32_t gcd(uint32_t a, uint32_t b) {
     while (b != 0) {
         uint32_t t = b;
         b = a % b;
@@ -710,7 +707,7 @@ static uint32_t gcd(uint32_t a, uint32_t b) {
     return a;
 }
 
-static void random_order_init(int count) {
+INTERRUPT static void random_order_init(int count) {
     m_random_order_count = count;
     for (int i = 0; i <= count; i++) {
         if (gcd(i, count) == 1) {
@@ -719,7 +716,7 @@ static void random_order_init(int count) {
     }
 }
 
-static random_enum_t random_order_start(uint32_t i) {
+INTERRUPT static random_enum_t random_order_start(uint32_t i) {
     return (random_enum_t) {
         .count = m_random_order_count,
         .pos = i % m_random_order_count,
@@ -727,29 +724,29 @@ static random_enum_t random_order_start(uint32_t i) {
     };
 }
 
-static bool random_enum_done(random_enum_t* e) {
+INTERRUPT static bool random_enum_done(random_enum_t* e) {
     return e->i == e->count;
 }
 
-static void random_enum_next(random_enum_t* e) {
+INTERRUPT static void random_enum_next(random_enum_t* e) {
     e->i++;
     e->pos = (e->pos + e->inc) % e->count;
 }
 
-static uint32_t random_enum_position(random_enum_t* e) {
+INTERRUPT static uint32_t random_enum_position(random_enum_t* e) {
     return e->pos;
 }
 
 static uint64_t CPU_LOCAL m_fast_rand;
 
-__uint128_t mul64(uint64_t a, uint64_t b) {
+INTERRUPT __uint128_t mul64(uint64_t a, uint64_t b) {
     return (__uint128_t)a * b;
 }
 
 /**
  * Implements wyrand
  */
-uint32_t fastrandom() {
+INTERRUPT uint32_t fastrandom() {
     m_fast_rand += 0xa0761d6478bd642f;
     __uint128_t i = mul64(m_fast_rand, m_fast_rand ^ 0xe7037ed1a0b428db);
     uint64_t hi = (uint64_t)(i >> 64);
@@ -771,7 +768,7 @@ static bool CPU_LOCAL m_spinning;
  */
 static uint32_t m_number_spinning = 0;
 
-static thread_t* steal_work() {
+INTERRUPT static thread_t* steal_work() {
     for (int i = 0; i < 4; i++) {
         // on the last round try to steal next
         bool steal_next = i == 4 - 1;
@@ -798,7 +795,7 @@ static thread_t* steal_work() {
     return NULL;
 }
 
-static thread_t* find_runnable(bool* inherit_time) {
+INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
     thread_t* thread = NULL;
 
     while (true) {
@@ -858,9 +855,7 @@ static thread_t* find_runnable(bool* inherit_time) {
 
         // wait for next interrupt, we are already running from interrupt
         // context so we need to re-enable interrupts first
-        _enable();
-        asm ("hlt");
-        _disable();
+        asm ("cli; hlt; sti");
 
         // remove from idle cpus since we might have work to do
         lock_scheduler();
@@ -870,7 +865,7 @@ static thread_t* find_runnable(bool* inherit_time) {
     }
 }
 
-static void schedule(interrupt_context_t* ctx) {
+INTERRUPT static void schedule(interrupt_context_t* ctx) {
     thread_t* thread = NULL;
     bool inherit_time = false;
 
@@ -902,7 +897,7 @@ static void schedule(interrupt_context_t* ctx) {
 // Scheduler callbacks
 //----------------------------------------------------------------------------------------------------------------------
 
-void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt) {
+INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
@@ -936,7 +931,7 @@ void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt) {
     schedule(ctx);
 }
 
-void scheduler_on_yield(interrupt_context_t* ctx) {
+INTERRUPT void scheduler_on_yield(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
@@ -953,7 +948,7 @@ void scheduler_on_yield(interrupt_context_t* ctx) {
     schedule(ctx);
 }
 
-void scheduler_on_park(interrupt_context_t* ctx) {
+INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
@@ -975,7 +970,7 @@ void scheduler_on_park(interrupt_context_t* ctx) {
     schedule(ctx);
 }
 
-void scheduler_on_drop(interrupt_context_t* ctx) {
+INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
@@ -1036,7 +1031,7 @@ void scheduler_startup() {
     scheduler_drop_current();
 }
 
-thread_t* get_current_thread() {
+INTERRUPT thread_t* get_current_thread() {
     return m_current_thread;
 }
 

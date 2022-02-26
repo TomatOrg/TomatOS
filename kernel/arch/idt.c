@@ -692,7 +692,7 @@ INTERRUPT_HANDLER(0xfd)
 INTERRUPT_HANDLER(0xfe)
 INTERRUPT_HANDLER(0xff)
 
-__attribute__((used))
+__attribute__((used)) INTERRUPT
 void common_interrupt_handler(interrupt_context_t* ctx) {
     err_t err = NO_ERROR;
 

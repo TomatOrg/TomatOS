@@ -4,15 +4,15 @@
 
 #include <stdint.h>
 
-static __inline__ __attribute__((always_inline)) void _disable(void) {
+static __inline__ __attribute__((always_inline, artificial)) void _disable(void) {
     __asm__("cli");
 }
 
-static __inline__ __attribute__((always_inline)) void _enable(void) {
+static __inline__ __attribute__((always_inline, artificial)) void _enable(void) {
     __asm__("sti");
 }
 
-static __inline__ __attribute__((always_inline)) unsigned char __inbyte(
+static __inline__ __attribute__((always_inline, artificial)) unsigned char __inbyte(
         const unsigned short Port) {
     unsigned char byte;
     __asm__ __volatile__("inb %w[Port], %b[byte]"
@@ -21,7 +21,7 @@ static __inline__ __attribute__((always_inline)) unsigned char __inbyte(
     return byte;
 }
 
-static __inline__ __attribute__((always_inline)) unsigned short __inword(
+static __inline__ __attribute__((always_inline, artificial)) unsigned short __inword(
         const unsigned short Port) {
     unsigned short word;
     __asm__ __volatile__("inw %w[Port], %w[word]"
@@ -30,7 +30,7 @@ static __inline__ __attribute__((always_inline)) unsigned short __inword(
     return word;
 }
 
-static __inline__ __attribute__((always_inline)) unsigned long __indword(
+static __inline__ __attribute__((always_inline, artificial)) unsigned long __indword(
         const unsigned short Port) {
     unsigned long dword;
     __asm__ __volatile__("inl %w[Port], %k[dword]"
@@ -39,7 +39,7 @@ static __inline__ __attribute__((always_inline)) unsigned long __indword(
     return dword;
 }
 
-static __inline__ __attribute__((always_inline)) void __inbytestring(
+static __inline__ __attribute__((always_inline, artificial)) void __inbytestring(
         unsigned short Port, unsigned char *Buffer, unsigned long Count) {
     __asm__ __volatile__("rep; insb"
     : [Buffer] "=D"(Buffer), [Count] "=c"(Count)
@@ -47,7 +47,7 @@ static __inline__ __attribute__((always_inline)) void __inbytestring(
     : "memory");
 }
 
-static __inline__ __attribute__((always_inline)) void __inwordstring(
+static __inline__ __attribute__((always_inline, artificial)) void __inwordstring(
         unsigned short Port, unsigned short *Buffer, unsigned long Count) {
     __asm__ __volatile__("rep; insw"
     : [Buffer] "=D"(Buffer), [Count] "=c"(Count)
@@ -55,7 +55,7 @@ static __inline__ __attribute__((always_inline)) void __inwordstring(
     : "memory");
 }
 
-static __inline__ __attribute__((always_inline)) void __indwordstring(
+static __inline__ __attribute__((always_inline, artificial)) void __indwordstring(
         unsigned short Port, unsigned long *Buffer, unsigned long Count) {
     __asm__ __volatile__("rep; insl"
     : [Buffer] "=D"(Buffer), [Count] "=c"(Count)
@@ -63,28 +63,28 @@ static __inline__ __attribute__((always_inline)) void __indwordstring(
     : "memory");
 }
 
-static __inline__ __attribute__((always_inline)) void __outbyte(
+static __inline__ __attribute__((always_inline, artificial)) void __outbyte(
         unsigned short const Port, const unsigned char Data) {
     __asm__ __volatile__("outb %b[Data], %w[Port]"
     :
     : [Port] "Nd"(Port), [Data] "a"(Data));
 }
 
-static __inline__ __attribute__((always_inline)) void __outword(
+static __inline__ __attribute__((always_inline, artificial)) void __outword(
         unsigned short const Port, const unsigned short Data) {
     __asm__ __volatile__("outw %w[Data], %w[Port]"
     :
     : [Port] "Nd"(Port), [Data] "a"(Data));
 }
 
-static __inline__ __attribute__((always_inline)) void __outdword(
+static __inline__ __attribute__((always_inline, artificial)) void __outdword(
         unsigned short const Port, const unsigned long Data) {
     __asm__ __volatile__("outl %k[Data], %w[Port]"
     :
     : [Port] "Nd"(Port), [Data] "a"(Data));
 }
 
-static __inline__ __attribute__((always_inline)) void __outbytestring(
+static __inline__ __attribute__((always_inline, artificial)) void __outbytestring(
         unsigned short const Port, const unsigned char *const Buffer,
         const unsigned long Count) {
     __asm__ __volatile__("rep; outsb"
@@ -92,7 +92,7 @@ static __inline__ __attribute__((always_inline)) void __outbytestring(
     : [Port] "d"(Port), [Buffer] "S"(Buffer), "c"(Count));
 }
 
-static __inline__ __attribute__((always_inline)) void __outwordstring(
+static __inline__ __attribute__((always_inline, artificial)) void __outwordstring(
         unsigned short const Port, const unsigned short *const Buffer,
         const unsigned long Count) {
     __asm__ __volatile__("rep; outsw"
@@ -100,44 +100,44 @@ static __inline__ __attribute__((always_inline)) void __outwordstring(
     : [Port] "d"(Port), [Buffer] "S"(Buffer), "c"(Count));
 }
 
-static __inline__ __attribute__((always_inline)) void __outdwordstring(
+static __inline__ __attribute__((always_inline, artificial)) void __outdwordstring(
         unsigned short const Port, const unsigned long *const Buffer,
         const unsigned long Count) {
     __asm__ __volatile__("rep; outsl"
     :
     : [Port] "d"(Port), [Buffer] "S"(Buffer), "c"(Count));
 }
-static __inline__ __attribute__((always_inline)) unsigned long __readcr0(void) {
+static __inline__ __attribute__((always_inline, artificial)) unsigned long __readcr0(void) {
     unsigned long value;
     __asm__ __volatile__("mov %%cr0, %[value]" : [value] "=q"(value));
     return value;
 }
 
-static __inline__ __attribute__((always_inline)) unsigned long __readcr2(void) {
+static __inline__ __attribute__((always_inline, artificial)) unsigned long __readcr2(void) {
     unsigned long value;
     __asm__ __volatile__("mov %%cr2, %[value]" : [value] "=q"(value));
     return value;
 }
 
-static __inline__ __attribute__((always_inline)) unsigned long __readcr3(void) {
+static __inline__ __attribute__((always_inline, artificial)) unsigned long __readcr3(void) {
     unsigned long value;
     __asm__ __volatile__("mov %%cr3, %[value]" : [value] "=q"(value));
     return value;
 }
 
-static __inline__ __attribute__((always_inline)) unsigned long __readcr4(void) {
+static __inline__ __attribute__((always_inline, artificial)) unsigned long __readcr4(void) {
     unsigned long value;
     __asm__ __volatile__("mov %%cr4, %[value]" : [value] "=q"(value));
     return value;
 }
 
-static __inline__ __attribute__((always_inline)) unsigned long __readcr8(void) {
+static __inline__ __attribute__((always_inline, artificial, target("general-regs-only"))) unsigned long __readcr8(void) {
     unsigned long value;
     __asm__ __volatile__("mov %%cr8, %[value]" : [value] "=q"(value));
     return value;
 }
 
-static __inline__ __attribute__((always_inline)) void __writecr0(
+static __inline__ __attribute__((always_inline, artificial)) void __writecr0(
         const unsigned long long Data) {
     __asm__("mov %[Data], %%cr0"
     :
@@ -145,7 +145,7 @@ static __inline__ __attribute__((always_inline)) void __writecr0(
     : "memory");
 }
 
-static __inline__ __attribute__((always_inline)) void __writecr3(
+static __inline__ __attribute__((always_inline, artificial)) void __writecr3(
         const unsigned long long Data) {
     __asm__("mov %[Data], %%cr3"
     :
@@ -153,7 +153,7 @@ static __inline__ __attribute__((always_inline)) void __writecr3(
     : "memory");
 }
 
-static __inline__ __attribute__((always_inline)) void __writecr4(
+static __inline__ __attribute__((always_inline, artificial)) void __writecr4(
         const unsigned long long Data) {
     __asm__("mov %[Data], %%cr4"
     :
@@ -161,7 +161,7 @@ static __inline__ __attribute__((always_inline)) void __writecr4(
     : "memory");
 }
 
-static __inline__ __attribute__((always_inline)) void __writecr8(
+static __inline__ __attribute__((always_inline, artificial)) void __writecr8(
         const unsigned long long Data) {
     __asm__("mov %[Data], %%cr8"
     :
@@ -170,12 +170,12 @@ static __inline__ __attribute__((always_inline)) void __writecr8(
 }
 
 
-static __inline__ __attribute__((always_inline)) void __invlpg(
+static __inline__ __attribute__((always_inline, artificial)) void __invlpg(
         void *const Address) {
     __asm__("invlpg %[Address]" : : [Address] "m"(*((unsigned char *)(Address))));
 }
 
-static __inline__ __attribute__((always_inline)) unsigned long long __readmsr(
+static __inline__ __attribute__((always_inline, artificial)) unsigned long long __readmsr(
         const int reg) {
     uint32_t low;
     uint32_t high;
@@ -183,12 +183,12 @@ static __inline__ __attribute__((always_inline)) unsigned long long __readmsr(
     return (uint64_t)high << 32 | low;
 }
 
-static __inline__ __attribute__((always_inline)) void __writemsr(
+extern __inline void __attribute__((__gnu_inline__, __always_inline__, __artificial__, target("general-regs-only"))) __writemsr(
         const unsigned long Register, const unsigned long long Value) {
     __asm__ __volatile__("wrmsr" : : "d"((uint32_t)(Value >> 32)), "a"((uint32_t)Value), "c"(Register));
 }
 
-static __inline__ __attribute__((always_inline)) void __cpuid(
+static __inline__ __attribute__((always_inline, artificial)) void __cpuid(
         int CPUInfo[], const int InfoType) {
     __asm__ __volatile__("cpuid"
     : "=a"(CPUInfo[0]), "=b"(CPUInfo[1]), "=c"(CPUInfo[2]),

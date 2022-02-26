@@ -43,6 +43,7 @@
 #include "arch/apic.h"
 #include "mem/stack.h"
 #include "util/stb_ds.h"
+#include "arch/msr.h"
 
 #include <stdatomic.h>
 #include <elf.h>
@@ -154,8 +155,9 @@ void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new
     }
 }
 
-void save_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
+INTERRUPT void save_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
     thread_save_state_t* regs = &target->save_state;
+    _fxsave64(&regs->fx_save_state);
     regs->r15 = ctx->r15;
     regs->r14 = ctx->r14;
     regs->r13 = ctx->r13;
@@ -174,10 +176,9 @@ void save_thread_context(thread_t* restrict target, interrupt_context_t* restric
     regs->rip = ctx->rip;
     regs->rflags = ctx->rflags;
     regs->rsp = ctx->rsp;
-    _fxsave64(&regs->fx_save_state);
 }
 
-void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
+INTERRUPT void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
     thread_save_state_t* regs = &target->save_state;
     ctx->r15 = regs->r15;
     ctx->r14 = regs->r14;
@@ -198,6 +199,7 @@ void restore_thread_context(thread_t* restrict target, interrupt_context_t* rest
     ctx->rflags = regs->rflags;
     ctx->rsp = regs->rsp;
     _fxrstor64(&regs->fx_save_state);
+    __writemsr(MSR_IA32_FS_BASE, (uintptr_t)target->tcb);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
