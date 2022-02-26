@@ -28,8 +28,10 @@ static void write_field(object_t* o, size_t offset, object_t* new) {
     *(object_t**)((uintptr_t)o + offset) = new;
 }
 
-static mutex_t m_all_objects_lock = { 0 };
-static list_t m_all_objects = INIT_LIST(m_all_objects);
+/**
+ * Singly linked list of all the allocated objects
+ */
+static object_t* m_all_objects = NULL;
 
 object_t* gc_new(type_t* type, size_t size) {
     scheduler_preempt_disable();
@@ -39,11 +41,9 @@ object_t* gc_new(type_t* type, size_t size) {
     o->color = GCL->alloc_color;
     o->type = type;
 
-    mutex_lock(&m_all_objects_lock);
-    list_add(&m_all_objects, &o->entry);
-    mutex_unlock(&m_all_objects_lock);
-
-    TRACE("Allocated %p", o);
+    // add to the all objects list atomically
+    o->next = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
+    while (!atomic_compare_exchange_weak_explicit(&m_all_objects, &o->next, o, memory_order_relaxed, memory_order_relaxed));
 
     scheduler_preempt_enable();
     return o;
@@ -217,19 +217,50 @@ static void sweep() {
     }
     unlock_all_threads();
 
-    // TODO: I hate this, I have to essentially lock the allocator just so we can
-    //       iterate properly over the allocated items...
-    mutex_lock(&m_all_objects_lock);
-    object_t* swept;
-    object_t* temp;
-    LIST_FOR_EACH_ENTRY_SAFE(swept, temp, &m_all_objects, entry) {
+    // special handling for the swept object
+    object_t* last = NULL;
+    object_t* swept = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
+    while (swept != NULL) {
+        // save the next for when we need it
+        object_t* next = swept->next;
+
         if (swept->color == m_color_white) {
-            TRACE("Freeing %p", swept);
+            // remove from the queue
+            if (last == NULL) {
+                // removing the first object is a bit special
+                object_t* first_now = swept;
+                if (!atomic_compare_exchange_weak_explicit(&m_all_objects, &first_now, swept->next, memory_order_relaxed, memory_order_relaxed)) {
+                    // the compare exchange failed, this means that the swept is no longer
+                    // the first item and the object that we have in our hand is the new first
+                    // object, starting from it go to the next until we find the current item,
+                    // setting the last along the way
+                    do {
+                        last = first_now;
+                        first_now = first_now->next;
+                    } while (first_now != swept);
+
+                    // we found it, remove
+                    last->next = swept->next;
+                } else {
+                    // the last is kept as NULL because it is now
+                }
+            } else {
+                // easy case, we know the last, just remove it
+                last->next = swept->next;
+            }
+
+            // TODO: we technically need to queue this for finalization and
+            //       only then destroy it...
             swept->color = COLOR_BLUE;
             heap_free(swept);
+        } else {
+            // the last object is this one since it is still alive
+            last = swept;
         }
+
+        // set the swept item to be the next item
+        swept = next;
     }
-    mutex_unlock(&m_all_objects_lock);
 }
 
 static void prepare_next_collection() {
