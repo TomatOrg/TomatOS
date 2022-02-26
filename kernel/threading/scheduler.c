@@ -680,8 +680,6 @@ INTERRUPT static void execute(interrupt_context_t* ctx, thread_t* thread, bool i
 
     // set the gprs context
     restore_thread_context(thread, ctx);
-
-    // TODO: set fpu context
 }
 
 //----------------------------------------------------------------------------------------------------------------------
