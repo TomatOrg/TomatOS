@@ -198,6 +198,24 @@ cleanup:
     while (1) asm("hlt");
 }
 
+static void test() {
+    STACK_FRAME(2);
+
+    type_t type = {
+        .managed_size = sizeof(object_t),
+        .managed_pointer_offsets = NULL
+    };
+    object_t* lol = NULL;
+    gc_new(&type, 10, &lol);
+    gc_new(&type, 10, &lol);
+    gc_new(&type, 10, &frame->pointers[0]);
+    gc_new(&type, 10, &frame->pointers[1]);
+
+    TRACE("Triggering collector");
+    gc_wait();
+    TRACE("We came back!");
+}
+
 static void start_thread() {
     err_t err = NO_ERROR;
 
@@ -206,17 +224,12 @@ static void start_thread() {
     // start the gc
     CHECK_AND_RETHROW(init_gc());
 
-    type_t type = {
-        .managed_size = sizeof(object_t),
-        .managed_pointer_offsets = NULL
-    };
-
     // allocate something
-    gc_new(&type, 1);
-    gc_new(&type, 1);
-    gc_new(&type, 1);
-    gc_new(&type, 1);
+    test();
+
+    TRACE("Triggering collector again!");
     gc_wait();
+    TRACE("We came back!");
 
 cleanup:
     ASSERT(!IS_ERROR(err));

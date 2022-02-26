@@ -56,6 +56,7 @@ void notify_list_wait(notify_list_t* list, uint32_t ticket) {
     // Enqueue itself.
     waiting_thread_t* wt = acquire_waiting_thread();
     wt->thread = get_current_thread();
+    wt->ticket = ticket;
 
     if (list->tail == NULL) {
         list->head = wt;

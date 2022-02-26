@@ -1,0 +1,1075 @@
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              EXEC (Executable file)
+  Machine:                           Advanced Micro Devices X86-64
+  Version:                           0x1
+  Entry point address:               0xffffffff8000625e
+  Start of program headers:          64 (bytes into file)
+  Start of section headers:          1584856 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           56 (bytes)
+  Number of program headers:         8
+  Size of section headers:           64 (bytes)
+  Number of section headers:         24
+  Section header string table index: 23
+
+Section Headers:
+  [Nr] Name              Type             Address           Offset
+       Size              EntSize          Flags  Link  Info  Align
+  [ 0]                   NULL             0000000000000000  00000000
+       0000000000000000  0000000000000000           0     0     0
+  [ 1] .note.gnu.pr[...] NOTE             0000000000000000  00001000
+       0000000000000020  0000000000000000   A       0     0     8
+  [ 2] .note.gnu.bu[...] NOTE             0000000000000020  00001020
+       0000000000000024  0000000000000000   A       0     0     4
+  [ 3] .cpu_local        NOBITS           0000000000000060  00001044
+       0000000000000438  0000000000000000  WA       0     0     32
+  [ 4] .text             PROGBITS         ffffffff80000000  00002000
+       0000000000010ff7  0000000000000000  AX       0     0     4096
+  [ 5] .stivale2hdr      PROGBITS         ffffffff80011000  00013000
+       0000000000000020  0000000000000000  WA       0     0     4096
+  [ 6] .rodata           PROGBITS         ffffffff80012000  00014000
+       0000000000052900  0000000000000000   A       0     0     4096
+  [ 7] .eh_frame         PROGBITS         ffffffff80064900  00066900
+       0000000000003040  0000000000000000   A       0     0     8
+  [ 8] .data             PROGBITS         ffffffff80068000  0006a000
+       00000000000053d1  0000000000000000  WA       0     0     4096
+  [ 9] .tbss             NOBITS           ffffffff8006d3e0  0006f3d1
+       0000000000000038  0000000000000000 WAT       0     0     16
+  [10] .bss              NOBITS           ffffffff8006e000  0006f3d1
+       0000000000201258  0000000000000000  WA       0     0     4096
+  [11] .debug_info       PROGBITS         0000000000000000  0006f3d1
+       00000000000809f6  0000000000000000           0     0     1
+  [12] .debug_abbrev     PROGBITS         0000000000000000  000efdc7
+       00000000000073c5  0000000000000000           0     0     1
+  [13] .debug_loclists   PROGBITS         0000000000000000  000f718c
+       000000000000fe26  0000000000000000           0     0     1
+  [14] .debug_aranges    PROGBITS         0000000000000000  00106fb2
+       0000000000000060  0000000000000000           0     0     1
+  [15] .debug_rnglists   PROGBITS         0000000000000000  00107012
+       0000000000001783  0000000000000000           0     0     1
+  [16] .debug_line       PROGBITS         0000000000000000  00108795
+       000000000001016f  0000000000000000           0     0     1
+  [17] .debug_str        PROGBITS         0000000000000000  00118904
+       000000000004a22c  0000000000000001  MS       0     0     1
+  [18] .debug_line_str   PROGBITS         0000000000000000  00162b30
+       00000000000015a1  0000000000000001  MS       0     0     1
+  [19] .comment          PROGBITS         0000000000000000  001640d1
+       0000000000000025  0000000000000001  MS       0     0     1
+  [20] .debug_macro      PROGBITS         0000000000000000  001640f6
+       00000000000149b0  0000000000000000           0     0     1
+  [21] .symtab           SYMTAB           0000000000000000  00178aa8
+       0000000000005898  0000000000000018          22   819     8
+  [22] .strtab           STRTAB           0000000000000000  0017e340
+       0000000000004a8e  0000000000000000           0     0     1
+  [23] .shstrtab         STRTAB           0000000000000000  00182dce
+       0000000000000108  0000000000000000           0     0     1
+Key to Flags:
+  W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
+  L (link order), O (extra OS processing required), G (group), T (TLS),
+  C (compressed), x (unknown), o (OS specific), E (exclude),
+  D (mbind), l (large), p (processor specific)
+
+There are no section groups in this file.
+
+Program Headers:
+  Type           Offset             VirtAddr           PhysAddr
+                 FileSiz            MemSiz              Flags  Align
+  LOAD           0x0000000000001000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000044 0x0000000000000498  RW     0x1000
+  LOAD           0x0000000000002000 0xffffffff80000000 0xffffffff80000000
+                 0x0000000000010ff7 0x0000000000010ff7  R E    0x1000
+  LOAD           0x0000000000013000 0xffffffff80011000 0xffffffff80011000
+                 0x000000000005c3d1 0x000000000025e258  RW     0x1000
+  NOTE           0x0000000000001000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000020 0x0000000000000020  R      0x8
+  NOTE           0x0000000000001020 0x0000000000000020 0x0000000000000020
+                 0x0000000000000024 0x0000000000000024  R      0x4
+  TLS            0x000000000006f3d1 0xffffffff8006d3e0 0xffffffff8006d3e0
+                 0x0000000000000000 0x0000000000000038  R      0x10
+  GNU_PROPERTY   0x0000000000001000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000020 0x0000000000000020  R      0x8
+  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000000 0x0000000000000000  RW     0x10
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     .note.gnu.property .note.gnu.build-id .cpu_local 
+   01     .text 
+   02     .stivale2hdr .rodata .eh_frame .data .bss 
+   03     .note.gnu.property 
+   04     .note.gnu.build-id 
+   05     .tbss 
+   06     .note.gnu.property 
+   07     
+
+There is no dynamic section in this file.
+
+There are no relocations in this file.
+No processor specific unwind information to decode
+
+Symbol table '.symtab' contains 945 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND 
+     1: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS 
+     2: ffffffff80000000     0 NOTYPE  LOCAL  DEFAULT    4 common_exception_stub
+     3: ffffffff8000003d     0 NOTYPE  LOCAL  DEFAULT    4 common_interrupt_stub
+     4: ffffffff8000007a    31 FUNC    LOCAL  DEFAULT    4 get_stivale2_tag
+     5: ffffffff8006f1c0     8 OBJECT  LOCAL  DEFAULT   10 m_stivale2
+     6: ffffffff80000099    23 FUNC    LOCAL  DEFAULT    4 enable_cpu_features
+     7: ffffffff800000b8    63 FUNC    LOCAL  DEFAULT    4 init_gdt
+     8: ffffffff80068000    24 OBJECT  LOCAL  DEFAULT    8 m_gdt_entries
+     9: ffffffff800000f7    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x00
+    10: ffffffff80000106    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x01
+    11: ffffffff80000115    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x02
+    12: ffffffff80000124    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x03
+    13: ffffffff80000133    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x04
+    14: ffffffff80000142    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x05
+    15: ffffffff80000151    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x06
+    16: ffffffff80000160    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x07
+    17: ffffffff8000016f    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x08
+    18: ffffffff8000017c    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x09
+    19: ffffffff8000018b    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x0a
+    20: ffffffff80000198    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x0b
+    21: ffffffff800001a5    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x0c
+    22: ffffffff800001b2    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x0d
+    23: ffffffff800001bf    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x0e
+    24: ffffffff800001cc    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x0f
+    25: ffffffff800001db    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x10
+    26: ffffffff800001ea    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x11
+    27: ffffffff800001f7    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x12
+    28: ffffffff80000206    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x13
+    29: ffffffff80000215    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x14
+    30: ffffffff80000224    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x15
+    31: ffffffff80000233    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x16
+    32: ffffffff80000242    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x17
+    33: ffffffff80000251    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x18
+    34: ffffffff80000260    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x19
+    35: ffffffff8000026f    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x1a
+    36: ffffffff8000027e    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x1b
+    37: ffffffff8000028d    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x1c
+    38: ffffffff8000029c    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x1d
+    39: ffffffff800002ab    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x1e
+    40: ffffffff800002b8    15 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x1f
+    41: ffffffff800002c7    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x20
+    42: ffffffff800002d4    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x21
+    43: ffffffff800002e1    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x22
+    44: ffffffff800002ee    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x23
+    45: ffffffff800002fb    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x24
+    46: ffffffff80000308    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x25
+    47: ffffffff80000315    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x26
+    48: ffffffff80000322    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x27
+    49: ffffffff8000032f    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x28
+    50: ffffffff8000033c    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x29
+    51: ffffffff80000349    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x2a
+    52: ffffffff80000356    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x2b
+    53: ffffffff80000363    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x2c
+    54: ffffffff80000370    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x2d
+    55: ffffffff8000037d    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x2e
+    56: ffffffff8000038a    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x2f
+    57: ffffffff80000397    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x30
+    58: ffffffff800003a4    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x31
+    59: ffffffff800003b1    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x32
+    60: ffffffff800003be    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x33
+    61: ffffffff800003cb    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x34
+    62: ffffffff800003d8    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x35
+    63: ffffffff800003e5    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x36
+    64: ffffffff800003f2    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x37
+    65: ffffffff800003ff    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x38
+    66: ffffffff8000040c    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x39
+    67: ffffffff80000419    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x3a
+    68: ffffffff80000426    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x3b
+    69: ffffffff80000433    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x3c
+    70: ffffffff80000440    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x3d
+    71: ffffffff8000044d    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x3e
+    72: ffffffff8000045a    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x3f
+    73: ffffffff80000467    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x40
+    74: ffffffff80000474    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x41
+    75: ffffffff80000481    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x42
+    76: ffffffff8000048e    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x43
+    77: ffffffff8000049b    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x44
+    78: ffffffff800004a8    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x45
+    79: ffffffff800004b5    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x46
+    80: ffffffff800004c2    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x47
+    81: ffffffff800004cf    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x48
+    82: ffffffff800004dc    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x49
+    83: ffffffff800004e9    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x4a
+    84: ffffffff800004f6    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x4b
+    85: ffffffff80000503    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x4c
+    86: ffffffff80000510    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x4d
+    87: ffffffff8000051d    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x4e
+    88: ffffffff8000052a    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x4f
+    89: ffffffff80000537    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x50
+    90: ffffffff80000544    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x51
+    91: ffffffff80000551    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x52
+    92: ffffffff8000055e    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x53
+    93: ffffffff8000056b    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x54
+    94: ffffffff80000578    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x55
+    95: ffffffff80000585    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x56
+    96: ffffffff80000592    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x57
+    97: ffffffff8000059f    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x58
+    98: ffffffff800005ac    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x59
+    99: ffffffff800005b9    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x5a
+   100: ffffffff800005c6    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x5b
+   101: ffffffff800005d3    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x5c
+   102: ffffffff800005e0    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x5d
+   103: ffffffff800005ed    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x5e
+   104: ffffffff800005fa    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x5f
+   105: ffffffff80000607    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x60
+   106: ffffffff80000614    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x61
+   107: ffffffff80000621    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x62
+   108: ffffffff8000062e    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x63
+   109: ffffffff8000063b    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x64
+   110: ffffffff80000648    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x65
+   111: ffffffff80000655    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x66
+   112: ffffffff80000662    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x67
+   113: ffffffff8000066f    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x68
+   114: ffffffff8000067c    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x69
+   115: ffffffff80000689    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x6a
+   116: ffffffff80000696    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x6b
+   117: ffffffff800006a3    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x6c
+   118: ffffffff800006b0    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x6d
+   119: ffffffff800006bd    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x6e
+   120: ffffffff800006ca    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x6f
+   121: ffffffff800006d7    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x70
+   122: ffffffff800006e4    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x71
+   123: ffffffff800006f1    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x72
+   124: ffffffff800006fe    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x73
+   125: ffffffff8000070b    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x74
+   126: ffffffff80000718    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x75
+   127: ffffffff80000725    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x76
+   128: ffffffff80000732    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x77
+   129: ffffffff8000073f    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x78
+   130: ffffffff8000074c    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x79
+   131: ffffffff80000759    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x7a
+   132: ffffffff80000766    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x7b
+   133: ffffffff80000773    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x7c
+   134: ffffffff80000780    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x7d
+   135: ffffffff8000078d    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x7e
+   136: ffffffff8000079a    13 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x7f
+   137: ffffffff800007a7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x80
+   138: ffffffff800007b7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x81
+   139: ffffffff800007c7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x82
+   140: ffffffff800007d7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x83
+   141: ffffffff800007e7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x84
+   142: ffffffff800007f7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x85
+   143: ffffffff80000807    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x86
+   144: ffffffff80000817    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x87
+   145: ffffffff80000827    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x88
+   146: ffffffff80000837    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x89
+   147: ffffffff80000847    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x8a
+   148: ffffffff80000857    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x8b
+   149: ffffffff80000867    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x8c
+   150: ffffffff80000877    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x8d
+   151: ffffffff80000887    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x8e
+   152: ffffffff80000897    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x8f
+   153: ffffffff800008a7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x90
+   154: ffffffff800008b7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x91
+   155: ffffffff800008c7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x92
+   156: ffffffff800008d7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x93
+   157: ffffffff800008e7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x94
+   158: ffffffff800008f7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x95
+   159: ffffffff80000907    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x96
+   160: ffffffff80000917    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x97
+   161: ffffffff80000927    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x98
+   162: ffffffff80000937    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x99
+   163: ffffffff80000947    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x9a
+   164: ffffffff80000957    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x9b
+   165: ffffffff80000967    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x9c
+   166: ffffffff80000977    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x9d
+   167: ffffffff80000987    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x9e
+   168: ffffffff80000997    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0x9f
+   169: ffffffff800009a7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa0
+   170: ffffffff800009b7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa1
+   171: ffffffff800009c7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa2
+   172: ffffffff800009d7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa3
+   173: ffffffff800009e7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa4
+   174: ffffffff800009f7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa5
+   175: ffffffff80000a07    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa6
+   176: ffffffff80000a17    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa7
+   177: ffffffff80000a27    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa8
+   178: ffffffff80000a37    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xa9
+   179: ffffffff80000a47    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xaa
+   180: ffffffff80000a57    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xab
+   181: ffffffff80000a67    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xac
+   182: ffffffff80000a77    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xad
+   183: ffffffff80000a87    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xae
+   184: ffffffff80000a97    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xaf
+   185: ffffffff80000aa7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb0
+   186: ffffffff80000ab7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb1
+   187: ffffffff80000ac7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb2
+   188: ffffffff80000ad7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb3
+   189: ffffffff80000ae7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb4
+   190: ffffffff80000af7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb5
+   191: ffffffff80000b07    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb6
+   192: ffffffff80000b17    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb7
+   193: ffffffff80000b27    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb8
+   194: ffffffff80000b37    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xb9
+   195: ffffffff80000b47    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xba
+   196: ffffffff80000b57    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xbb
+   197: ffffffff80000b67    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xbc
+   198: ffffffff80000b77    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xbd
+   199: ffffffff80000b87    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xbe
+   200: ffffffff80000b97    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xbf
+   201: ffffffff80000ba7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc0
+   202: ffffffff80000bb7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc1
+   203: ffffffff80000bc7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc2
+   204: ffffffff80000bd7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc3
+   205: ffffffff80000be7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc4
+   206: ffffffff80000bf7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc5
+   207: ffffffff80000c07    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc6
+   208: ffffffff80000c17    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc7
+   209: ffffffff80000c27    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc8
+   210: ffffffff80000c37    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xc9
+   211: ffffffff80000c47    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xca
+   212: ffffffff80000c57    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xcb
+   213: ffffffff80000c67    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xcc
+   214: ffffffff80000c77    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xcd
+   215: ffffffff80000c87    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xce
+   216: ffffffff80000c97    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xcf
+   217: ffffffff80000ca7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd0
+   218: ffffffff80000cb7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd1
+   219: ffffffff80000cc7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd2
+   220: ffffffff80000cd7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd3
+   221: ffffffff80000ce7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd4
+   222: ffffffff80000cf7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd5
+   223: ffffffff80000d07    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd6
+   224: ffffffff80000d17    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd7
+   225: ffffffff80000d27    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd8
+   226: ffffffff80000d37    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xd9
+   227: ffffffff80000d47    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xda
+   228: ffffffff80000d57    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xdb
+   229: ffffffff80000d67    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xdc
+   230: ffffffff80000d77    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xdd
+   231: ffffffff80000d87    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xde
+   232: ffffffff80000d97    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xdf
+   233: ffffffff80000da7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe0
+   234: ffffffff80000db7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe1
+   235: ffffffff80000dc7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe2
+   236: ffffffff80000dd7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe3
+   237: ffffffff80000de7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe4
+   238: ffffffff80000df7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe5
+   239: ffffffff80000e07    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe6
+   240: ffffffff80000e17    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe7
+   241: ffffffff80000e27    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe8
+   242: ffffffff80000e37    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xe9
+   243: ffffffff80000e47    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xea
+   244: ffffffff80000e57    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xeb
+   245: ffffffff80000e67    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xec
+   246: ffffffff80000e77    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xed
+   247: ffffffff80000e87    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xee
+   248: ffffffff80000e97    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xef
+   249: ffffffff80000ea7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf0
+   250: ffffffff80000eb7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf1
+   251: ffffffff80000ec7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf2
+   252: ffffffff80000ed7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf3
+   253: ffffffff80000ee7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf4
+   254: ffffffff80000ef7    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf5
+   255: ffffffff80000f07    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf6
+   256: ffffffff80000f17    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf7
+   257: ffffffff80000f27    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf8
+   258: ffffffff80000f37    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xf9
+   259: ffffffff80000f47    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xfa
+   260: ffffffff80000f57    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xfb
+   261: ffffffff80000f67    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xfc
+   262: ffffffff80000f77    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xfd
+   263: ffffffff80000f87    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xfe
+   264: ffffffff80000f97    16 FUNC    LOCAL  DEFAULT    4 interrupt_handle_0xff
+   265: ffffffff80000fa7    68 FUNC    LOCAL  DEFAULT    4 set_idt_entry
+   266: ffffffff8006e160  4096 OBJECT  LOCAL  DEFAULT   10 m_idt_entries
+   267: ffffffff80000feb  4359 FUNC    LOCAL  DEFAULT    4 init_idt
+   268: ffffffff80068180    10 OBJECT  LOCAL  DEFAULT    8 m_idt
+   269: ffffffff800020f2    18 FUNC    LOCAL  DEFAULT    4 lapic_eoi
+   270: ffffffff80002104    54 FUNC    LOCAL  DEFAULT    4 init_vmm_per_cpu
+   271: ffffffff80068020     8 OBJECT  LOCAL  DEFAULT    8 m_pml4_pa
+   272: ffffffff8000213a    30 FUNC    LOCAL  DEFAULT    4 popcount_byte
+   273: ffffffff80013260    16 OBJECT  LOCAL  DEFAULT    6 m_popcount_lookup
+   274: ffffffff80002158    79 FUNC    LOCAL  DEFAULT    4 buddy_tree_inter[...]
+   275: ffffffff8006f170     1 OBJECT  LOCAL  DEFAULT   10 m_buddy_tree_order
+   276: ffffffff8006f168     8 OBJECT  LOCAL  DEFAULT   10 m_buddy_tree_siz[...]
+   277: ffffffff800021a7   253 FUNC    LOCAL  DEFAULT    4 write_to_interna[...]
+   278: ffffffff80013208     8 OBJECT  LOCAL  DEFAULT    6 m_bitset_index_mask
+   279: ffffffff80013220    64 OBJECT  LOCAL  DEFAULT    6 bitset_char_mask
+   280: ffffffff800022a4   178 FUNC    LOCAL  DEFAULT    4 read_from_intern[...]
+   281: ffffffff80002356   158 FUNC    LOCAL  DEFAULT    4 update_parent_chain
+   282: ffffffff800023f4    65 FUNC    LOCAL  DEFAULT    4 buddy_tree_mark
+   283: ffffffff80002435   110 FUNC    LOCAL  DEFAULT    4 buddy_tree_release
+   284: ffffffff800024a3    27 FUNC    LOCAL  DEFAULT    4 deepest_position[...]
+   285: ffffffff800024cc     5 FUNC    LOCAL  DEFAULT    4 _out_null
+   286: ffffffff800024d1    30 FUNC    LOCAL  DEFAULT    4 _out_char
+   287: ffffffff800024ef    24 FUNC    LOCAL  DEFAULT    4 _strnlen_s
+   288: ffffffff80002507   648 FUNC    LOCAL  DEFAULT    4 _ntoa_long
+   289: ffffffff80002507   648 FUNC    LOCAL  DEFAULT    4 _ntoa_long_long
+   290: ffffffff8000278f    22 FUNC    LOCAL  DEFAULT    4 cas_from_preempted
+   291: ffffffff800027a5     8 FUNC    LOCAL  DEFAULT    4 get_cpu_id
+   292: 0000000000000464     4 OBJECT  LOCAL  DEFAULT    3 m_cpu_id
+   293: ffffffff800027ad    24 FUNC    LOCAL  DEFAULT    4 get_run_queue
+   294: ffffffff8006f1a8     8 OBJECT  LOCAL  DEFAULT   10 m_run_queues
+   295: ffffffff800027c5    28 FUNC    LOCAL  DEFAULT    4 gc_conductor_wait
+   296: ffffffff8006f220    32 OBJECT  LOCAL  DEFAULT   10 m_gc_done
+   297: ffffffff8006803c     1 OBJECT  LOCAL  DEFAULT    8 m_gc_running
+   298: ffffffff800027e1    79 FUNC    LOCAL  DEFAULT    4 run_queue_get
+   299: ffffffff80002830    78 FUNC    LOCAL  DEFAULT    4 heap_rank_free
+   300: ffffffff8000287e    35 FUNC    LOCAL  DEFAULT    4 lapic_set_deadline
+   301: ffffffff800028a1    36 FUNC    LOCAL  DEFAULT    4 ceiling_power_of_two
+   302: ffffffff800028c5    30 FUNC    LOCAL  DEFAULT    4 size_for_depth
+   303: ffffffff8006f178     8 OBJECT  LOCAL  DEFAULT   10 m_buddy_memory_size
+   304: ffffffff800028e3    48 FUNC    LOCAL  DEFAULT    4 offset_for_position
+   305: ffffffff80002913    47 FUNC    LOCAL  DEFAULT    4 tlsf_fls_sizet
+   306: ffffffff80002942    42 FUNC    LOCAL  DEFAULT    4 mapping_insert
+   307: ffffffff8000296c   212 FUNC    LOCAL  DEFAULT    4 save_thread_context
+   308: ffffffff80002a7b     9 FUNC    LOCAL  DEFAULT    4 lock_scheduler
+   309: ffffffff8006e120     2 OBJECT  LOCAL  DEFAULT   10 m_scheduler_lock
+   310: ffffffff80002a95     9 FUNC    LOCAL  DEFAULT    4 unlock_scheduler
+   311: ffffffff80002a9e   200 FUNC    LOCAL  DEFAULT    4 run_queue_put_slow
+   312: ffffffff8006e130    16 OBJECT  LOCAL  DEFAULT   10 m_global_run_queue
+   313: ffffffff8006e140     4 OBJECT  LOCAL  DEFAULT   10 m_global_run_que[...]
+   314: ffffffff80002b66   139 FUNC    LOCAL  DEFAULT    4 run_queue_put
+   315: ffffffff8006e118     8 OBJECT  LOCAL  DEFAULT   10 m_idle_cpus
+   316: ffffffff80002bf1   189 FUNC    LOCAL  DEFAULT    4 global_run_queue_get
+   317: ffffffff8006f190     8 OBJECT  LOCAL  DEFAULT   10 m_symbols
+   318: ffffffff80068040    40 OBJECT  LOCAL  DEFAULT    8 sizes.0
+   319: ffffffff8006e144     2 OBJECT  LOCAL  DEFAULT   10 m_printf_lock
+   320: ffffffff80003dd7   749 FUNC    LOCAL  DEFAULT    4 default_exceptio[...]
+   321: ffffffff8006f160     2 OBJECT  LOCAL  DEFAULT   10 m_exception_lock
+   322: ffffffff80068080   256 OBJECT  LOCAL  DEFAULT    8 g_exception_name
+   323: ffffffff800134d0    23 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   324: ffffffff800134f0    25 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   325: ffffffff8000427e   201 FUNC    LOCAL  DEFAULT    4 vmm_unmap_direct_page
+   326: ffffffff80013420    22 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.3.l[...]
+   327: ffffffff80004347    64 FUNC    LOCAL  DEFAULT    4 block_next
+   328: ffffffff800133f8    11 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.20
+   329: ffffffff80004387    14 FUNC    LOCAL  DEFAULT    4 block_link_next
+   330: ffffffff80004395    70 FUNC    LOCAL  DEFAULT    4 align_ptr
+   331: ffffffff800133e8    10 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.16
+   332: ffffffff800043db    98 FUNC    LOCAL  DEFAULT    4 adjust_request_size
+   333: ffffffff800133d8     9 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.13
+   334: ffffffff8000443d   161 FUNC    LOCAL  DEFAULT    4 remove_free_block
+   335: ffffffff800133c0    18 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.14
+   336: ffffffff800044de    56 FUNC    LOCAL  DEFAULT    4 block_remove
+   337: ffffffff80004516   194 FUNC    LOCAL  DEFAULT    4 block_insert
+   338: ffffffff800133a0    18 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.17
+   339: ffffffff800045d8   204 FUNC    LOCAL  DEFAULT    4 block_split
+   340: ffffffff80013388    12 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.8.l[...]
+   341: ffffffff800046a4    92 FUNC    LOCAL  DEFAULT    4 block_absorb
+   342: ffffffff80013378    13 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.3.l[...]
+   343: ffffffff80004700   144 FUNC    LOCAL  DEFAULT    4 block_merge_next
+   344: ffffffff80013360    17 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.2.l[...]
+   345: ffffffff80004790   305 FUNC    LOCAL  DEFAULT    4 block_locate_free
+   346: ffffffff80013320    22 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.11
+   347: ffffffff80013340    18 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.12
+   348: ffffffff800048c1   195 FUNC    LOCAL  DEFAULT    4 block_prepare_used
+   349: ffffffff800132f0    19 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.10.[...]
+   350: ffffffff80013310    16 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.9.l[...]
+   351: ffffffff80004984    52 FUNC    LOCAL  DEFAULT    4 tlsf_malloc
+   352: ffffffff800049b8    74 FUNC    LOCAL  DEFAULT    4 malloc
+   353: ffffffff8006e146     2 OBJECT  LOCAL  DEFAULT   10 m_tlsf_lock
+   354: ffffffff8006f180     8 OBJECT  LOCAL  DEFAULT   10 m_tlsf
+   355: ffffffff80004a02   274 FUNC    LOCAL  DEFAULT    4 tlsf_free
+   356: ffffffff800132b8    10 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.6.l[...]
+   357: ffffffff800132d0    17 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.5.l[...]
+   358: ffffffff80004b40   190 FUNC    LOCAL  DEFAULT    4 early_alloc_page_phys
+   359: ffffffff8006e148     8 OBJECT  LOCAL  DEFAULT   10 m_early_alloc_mmap
+   360: ffffffff800132a0    22 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   361: ffffffff80013290    14 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.7.l[...]
+   362: ffffffff80013280    13 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   363: ffffffff80013270    16 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   364: ffffffff80004fb8   118 FUNC    LOCAL  DEFAULT    4 random_order_init
+   365: ffffffff8006e110     4 OBJECT  LOCAL  DEFAULT   10 m_random_order_count
+   366: ffffffff8006e108     8 OBJECT  LOCAL  DEFAULT   10 m_random_order_c[...]
+   367: ffffffff8000502e    80 FUNC    LOCAL  DEFAULT    4 address_for_position
+   368: ffffffff800131f0    21 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.2.l[...]
+   369: ffffffff8000507e   179 FUNC    LOCAL  DEFAULT    4 position_for_address
+   370: ffffffff800131d0    21 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.3.l[...]
+   371: ffffffff80005131   251 FUNC    LOCAL  DEFAULT    4 mark_range
+   372: ffffffff800131b8    11 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.6.l[...]
+   373: ffffffff8006f1d8     2 OBJECT  LOCAL  DEFAULT   10 m_palloc_lock
+   374: ffffffff800131a0    21 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   375: ffffffff80068028     1 OBJECT  LOCAL  DEFAULT    8 m_early_alloc
+   376: ffffffff80013410    15 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.4.l[...]
+   377: ffffffff80005495    98 FUNC    LOCAL  DEFAULT    4 vmm_setup_level
+   378: ffffffff80013408     8 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.5.l[...]
+   379: ffffffff800056a9   279 FUNC    LOCAL  DEFAULT    4 init_apic
+   380: ffffffff8006e150     1 OBJECT  LOCAL  DEFAULT   10 m_mapped_lapic
+   381: ffffffff80013438    10 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   382: ffffffff800057c0    74 FUNC    LOCAL  DEFAULT    4 cas_to_suspend
+   383: ffffffff80013168    15 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.9.l[...]
+   384: ffffffff8000580a   167 FUNC    LOCAL  DEFAULT    4 init_cpu_locals
+   385: ffffffff800130d0    16 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   386: ffffffff8006e0f8     8 OBJECT  LOCAL  DEFAULT   10 m_per_cpu_base_list
+   387: ffffffff800058b1   408 FUNC    LOCAL  DEFAULT    4 per_cpu_start
+   388: ffffffff80013608    14 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   389: ffffffff8006f1b8     1 OBJECT  LOCAL  DEFAULT   10 m_smp_error
+   390: ffffffff8006f1b4     4 OBJECT  LOCAL  DEFAULT   10 m_startup_count
+   391: ffffffff8006f1b0     1 OBJECT  LOCAL  DEFAULT   10 m_start_scheduler
+   392: ffffffff80013150    17 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.8.l[...]
+   393: ffffffff80005ac2   230 FUNC    LOCAL  DEFAULT    4 scheduler_suspen[...]
+   394: ffffffff80013130    26 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.7.l[...]
+   395: ffffffff80013110    25 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.6.l[...]
+   396: 0000000000000480     8 OBJECT  LOCAL  DEFAULT    3 m_current_thread
+   397: 0000000000000060  1024 OBJECT  LOCAL  DEFAULT    3 m_wt_cache
+   398: 0000000000000460     1 OBJECT  LOCAL  DEFAULT    3 m_wt_cache_len
+   399: ffffffff8006e0f0     2 OBJECT  LOCAL  DEFAULT   10 m_global_wt_lock
+   400: ffffffff8006e0e8     8 OBJECT  LOCAL  DEFAULT   10 m_global_wt_cache
+   401: ffffffff800130b0    17 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.2.l[...]
+   402: ffffffff80013180    23 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.10.[...]
+   403: ffffffff80005eb8   340 FUNC    LOCAL  DEFAULT    4 gc_wait
+   404: ffffffff8006f200    32 OBJECT  LOCAL  DEFAULT   10 m_gc_wake
+   405: ffffffff8000600c   279 FUNC    LOCAL  DEFAULT    4 test
+   406: ffffffff80006123   315 FUNC    LOCAL  DEFAULT    4 start_thread
+   407: ffffffff80008194  2114 FUNC    LOCAL  DEFAULT    4 gc_thread
+   408: ffffffff800135f0     8 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   409: ffffffff800135f8    13 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   410: ffffffff80013510    16 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   411: ffffffff80013520     9 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.6.l[...]
+   412: ffffffff80013530    13 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.9.l[...]
+   413: ffffffff80013578    12 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.8.l[...]
+   414: ffffffff80013540    21 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.7.l[...]
+   415: ffffffff80013560    24 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.5.l[...]
+   416: ffffffff80013588    10 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   417: ffffffff800135e7     7 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.2.l[...]
+   418: ffffffff8006f188     8 OBJECT  LOCAL  DEFAULT   10 kernel.3
+   419: ffffffff8006f198     8 OBJECT  LOCAL  DEFAULT   10 m_rsdt
+   420: ffffffff80013598    11 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   421: ffffffff8006f1a0     2 OBJECT  LOCAL  DEFAULT   10 m_pm_timer
+   422: ffffffff8006f1a2     1 OBJECT  LOCAL  DEFAULT   10 m_pm_timer_bits
+   423: ffffffff800135a8    11 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   424: ffffffff800135b8    15 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   425: ffffffff800135c8     9 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   426: ffffffff800135d8    15 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.4.l[...]
+   427: ffffffff80007a1a  1128 FUNC    LOCAL  DEFAULT    4 schedule
+   428: 000000000000047c     4 OBJECT  LOCAL  DEFAULT    3 m_scheduler_tick
+   429: 0000000000000478     1 OBJECT  LOCAL  DEFAULT    3 m_spinning
+   430: ffffffff8006e100     4 OBJECT  LOCAL  DEFAULT   10 m_number_spinning
+   431: 0000000000000470     8 OBJECT  LOCAL  DEFAULT    3 m_fast_rand
+   432: ffffffff80013100    16 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.4.l[...]
+   433: ffffffff80007e82   232 FUNC    LOCAL  DEFAULT    4 scheduler_on_schedule
+   434: ffffffff800130e0    22 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.5.l[...]
+   435: ffffffff80013450    19 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.3.l[...]
+   436: ffffffff80013470    18 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.2.l[...]
+   437: ffffffff80013490    18 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1.l[...]
+   438: ffffffff800134b0    25 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   439: ffffffff8006e0e0     2 OBJECT  LOCAL  DEFAULT   10 m_all_threads_lock
+   440: ffffffff8006f1dc     4 OBJECT  LOCAL  DEFAULT   10 m_thread_count
+   441: ffffffff80068038     4 OBJECT  LOCAL  DEFAULT    8 m_color_white
+   442: ffffffff8006f1c8     4 OBJECT  LOCAL  DEFAULT   10 m_color_black
+   443: ffffffff8006f1e0     8 OBJECT  LOCAL  DEFAULT   10 m_roots
+   444: ffffffff8006f1d0     8 OBJECT  LOCAL  DEFAULT   10 m_mark_stack
+   445: ffffffff80013616     6 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   446: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS 
+   447: ffffffff800089d6     7 FUNC    LOCAL  DEFAULT    4 thread_exit
+   448: ffffffff800089dd    56 FUNC    LOCAL  DEFAULT    4 ZydisRegisterEncode
+   449: ffffffff80064780   240 OBJECT  LOCAL  DEFAULT    6 REG_CLASS_LOOKUP
+   450: ffffffff80008a15   394 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   451: ffffffff80008b9f    52 FUNC    LOCAL  DEFAULT    4 ZydisInputNext
+   452: ffffffff80008bd3    41 FUNC    LOCAL  DEFAULT    4 ZydisDecodeModRM
+   453: ffffffff80008bfc   128 FUNC    LOCAL  DEFAULT    4 ZydisCalcRegisterId
+   454: ffffffff80008c7c    60 FUNC    LOCAL  DEFAULT    4 ZydisDecodeOpera[...]
+   455: ffffffff80008cb8   527 FUNC    LOCAL  DEFAULT    4 ZydisDecodeOpera[...]
+   456: ffffffff80064760    32 OBJECT  LOCAL  DEFAULT    6 bases.36
+   457: ffffffff80064740    32 OBJECT  LOCAL  DEFAULT    6 indices.35
+   458: ffffffff80008ec7   938 FUNC    LOCAL  DEFAULT    4 ZydisSetAttributes
+   459: ffffffff80064720    32 OBJECT  LOCAL  DEFAULT    6 mapping.26
+   460: ffffffff80064700    32 OBJECT  LOCAL  DEFAULT    6 mapping.25
+   461: ffffffff800646e0    32 OBJECT  LOCAL  DEFAULT    6 mapping.24
+   462: ffffffff80009271    17 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   463: ffffffff80009282    54 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   464: ffffffff800092b8   105 FUNC    LOCAL  DEFAULT    4 ZydisFormatterHe[...]
+   465: ffffffff80009321   114 FUNC    LOCAL  DEFAULT    4 ZydisGetInstruct[...]
+   466: ffffffff8005d680 27076 OBJECT  LOCAL  DEFAULT    6 ISTR_DEFINITIONS[...]
+   467: ffffffff8005d440   576 OBJECT  LOCAL  DEFAULT    6 ISTR_DEFINITIONS[...]
+   468: ffffffff8005cb40  2288 OBJECT  LOCAL  DEFAULT    6 ISTR_DEFINITIONS_XOP
+   469: ffffffff80057380 22442 OBJECT  LOCAL  DEFAULT    6 ISTR_DEFINITIONS_VEX
+   470: ffffffff80048fc0 58304 OBJECT  LOCAL  DEFAULT    6 ISTR_DEFINITIONS_EVEX
+   471: ffffffff800477e0  6105 OBJECT  LOCAL  DEFAULT    6 ISTR_DEFINITIONS_MVEX
+   472: ffffffff80009393    78 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBu[...]
+   473: ffffffff800093e1   649 FUNC    LOCAL  DEFAULT    4 ZydisDecoderTree[...]
+   474: ffffffff800477a0    39 OBJECT  LOCAL  DEFAULT    6 FILTERS_XOP
+   475: ffffffff80047720   102 OBJECT  LOCAL  DEFAULT    6 FILTERS_VEX
+   476: ffffffff80047680   147 OBJECT  LOCAL  DEFAULT    6 FILTERS_EMVEX
+   477: ffffffff8003ec80 35328 OBJECT  LOCAL  DEFAULT    6 FILTERS_OPCODE
+   478: ffffffff8003ec68     9 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE
+   479: ffffffff8003e580  1764 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_COMPACT
+   480: ffffffff8003e568    12 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODRM_MOD
+   481: ffffffff8003ba20 11076 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODRM_MO[...]
+   482: ffffffff8003aec0  2904 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODRM_REG
+   483: ffffffff8003a820  1680 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODRM_RM
+   484: ffffffff8003a800    24 OBJECT  LOCAL  DEFAULT    6 FILTERS_PREFIX_GROUP1
+   485: ffffffff80038e80  6525 OBJECT  LOCAL  DEFAULT    6 FILTERS_MANDATOR[...]
+   486: ffffffff80038d00   369 OBJECT  LOCAL  DEFAULT    6 FILTERS_OPERAND_SIZE
+   487: ffffffff80038ae0   522 OBJECT  LOCAL  DEFAULT    6 FILTERS_ADDRESS_SIZE
+   488: ffffffff800353e0 14058 OBJECT  LOCAL  DEFAULT    6 FILTERS_VECTOR_LENGTH
+   489: ffffffff80032bc0 10242 OBJECT  LOCAL  DEFAULT    6 FILTERS_REX_W
+   490: ffffffff80032ba6     6 OBJECT  LOCAL  DEFAULT    6 FILTERS_REX_B
+   491: ffffffff80031160  6726 OBJECT  LOCAL  DEFAULT    6 FILTERS_EVEX_B
+   492: ffffffff80030e80   714 OBJECT  LOCAL  DEFAULT    6 FILTERS_MVEX_E
+   493: ffffffff80030e00   108 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_AMD
+   494: ffffffff80030dc0    42 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_KNC
+   495: ffffffff80030db0    12 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_MPX
+   496: ffffffff80030d90    30 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_CET
+   497: ffffffff80030d78    12 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_LZCNT
+   498: ffffffff80030d68    12 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_TZCNT
+   499: ffffffff80030d5f     6 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_WBNOINVD
+   500: ffffffff80030d59     6 OBJECT  LOCAL  DEFAULT    6 FILTERS_MODE_CLDEMOTE
+   501: ffffffff8000966a    77 FUNC    LOCAL  DEFAULT    4 ZydisNodeHandler[...]
+   502: ffffffff800096b7    29 FUNC    LOCAL  DEFAULT    4 semaphore_can_ac[...]
+   503: ffffffff800096d4   199 FUNC    LOCAL  DEFAULT    4 semaphore_releas[...]
+   504: ffffffff80017698    10 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.1
+   505: ffffffff80017670    18 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   506: 0000000000000490     8 OBJECT  LOCAL  DEFAULT    3 m_free_threads
+   507: ffffffff8026f248     2 OBJECT  LOCAL  DEFAULT   10 m_global_free_th[...]
+   508: ffffffff8026f250     8 OBJECT  LOCAL  DEFAULT   10 m_global_free_threads
+   509: 0000000000000488     4 OBJECT  LOCAL  DEFAULT    3 m_free_threads_count
+   510: ffffffff8026f244     4 OBJECT  LOCAL  DEFAULT   10 m_global_free_th[...]
+   511: ffffffff80017688    13 OBJECT  LOCAL  DEFAULT    6 __FUNCTION__.0.l[...]
+   512: ffffffff8026f240     2 OBJECT  LOCAL  DEFAULT   10 m_stack_alloc_lock
+   513: ffffffff800681e0    16 OBJECT  LOCAL  DEFAULT    8 m_stack_free_list
+   514: ffffffff800681b0     8 OBJECT  LOCAL  DEFAULT    8 m_next_stack
+   515: ffffffff8000a4a1    82 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   516: ffffffff8000a4a1    82 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   517: ffffffff8000a4a1    82 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   518: ffffffff8000a4a1    82 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   519: ffffffff8000a4f3   109 FUNC    LOCAL  DEFAULT    4 ZydisStringAppendHexU
+   520: ffffffff8000a560    64 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   521: ffffffff8000a560    64 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   522: ffffffff8000a560    64 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   523: ffffffff8000a5a0   192 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   524: ffffffff80068b30     9 OBJECT  LOCAL  DEFAULT    8 str_sub.1.lto_priv.1
+   525: ffffffff80068b20     9 OBJECT  LOCAL  DEFAULT    8 str_add.0.lto_priv.1
+   526: ffffffff8000a660   194 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   527: ffffffff8000a660   194 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   528: ffffffff8000a660   194 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   529: ffffffff8000a722   109 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBu[...]
+   530: ffffffff8000a722   109 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBu[...]
+   531: ffffffff8000a722   109 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBu[...]
+   532: ffffffff8000a78f   812 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   533: ffffffff800641a8    10 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DELIM_O[...]
+   534: ffffffff8006419c     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DELIM_M[...]
+   535: ffffffff800686d8     9 OBJECT  LOCAL  DEFAULT    8 STR_DELIM_OPERAN[...]
+   536: ffffffff800686c8     9 OBJECT  LOCAL  DEFAULT    8 STR_DELIM_MNEMON[...]
+   537: ffffffff8000aabb    17 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   538: ffffffff8000aacc   242 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   539: ffffffff80069520 15795 OBJECT  LOCAL  DEFAULT    8 STR_MNEMONIC
+   540: ffffffff80064178    12 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_INVALID[...]
+   541: ffffffff80068678     9 OBJECT  LOCAL  DEFAULT    8 STR_INVALID_MNEM[...]
+   542: ffffffff80068668     9 OBJECT  LOCAL  DEFAULT    8 STR_FAR
+   543: ffffffff80068658     9 OBJECT  LOCAL  DEFAULT    8 STR_SHORT.lto_priv.1
+   544: ffffffff80068648     9 OBJECT  LOCAL  DEFAULT    8 STR_NEAR.lto_priv.1
+   545: ffffffff8000abbe   120 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   546: ffffffff80068ba0  2394 OBJECT  LOCAL  DEFAULT    8 STR_REGISTERS
+   547: ffffffff80064168    12 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_INVALID_REG
+   548: ffffffff80068638     9 OBJECT  LOCAL  DEFAULT    8 STR_INVALID_REG.[...]
+   549: ffffffff8000ac36   605 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   550: ffffffff80064150    17 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_8_INTEL
+   551: ffffffff80068618     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_8_INTEL
+   552: ffffffff80064130    17 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_16[...]
+   553: ffffffff80068608     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_16_INTEL
+   554: ffffffff80064110    18 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_32[...]
+   555: ffffffff800685f8     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_32_INTEL
+   556: ffffffff800640f0    18 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_48
+   557: ffffffff800685e8     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_48
+   558: ffffffff800640d0    18 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_64[...]
+   559: ffffffff800685d8     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_64_INTEL
+   560: ffffffff800640b0    18 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_80
+   561: ffffffff800685c8     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_80
+   562: ffffffff80064090    20 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_12[...]
+   563: ffffffff800685b8     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_128_INTEL
+   564: ffffffff80064070    20 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_25[...]
+   565: ffffffff800685a8     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_256_INTEL
+   566: ffffffff80064050    20 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SIZE_51[...]
+   567: ffffffff80068598     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_512_INTEL
+   568: ffffffff8000ae93   166 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   569: ffffffff800646c5     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DELIM_S[...]
+   570: ffffffff80068b10     9 OBJECT  LOCAL  DEFAULT    8 STR_DELIM_SEGMENT
+   571: ffffffff8000af39  1424 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   572: ffffffff80068a80   128 OBJECT  LOCAL  DEFAULT    8 TOK_PREF_REX
+   573: ffffffff80068a00   128 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX
+   574: ffffffff800646a8    11 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_SEG_CS
+   575: ffffffff800689d8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_SEG_CS
+   576: ffffffff80064698    11 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_SEG_SS
+   577: ffffffff800689c8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_SEG_SS
+   578: ffffffff80064688    11 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_SEG_DS
+   579: ffffffff800689b8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_SEG_DS
+   580: ffffffff80064678    11 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_SEG_ES
+   581: ffffffff800689a8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_SEG_ES
+   582: ffffffff80064668    11 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_SEG_FS
+   583: ffffffff80068998     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_SEG_FS
+   584: ffffffff80064658    11 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_SEG_GS
+   585: ffffffff80068988     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_SEG_GS
+   586: ffffffff80068978     9 OBJECT  LOCAL  DEFAULT    8 STR_WHITESPACE
+   587: ffffffff800646b8    13 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_LOCK
+   588: ffffffff800689e8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_LOCK
+   589: ffffffff80064640    17 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_XA[...]
+   590: ffffffff80068968     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_XACQUIRE
+   591: ffffffff80064628    14 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REPNE
+   592: ffffffff80068958     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REPNE
+   593: ffffffff80064618    12 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_BND
+   594: ffffffff80068948     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_BND
+   595: ffffffff80064600    17 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_XR[...]
+   596: ffffffff80068938     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_XRELEASE
+   597: ffffffff800645f0    12 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REP
+   598: ffffffff80068928     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REP
+   599: ffffffff800645e0    13 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REPE
+   600: ffffffff80068918     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REPE
+   601: ffffffff800645d0    16 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_NOTRACK
+   602: ffffffff80068908     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_NOTRACK
+   603: ffffffff8000b4c9  1639 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   604: ffffffff800645b8    10 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_BEGIN
+   605: ffffffff800645b2     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_END
+   606: ffffffff800688f8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_END
+   607: ffffffff800688e8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_BEGIN
+   608: ffffffff800645a0    18 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_ZERO
+   609: ffffffff800688d8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_ZERO
+   610: ffffffff80064580    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_1TO2
+   611: ffffffff800688c8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_1TO2
+   612: ffffffff80064560    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_1TO4
+   613: ffffffff800688b8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_1TO4
+   614: ffffffff80064540    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_1TO8
+   615: ffffffff800688a8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_1TO8
+   616: ffffffff80064520    22 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_1TO16
+   617: ffffffff80068898     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_1TO16
+   618: ffffffff80064500    22 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_1TO32
+   619: ffffffff80068888     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_1TO32
+   620: ffffffff800644e0    22 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_1TO64
+   621: ffffffff80068878     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_1TO64
+   622: ffffffff800644c0    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_4TO8
+   623: ffffffff80068868     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_4TO8
+   624: ffffffff800644a0    22 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_4TO16
+   625: ffffffff80068858     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_4TO16
+   626: ffffffff80064480    22 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_8TO16
+   627: ffffffff80068848     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_8TO16
+   628: ffffffff80064460    23 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RN_SAE
+   629: ffffffff80068838     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RN_SAE
+   630: ffffffff80064440    23 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RD_SAE
+   631: ffffffff80068828     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RD_SAE
+   632: ffffffff80064420    23 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RU_SAE
+   633: ffffffff80068818     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RU_SAE
+   634: ffffffff80064400    23 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RZ_SAE
+   635: ffffffff80068808     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RZ_SAE
+   636: ffffffff800643e0    19 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RN
+   637: ffffffff800687f8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RN
+   638: ffffffff800643c0    19 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RD
+   639: ffffffff800687e8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RD
+   640: ffffffff800643a0    19 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RU
+   641: ffffffff800687d8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RU
+   642: ffffffff80064380    19 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_RZ
+   643: ffffffff800687c8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_RZ
+   644: ffffffff80064360    20 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_SAE
+   645: ffffffff800687b8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_SAE
+   646: ffffffff80064340    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_CDAB
+   647: ffffffff800687a8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_CDAB
+   648: ffffffff80064320    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_BADC
+   649: ffffffff80068798     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_BADC
+   650: ffffffff80064300    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_DACB
+   651: ffffffff80068788     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_DACB
+   652: ffffffff800642e0    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_AAAA
+   653: ffffffff80068778     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_AAAA
+   654: ffffffff800642c0    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_BBBB
+   655: ffffffff80068768     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_BBBB
+   656: ffffffff800642a0    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_CCCC
+   657: ffffffff80068758     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_CCCC
+   658: ffffffff80064280    21 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_DDDD
+   659: ffffffff80068748     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_DDDD
+   660: ffffffff80064260    24 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_FLOAT16
+   661: ffffffff80068738     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_FLOAT16
+   662: ffffffff80064240    22 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_SINT8
+   663: ffffffff80068728     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_SINT8
+   664: ffffffff80064220    22 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_UINT8
+   665: ffffffff80068718     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_UINT8
+   666: ffffffff80064200    23 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_SINT16
+   667: ffffffff80068708     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_SINT16
+   668: ffffffff800641e0    23 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_UINT16
+   669: ffffffff800686f8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_UINT16
+   670: ffffffff800641c0    19 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DECO_EH
+   671: ffffffff800686e8     9 OBJECT  LOCAL  DEFAULT    8 STR_DECO_EH
+   672: ffffffff8000bb30   841 FUNC    LOCAL  DEFAULT    4 ZydisFormatterAT[...]
+   673: ffffffff800648b0    10 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DELIM_O[...]
+   674: ffffffff800648a6     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DELIM_M[...]
+   675: ffffffff8006d3c8     9 OBJECT  LOCAL  DEFAULT    8 STR_DELIM_OPERAN[...]
+   676: ffffffff8006d3b8     9 OBJECT  LOCAL  DEFAULT    8 STR_DELIM_MNEMON[...]
+   677: ffffffff8000be79   458 FUNC    LOCAL  DEFAULT    4 ZydisFormatterAT[...]
+   678: ffffffff80064888    12 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_INVALID[...]
+   679: ffffffff8006d378     9 OBJECT  LOCAL  DEFAULT    8 STR_INVALID_MNEM[...]
+   680: ffffffff8006d368     9 OBJECT  LOCAL  DEFAULT    8 STR_FAR_ATT
+   681: ffffffff8006d338     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_32_ATT
+   682: ffffffff8006d358     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_8_ATT
+   683: ffffffff8006d2f8     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_512_ATT
+   684: ffffffff8006d318     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_128_ATT
+   685: ffffffff8006d348     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_16_ATT
+   686: ffffffff8006d328     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_64_ATT
+   687: ffffffff8006d308     9 OBJECT  LOCAL  DEFAULT    8 STR_SIZE_256_ATT
+   688: ffffffff8006d2e8     9 OBJECT  LOCAL  DEFAULT    8 STR_SHORT.lto_priv.0
+   689: ffffffff8006d2d8     9 OBJECT  LOCAL  DEFAULT    8 STR_NEAR.lto_priv.0
+   690: ffffffff8000c043   114 FUNC    LOCAL  DEFAULT    4 ZydisFormatterAT[...]
+   691: ffffffff8006487c     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_REGISTER
+   692: ffffffff80069510     9 OBJECT  LOCAL  DEFAULT    8 STR_REGISTER
+   693: ffffffff80069500     9 OBJECT  LOCAL  DEFAULT    8 STR_INVALID_REG.[...]
+   694: ffffffff8000c0b5   244 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   695: ffffffff8000c1a9    89 FUNC    LOCAL  DEFAULT    4 ZydisStringAppendDecU
+   696: ffffffff8000c202   538 FUNC    LOCAL  DEFAULT    4 ZydisFormatterAT[...]
+   697: ffffffff80068b70     9 OBJECT  LOCAL  DEFAULT    8 str_sub.3.lto_priv.0
+   698: ffffffff80068b80     9 OBJECT  LOCAL  DEFAULT    8 str_sub.1.lto_priv.0
+   699: ffffffff8000c41c   151 FUNC    LOCAL  DEFAULT    4 ZydisStringAppen[...]
+   700: ffffffff80068b50     9 OBJECT  LOCAL  DEFAULT    8 str_sub.3.lto_priv.1
+   701: ffffffff80068b40     9 OBJECT  LOCAL  DEFAULT    8 str_add.2.lto_priv.1
+   702: ffffffff8000c4b3   377 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   703: ffffffff8000c62c   252 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   704: ffffffff8000c728   104 FUNC    LOCAL  DEFAULT    4 ZydisFormatterAT[...]
+   705: ffffffff80064876     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_MUL.lto[...]
+   706: ffffffff80068b90     9 OBJECT  LOCAL  DEFAULT    8 STR_MUL.lto_priv.0
+   707: ffffffff8000c790   388 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   708: ffffffff80068b00     9 OBJECT  LOCAL  DEFAULT    8 STR_ADD.lto_priv.0
+   709: ffffffff8000c914   363 FUNC    LOCAL  DEFAULT    4 ZydisFormatterBa[...]
+   710: ffffffff8000ca7f    85 FUNC    LOCAL  DEFAULT    4 ZydisFormatterAT[...]
+   711: ffffffff80064870     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_IMMEDIATE
+   712: ffffffff80068b60     9 OBJECT  LOCAL  DEFAULT    8 STR_IMMEDIATE
+   713: ffffffff8000cad4   529 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   714: ffffffff80064161     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_SUB
+   715: ffffffff80068628     9 OBJECT  LOCAL  DEFAULT    8 STR_SUB
+   716: ffffffff80064190     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_ADD
+   717: ffffffff800686a8     9 OBJECT  LOCAL  DEFAULT    8 STR_ADD.lto_priv.1
+   718: ffffffff8000cce5   571 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   719: ffffffff80064044     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_ADDR_RE[...]
+   720: ffffffff80068588     9 OBJECT  LOCAL  DEFAULT    8 STR_ADDR_RELATIVE
+   721: ffffffff80068558     9 OBJECT  LOCAL  DEFAULT    8 str_sub.3.lto_priv.2
+   722: ffffffff80068548     9 OBJECT  LOCAL  DEFAULT    8 str_add.2.lto_priv.2
+   723: ffffffff80068578     9 OBJECT  LOCAL  DEFAULT    8 str_sub.1.lto_priv.2
+   724: ffffffff80068568     9 OBJECT  LOCAL  DEFAULT    8 str_add.0.lto_priv.2
+   725: ffffffff8000cf20   551 FUNC    LOCAL  DEFAULT    4 ZydisFormatterAT[...]
+   726: ffffffff800648a0     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_MEMORY_[...]
+   727: ffffffff80064894     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_MEMORY_[...]
+   728: ffffffff8006d3a8     9 OBJECT  LOCAL  DEFAULT    8 STR_MEMORY_BEGIN_ATT
+   729: ffffffff8006489a     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_DELIM_MEMORY
+   730: ffffffff8006d398     9 OBJECT  LOCAL  DEFAULT    8 STR_DELIM_MEMORY
+   731: ffffffff8006d388     9 OBJECT  LOCAL  DEFAULT    8 STR_MEMORY_END_ATT
+   732: ffffffff8000d147   629 FUNC    LOCAL  DEFAULT    4 ZydisFormatterIn[...]
+   733: ffffffff80064196     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_MEMORY_[...]
+   734: ffffffff800686b8     9 OBJECT  LOCAL  DEFAULT    8 STR_MEMORY_BEGIN[...]
+   735: ffffffff80064184     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_MEMORY_[...]
+   736: ffffffff8006418a     6 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_MUL.lto[...]
+   737: ffffffff80068698     9 OBJECT  LOCAL  DEFAULT    8 STR_MUL.lto_priv.1
+   738: ffffffff80068688     9 OBJECT  LOCAL  DEFAULT    8 STR_MEMORY_END_INTEL
+   739: ffffffff8000d3bc    77 FUNC    LOCAL  DEFAULT    4 ZydisInputNextBytes
+   740: ffffffff8000d409   168 FUNC    LOCAL  DEFAULT    4 ZydisReadDisplacement
+   741: ffffffff8000d4b1   235 FUNC    LOCAL  DEFAULT    4 ZydisReadImmediate
+   742: ffffffff80030d50     9 OBJECT  LOCAL  DEFAULT    6 decoder_modes.34
+   743: ffffffff80068200   584 OBJECT  LOCAL  DEFAULT    8 FORMATTER_INTEL
+   744: ffffffff80030d48     3 OBJECT  LOCAL  DEFAULT    6 zydis_decoder_tr[...]
+   745: ffffffff8002fd60    64 OBJECT  LOCAL  DEFAULT    6 operand_size_map.33
+   746: ffffffff8002fda0    24 OBJECT  LOCAL  DEFAULT    6 address_size_map.32
+   747: ffffffff8002fdc0   280 OBJECT  LOCAL  DEFAULT    6 INSTR_ENCODINGS
+   748: ffffffff8002ff40   208 OBJECT  LOCAL  DEFAULT    6 lookup.31
+   749: ffffffff8002ff18    12 OBJECT  LOCAL  DEFAULT    6 mask_reg.30
+   750: ffffffff8002ff08    12 OBJECT  LOCAL  DEFAULT    6 mask_rm.29
+   751: ffffffff8002fef0    24 OBJECT  LOCAL  DEFAULT    6 available_regs.28
+   752: ffffffff8002fee0    16 OBJECT  LOCAL  DEFAULT    6 lookup.27
+   753: ffffffff800301cc     4 OBJECT  LOCAL  DEFAULT    6 lookup.23
+   754: ffffffff800301cc     4 OBJECT  LOCAL  DEFAULT    6 lookup.22
+   755: ffffffff800301b0    28 OBJECT  LOCAL  DEFAULT    6 broadcasts.21
+   756: ffffffff800301a8     6 OBJECT  LOCAL  DEFAULT    6 lookup.20
+   757: ffffffff800301a2     6 OBJECT  LOCAL  DEFAULT    6 element_sizes.19
+   758: ffffffff80030190    18 OBJECT  LOCAL  DEFAULT    6 scales.18
+   759: ffffffff80030140    72 OBJECT  LOCAL  DEFAULT    6 broadcasts.17
+   760: ffffffff80030130    12 OBJECT  LOCAL  DEFAULT    6 scales.16
+   761: ffffffff80030100    48 OBJECT  LOCAL  DEFAULT    6 broadcasts.15
+   762: ffffffff800300f0     3 OBJECT  LOCAL  DEFAULT    6 scales.14
+   763: ffffffff800300ea     6 OBJECT  LOCAL  DEFAULT    6 scales.13
+   764: ffffffff800300e7     3 OBJECT  LOCAL  DEFAULT    6 scales.12
+   765: ffffffff800300e4     3 OBJECT  LOCAL  DEFAULT    6 scales.11
+   766: ffffffff800300e1     3 OBJECT  LOCAL  DEFAULT    6 scales.10
+   767: ffffffff800300e7     3 OBJECT  LOCAL  DEFAULT    6 scales.9
+   768: ffffffff800300de     3 OBJECT  LOCAL  DEFAULT    6 scales.8
+   769: ffffffff800300d8     6 OBJECT  LOCAL  DEFAULT    6 scales.7
+   770: ffffffff800300c0    24 OBJECT  LOCAL  DEFAULT    6 broadcasts.6
+   771: ffffffff80030080    52 OBJECT  LOCAL  DEFAULT    6 broadcasts.5
+   772: ffffffff80030060    24 OBJECT  LOCAL  DEFAULT    6 lookup.4
+   773: ffffffff80030040    24 OBJECT  LOCAL  DEFAULT    6 lookup.3
+   774: ffffffff80030030     9 OBJECT  LOCAL  DEFAULT    6 lookup.2
+   775: ffffffff80030020    16 OBJECT  LOCAL  DEFAULT    6 lookup.1
+   776: ffffffff80030010     2 OBJECT  LOCAL  DEFAULT    6 lookup.0.lto_priv.0
+   777: ffffffff800301e0  2920 OBJECT  LOCAL  DEFAULT    6 ACCESSED_FLAGS
+   778: ffffffff800176c0 96590 OBJECT  LOCAL  DEFAULT    6 OPERAND_DEFINITIONS
+   779: ffffffff8002f010    12 OBJECT  LOCAL  DEFAULT    6 lookup.38
+   780: ffffffff8002f010    12 OBJECT  LOCAL  DEFAULT    6 lookup.37
+   781: ffffffff8002f020  3192 OBJECT  LOCAL  DEFAULT    6 REG_LOOKUP
+   782: ffffffff8002fca0   192 OBJECT  LOCAL  DEFAULT    6 lookup.0.lto_priv.1
+   783: ffffffff800681a8     8 OBJECT  LOCAL  DEFAULT    8 stbds_hash_seed
+   784: ffffffff80068190    24 OBJECT  LOCAL  DEFAULT    8 m_stivale2_frame[...]
+   785: ffffffff800681c0    24 OBJECT  LOCAL  DEFAULT    8 m_stivale2_smp
+   786: ffffffff8006f240 0x200000 OBJECT  LOCAL  DEFAULT   10 m_entry_stack
+   787: ffffffff80068448     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_4F
+   788: ffffffff80068458     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_4E
+   789: ffffffff80068468     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_4D
+   790: ffffffff80068478     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_4C
+   791: ffffffff80068488     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_4B
+   792: ffffffff80068498     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_4A
+   793: ffffffff800684a8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_49
+   794: ffffffff800684b8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_48
+   795: ffffffff800684c8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_47
+   796: ffffffff800684d8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_46
+   797: ffffffff800684e8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_45
+   798: ffffffff800684f8     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_44
+   799: ffffffff80068508     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_43
+   800: ffffffff80068518     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_42
+   801: ffffffff80068528     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_41
+   802: ffffffff80068538     9 OBJECT  LOCAL  DEFAULT    8 STR_PREF_REX_40
+   803: ffffffff80017560    17 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_4F
+   804: ffffffff80017580    16 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_4E
+   805: ffffffff80017590    16 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_4D
+   806: ffffffff800175a0    15 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_4C
+   807: ffffffff800175b0    16 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_4B
+   808: ffffffff800175c0    15 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_4A
+   809: ffffffff800175d0    15 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_49
+   810: ffffffff800175e0    14 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_48
+   811: ffffffff800175f0    16 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_47
+   812: ffffffff80017600    15 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_46
+   813: ffffffff80017610    15 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_45
+   814: ffffffff80017620    14 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_44
+   815: ffffffff80017630    15 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_43
+   816: ffffffff80017640    14 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_42
+   817: ffffffff80017650    14 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_41
+   818: ffffffff80017660    12 OBJECT  LOCAL  DEFAULT    6 TOK_DATA_PREF_REX_40
+   819: ffffffff80005d30   161 FUNC    GLOBAL HIDDEN     4 release_waiting_[...]
+   820: 0000000000038d8f     0 NOTYPE  WEAK   HIDDEN    11 Synchronization.[...]
+   821: ffffffff8000a485    28 FUNC    GLOBAL HIDDEN     4 ZYAN_MEMCPY.isra.0
+   822: 0000000000024646     0 NOTYPE  WEAK   HIDDEN    11 debug.c.e30980f8
+   823: ffffffff8000999c   195 FUNC    GLOBAL HIDDEN     4 vmm_alloc.constprop.0
+   824: 0000000000000498     0 NOTYPE  GLOBAL DEFAULT    3 __cpu_local_size
+   825: 0000000000000468     8 OBJECT  GLOBAL HIDDEN     3 m_per_cpu_base.l[...]
+   826: 000000000004c5dc     0 NOTYPE  WEAK   HIDDEN    11 String.c.776817da
+   827: 000000000003ae2f     0 NOTYPE  WEAK   HIDDEN    11 Encoder.c.29c2ff85
+   828: 0000000000054fdb     0 NOTYPE  WEAK   HIDDEN    11 Formatter.c.4a2d6f89
+   829: 000000000002d141     0 NOTYPE  WEAK   HIDDEN    11 tlsf.c.eff0d6cc
+   830: ffffffff80002cae    84 FUNC    GLOBAL HIDDEN     4 debug_lookup_symbol
+   831: ffffffff80009c26   607 FUNC    GLOBAL HIDDEN     4 mutex_lock.const[...]
+   832: ffffffff80002d02   525 FUNC    GLOBAL HIDDEN     4 ZydisFormatterPr[...]
+   833: ffffffff80009b4a   152 FUNC    GLOBAL HIDDEN     4 mutex_unlock.con[...]
+   834: 000000000002f909     0 NOTYPE  WEAK   HIDDEN    11 string.c.b0226348
+   835: ffffffff80009f21   275 FUNC    GLOBAL HIDDEN     4 memset.constprop[...]
+   836: 00000000000209ad     0 NOTYPE  WEAK   HIDDEN    11 semaphore.c.5668d020
+   837: ffffffff8006e0b0     8 OBJECT  GLOBAL HIDDEN    10 m_all_objects.lt[...]
+   838: ffffffff800098f9   163 FUNC    GLOBAL HIDDEN     4 snprintf_.constprop.0
+   839: ffffffff8001099a    46 FUNC    GLOBAL HIDDEN     4 memmove.isra.0
+   840: 000000000002cd99     0 NOTYPE  WEAK   HIDDEN    11 arena.c.ce0512c9
+   841: 0000000000036706     0 NOTYPE  WEAK   HIDDEN    11 String.c.c19d10e7
+   842: 0000000000033aa7     0 NOTYPE  WEAK   HIDDEN    11 cpu_local.c.95e37539
+   843: 0000000000038df1     0 NOTYPE  WEAK   HIDDEN    11 Thread.c.0afa7674
+   844: 00000000000396e3     0 NOTYPE  WEAK   HIDDEN    11 Bitset.c.f5f4eb3d
+   845: ffffffff8000a40f   118 FUNC    GLOBAL HIDDEN     4 stbds_hmfree_fun[...]
+   846: 000000000002f767     0 NOTYPE  WEAK   HIDDEN    11 trace.c.a9d3ac49
+   847: ffffffff80007f6a   522 FUNC    GLOBAL DEFAULT    4 common_interrupt[...]
+   848: 000000000005b3e1     0 NOTYPE  WEAK   HIDDEN    11 FormatterBase.c.[...]
+   849: ffffffff80008184    16 FUNC    GLOBAL HIDDEN     4 unlock_all_threads
+   850: ffffffff8006e028     8 OBJECT  GLOBAL HIDDEN    10 m_tls_size.lto_priv.0
+   851: ffffffff80009e85   156 FUNC    GLOBAL HIDDEN     4 conditional_wait[...]
+   852: 000000000002b77a     0 NOTYPE  WEAK   HIDDEN    11 apic.c.e6b58359
+   853: ffffffff80004f25   147 FUNC    GLOBAL HIDDEN     4 stbds_arrgrowf
+   854: ffffffff80005ba8    71 FUNC    GLOBAL HIDDEN     4 scheduler_preemp[...]
+   855: 0000000000042e8d     0 NOTYPE  WEAK   HIDDEN    11 FormatterATT.c.7[...]
+   856: 0000000000000000    56 TLS     GLOBAL HIDDEN     9 m_rank_head.lto_[...]
+   857: 000000000007803e     0 NOTYPE  WEAK   HIDDEN    11 EncoderData.c.4b[...]
+   858: ffffffff8006e0b8     8 OBJECT  GLOBAL HIDDEN    10 g_all_threads
+   859: 0000000000038d2d     0 NOTYPE  WEAK   HIDDEN    11 Terminal.c.47cae017
+   860: 000000000002c07f     0 NOTYPE  WEAK   HIDDEN    11 vmm.c.bb767455
+   861: 000000000004cb91     0 NOTYPE  WEAK   HIDDEN    11 Zydis.c.e40a5e10
+   862: 00000000000376f9     0 NOTYPE  WEAK   HIDDEN    11 Vector.c.a27d72b0
+   863: ffffffff8006e020     8 OBJECT  GLOBAL HIDDEN    10 m_tls_align.lto_[...]
+   864: 000000000002cbd6     0 NOTYPE  WEAK   HIDDEN    11 stack.c.430f2505
+   865: 000000000003a365     0 NOTYPE  WEAK   HIDDEN    11 MetaInfo.c.0fbfae75
+   866: ffffffff8006e040   112 OBJECT  GLOBAL HIDDEN    10 m_heap_ranks.lto[...]
+   867: 000000000002e2e9     0 NOTYPE  WEAK   HIDDEN    11 early.c.5ffade6c
+   868: 000000000002a733     0 NOTYPE  WEAK   HIDDEN    11 gdt.c.48b94a51
+   869: ffffffff80010868   306 FUNC    GLOBAL HIDDEN     4 memcpy.isra.0
+   870: 000000000001e931     0 NOTYPE  WEAK   HIDDEN    11 notify_list.c.ae[...]
+   871: ffffffff80005a49    44 FUNC    GLOBAL HIDDEN     4 run_queue_empty.[...]
+   872: ffffffff80010fdf    24 FUNC    GLOBAL HIDDEN     4 buddy_tree_valid[...]
+   873: ffffffff80009881   120 FUNC    GLOBAL HIDDEN     4 ZydisFormatterBu[...]
+   874: 0000000000033cec     0 NOTYPE  WEAK   HIDDEN    11 thread.c.bb61ac92
+   875: 000000000002e7c6     0 NOTYPE  WEAK   HIDDEN    11 phys.c.53e2ba23
+   876: ffffffff80008174    16 FUNC    GLOBAL HIDDEN     4 lock_all_threads
+   877: ffffffff8000a034   987 FUNC    GLOBAL HIDDEN     4 create_thread.co[...]
+   878: ffffffff800054f7   434 FUNC    GLOBAL HIDDEN     4 vmm_map
+   879: ffffffff8006e008     8 OBJECT  GLOBAL HIDDEN    10 default_print_ad[...]
+   880: 000000000001ddf4     0 NOTYPE  WEAK   HIDDEN    11 heap.c.ab543ea0
+   881: 000000000006d14c     0 NOTYPE  WEAK   HIDDEN    11 Utils.c.e8a5e1be
+   882: ffffffff80005c36    13 FUNC    GLOBAL HIDDEN     4 get_current_thread
+   883: 0000000000030e41     0 NOTYPE  WEAK   HIDDEN    11 buffer.c.cebabf39
+   884: ffffffff80005dd1   121 FUNC    GLOBAL HIDDEN     4 cas_thread_state
+   885: ffffffff8000625e  6076 FUNC    GLOBAL DEFAULT    4 _start
+   886: 00000000000219bf     0 NOTYPE  WEAK   HIDDEN    11 mutex.c.cdf9262c
+   887: 000000000003550f     0 NOTYPE  WEAK   HIDDEN    11 timer.c.75dae0cd
+   888: ffffffff80005e4a   110 FUNC    GLOBAL HIDDEN     4 scheduler_ready_[...]
+   889: 0000000000038bbd     0 NOTYPE  WEAK   HIDDEN    11 Allocator.c.5b9b4feb
+   890: ffffffff80004d63   450 FUNC    GLOBAL HIDDEN     4 realloc
+   891: 000000000007d962     0 NOTYPE  WEAK   HIDDEN    11 Mnemonic.c.2bc302c3
+   892: 000000000007cbf2     0 NOTYPE  WEAK   HIDDEN    11 DecoderData.c.b5[...]
+   893: 0000000000038e53     0 NOTYPE  WEAK   HIDDEN    11 Process.c.4d516433
+   894: 0000000000077bd0     0 NOTYPE  WEAK   HIDDEN    11 FormatterBuffer.[...]
+   895: ffffffff80005a75    77 FUNC    GLOBAL HIDDEN     4 cas_from_suspend[...]
+   896: ffffffff8000522c   482 FUNC    GLOBAL HIDDEN     4 palloc
+   897: ffffffff8000540e   135 FUNC    GLOBAL HIDDEN     4 vmm_alloc_page.l[...]
+   898: ffffffff80009a5f   235 FUNC    GLOBAL HIDDEN     4 gc_new.constprop.0
+   899: 0000000000030c9a     0 NOTYPE  WEAK   HIDDEN    11 list.c.3a85cde3
+   900: ffffffff80009be2    68 FUNC    GLOBAL HIDDEN     4 lapic_send_ipi.c[...]
+   901: ffffffff80005bef    71 FUNC    GLOBAL HIDDEN     4 scheduler_preemp[...]
+   902: ffffffff8006e000     4 OBJECT  GLOBAL HIDDEN    10 m_idle_cpus_coun[...]
+   903: ffffffff80068030     8 OBJECT  GLOBAL HIDDEN     8 m_cpu_count.lto_[...]
+   904: 0000000000031ba6     0 NOTYPE  WEAK   HIDDEN    11 scheduler.c.0074ff3e
+   905: ffffffff80002f21  3567 FUNC    GLOBAL HIDDEN     4 _vsnprintf.lto_priv.0
+   906: ffffffff8001082a    62 FUNC    GLOBAL HIDDEN     4 scheduler_resume[...]
+   907: ffffffff800024be    14 FUNC    GLOBAL HIDDEN     4 _out_buffer.lto_[...]
+   908: ffffffff80002a84    17 FUNC    GLOBAL HIDDEN     4 spinlock_unlock
+   909: 0000000000038eb5     0 NOTYPE  WEAK   HIDDEN    11 Memory.c.9bf1d2db
+   910: 0000000000039669     0 NOTYPE  WEAK   HIDDEN    11 Zycore.c.8cf5df6f
+   911: 000000000002e4dd     0 NOTYPE  WEAK   HIDDEN    11 malloc.c.96cad830
+   912: 00000000000310fa     0 NOTYPE  WEAK   HIDDEN    11 printf.c.67e420d5
+   913: 000000000003603a     0 NOTYPE  WEAK   HIDDEN    11 Format.c.00a50663
+   914: 000000000004bad1     0 NOTYPE  WEAK   HIDDEN    11 Register.c.4f65e106
+   915: ffffffff8006e0c0    32 OBJECT  GLOBAL HIDDEN    10 m_gc_mutex.lto_priv.0
+   916: 00000000000357ec     0 NOTYPE  WEAK   HIDDEN    11 delay.c.dcd85de0
+   917: ffffffff8000979b   230 FUNC    GLOBAL HIDDEN     4 ZydisCalcAbsolut[...]
+   918: ffffffff80068018     8 OBJECT  GLOBAL HIDDEN     8 m_local_apic_bas[...]
+   919: 000000000004cc89     0 NOTYPE  WEAK   HIDDEN    11 Decoder.c.8664f590
+   920: 0000000000022ab5     0 NOTYPE  WEAK   HIDDEN    11 spinlock.c.77fa582a
+   921: 000000000002a835     0 NOTYPE  WEAK   HIDDEN    11 idt.c.9a4c92f5
+   922: ffffffff80004bfe   357 FUNC    GLOBAL HIDDEN     4 malloc_aligned
+   923: ffffffff80003d10   199 FUNC    GLOBAL HIDDEN     4 printf_
+   924: 0000000000035cc4     0 NOTYPE  WEAK   HIDDEN    11 acpi.c.9e137447
+   925: ffffffff800000b0     8 FUNC    GLOBAL HIDDEN     4 get_cpu_count
+   926: ffffffff800040c4   442 FUNC    GLOBAL DEFAULT    4 common_exception[...]
+   927: 0000000000038f17     0 NOTYPE  WEAK   HIDDEN    11 ArgParse.c.6b103e2c
+   928: ffffffff8000d59c 12942 FUNC    GLOBAL HIDDEN     4 debug_disasm_at.[...]
+   929: ffffffff80011000    32 OBJECT  GLOBAL DEFAULT    5 g_stivale2_header
+   930: 00000000000301af     0 NOTYPE  WEAK   HIDDEN    11 stb_ds.c.8ac49f74
+   931: ffffffff800109c8  1559 FUNC    GLOBAL HIDDEN     4 stbds_hmput_key.[...]
+   932: ffffffff80005c43   237 FUNC    GLOBAL HIDDEN     4 acquire_waiting_[...]
+   933: 000000000001e8c8     0 NOTYPE  WEAK   HIDDEN    11 types.c.f62c7cfa
+   934: 0000000000022d38     0 NOTYPE  WEAK   HIDDEN    11 kernel.c.4eb32020
+   935: 0000000000038328     0 NOTYPE  WEAK   HIDDEN    11 List.c.9fdb583e
+   936: 00000000000723d2     0 NOTYPE  WEAK   HIDDEN    11 SharedData.c.8d454a60
+   937: ffffffff80002f0f    18 FUNC    GLOBAL HIDDEN     4 get_apic_id
+   938: 000000000001c747     0 NOTYPE  WEAK   HIDDEN    11 gc.c.4fef1d41
+   939: ffffffff8006e010     8 OBJECT  GLOBAL HIDDEN    10 m_buddy_tree_upp[...]
+   940: 000000000001f9af     0 NOTYPE  WEAK   HIDDEN    11 conditional.c.ac[...]
+   941: ffffffff8006e018     8 OBJECT  GLOBAL HIDDEN    10 m_tsc_micro_freq[...]
+   942: ffffffff80004b14    44 FUNC    GLOBAL HIDDEN     4 free
+   943: ffffffff80002a40    59 FUNC    GLOBAL HIDDEN     4 spinlock_lock
+   944: 00000000000643ee     0 NOTYPE  WEAK   HIDDEN    11 FormatterIntel.c[...]
+
+No version information found in this file.
+
+Displaying notes found in: .note.gnu.property
+  Owner                Data size 	Description
+  GNU                  0x00000010	NT_GNU_PROPERTY_TYPE_0
+      Properties: x86 feature: IBT, SHSTK
+
+Displaying notes found in: .note.gnu.build-id
+  Owner                Data size 	Description
+  GNU                  0x00000014	NT_GNU_BUILD_ID (unique build ID bitstring)
+    Build ID: 644f0891c5516ff384b5d377590e859b5e54e888

@@ -946,10 +946,11 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
       }
 
       case 'P': {
-          width = sizeof(void*) * 2U;
           uintptr_t value = ((uintptr_t)va_arg(va, void*));
           symbol_t* symbol = debug_lookup_symbol(value);
           if (symbol == NULL || value - symbol->address != 0) {
+              width = sizeof(void*) * 2U;
+              flags |= FLAGS_ZEROPAD | FLAGS_UPPERCASE;
               idx = _ntoa_long(out, buffer, idx, maxlen, (unsigned long)value, false, 16U, precision, width, flags);
           } else {
               const char* p = symbol->name;

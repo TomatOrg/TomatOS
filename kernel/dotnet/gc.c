@@ -33,7 +33,7 @@ static void write_field(object_t* o, size_t offset, object_t* new) {
  */
 static object_t* m_all_objects = NULL;
 
-object_t* gc_new(type_t* type, size_t size) {
+void gc_new(type_t* type, size_t size, object_t** output) {
     scheduler_preempt_disable();
 
     object_t* o = heap_alloc(size);
@@ -45,8 +45,12 @@ object_t* gc_new(type_t* type, size_t size) {
     o->next = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
     while (!atomic_compare_exchange_weak_explicit(&m_all_objects, &o->next, o, memory_order_relaxed, memory_order_relaxed));
 
+    TRACE("Allocated %p", o);
+
+    // set it out
+    *output = o;
+
     scheduler_preempt_enable();
-    return o;
 }
 
 void gc_update(object_t* o, size_t offset, object_t* new) {
@@ -138,9 +142,23 @@ static void get_roots() {
         if (thread == get_current_thread()) continue;
 
         suspend_state_t state = scheduler_suspend_thread(thread);
-        thread->tcb->gc_local_data.alloc_color = m_color_black;
-        thread->tcb->gc_local_data.snoop = false;
-        // TODO: copy thread local state...
+        gc_local_data_t* gcl = &thread->tcb->tcb->gc_local_data;
+
+        gcl->alloc_color = m_color_black;
+        gcl->snoop = false;
+
+        // copy thread local state...
+        stack_frame_t* frame = gcl->top_of_stack;
+        while (frame != NULL) {
+            for (int j = 0; j < frame->count; j++) {
+                object_t* obj = frame->pointers[j];
+                if (obj != NULL) {
+                    hmput(m_roots, obj, obj);
+                }
+            }
+            frame = frame->prev;
+        }
+
         scheduler_resume_thread(state);
     }
     unlock_all_threads();
@@ -252,6 +270,7 @@ static void sweep() {
             // TODO: we technically need to queue this for finalization and
             //       only then destroy it...
             swept->color = COLOR_BLUE;
+            TRACE("Freed %p", swept);
             heap_free(swept);
         } else {
             // the last object is this one since it is still alive
@@ -292,49 +311,89 @@ static void gc_collection_cycle() {
     // TODO: heap_flush every so often
 }
 
-static bool m_running = true;
-static mutex_t m_trigger_mutex;
-static conditional_t m_wake;
-static conditional_t m_done;
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Conductor, allows mutators to trigger the gc
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void gc_next() {
-    atomic_store(&m_running, false);
-    conditional_broadcast(&m_done);
+/**
+ * Is the gc currently running
+ */
+static atomic_bool m_gc_running = true;
+
+/**
+ * Mutex for controlling the running state
+ */
+static mutex_t m_gc_mutex;
+
+/**
+ * Conditional variable for waking the garbage collector
+ */
+static conditional_t m_gc_wake;
+
+/**
+ * Conditional variable for waiting for the gc to be finished on the cycle
+ */
+static conditional_t m_gc_done;
+
+/**
+ * Allows the gc to wait until the next request for a collection
+ */
+static void gc_conductor_next() {
+    m_gc_running = false;
+    conditional_broadcast(&m_gc_done);
     do {
-        conditional_wait(&m_wake, &m_trigger_mutex);
-    } while (!atomic_load(&m_running));
+        conditional_wait(&m_gc_wake, &m_gc_mutex);
+    } while (!m_gc_running);
+}
+
+/**
+ * Wakeup the garbage collector
+ */
+static void gc_conductor_wake() {
+    if (m_gc_running) {
+        // gc is already running or someone
+        // already requested it to run
+        return;
+    }
+
+    m_gc_running = true;
+    conditional_signal(&m_gc_wake);
+}
+
+/**
+ * Wait for the garbage collector
+ */
+static void gc_conductor_wait() {
+    do {
+        conditional_wait(&m_gc_done, &m_gc_mutex);
+    } while (m_gc_running);
 }
 
 void gc_wake() {
-    if (atomic_load(&m_running)) {
-        return;
-    }
-    atomic_store(&m_running, true);
-    conditional_signal(&m_wake);
-}
-
-static void gc_wait_no_wake() {
-    do {
-        conditional_wait(&m_done, &m_trigger_mutex);
-    } while (atomic_load(&m_running));
+    gc_conductor_wake();
 }
 
 void gc_wait() {
-    mutex_lock(&m_trigger_mutex);
-    gc_wake();
-    gc_wait_no_wake();
-    mutex_unlock(&m_trigger_mutex);
+    mutex_lock(&m_gc_mutex);
+    gc_conductor_wake();
+    gc_conductor_wait();
+    mutex_unlock(&m_gc_mutex);
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GC Thread, actually does the garbage collection
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 noreturn static void gc_thread(void* ctx) {
-    TRACE("GC thread started");
+    TRACE("gc: GC thread started");
 
     while (true) {
-        mutex_lock(&m_trigger_mutex);
-        gc_next();
-        mutex_unlock(&m_trigger_mutex);
+        TRACE("gc: Going to sleep");
+        mutex_lock(&m_gc_mutex);
+        gc_conductor_next();
+        mutex_unlock(&m_gc_mutex);
+        TRACE("gc: Starting collection");
 
-        TRACE("Starting collection");
         gc_collection_cycle();
     }
 }
@@ -346,10 +405,19 @@ err_t init_gc() {
     CHECK(thread != NULL);
     scheduler_ready_thread(thread);
 
-    mutex_lock(&m_trigger_mutex);
-    gc_wait_no_wake();
-    mutex_unlock(&m_trigger_mutex);
+    mutex_lock(&m_gc_mutex);
+    gc_conductor_wait();
+    mutex_unlock(&m_gc_mutex);
 
 cleanup:
     return err;
+}
+
+void stack_frame_cleanup(stack_frame_t** ptr) {
+    GCL->top_of_stack = (*ptr)->prev;
+}
+
+void stack_frame_push(stack_frame_t* frame) {
+    frame->prev = GCL->top_of_stack;
+    GCL->top_of_stack = frame;
 }

@@ -2,8 +2,9 @@
 # Build constants
 ########################################################################################################################
 
-CC 			:= gcc
-LD			:= gcc
+PREFIX		?=
+CC 			:= $(PREFIX)gcc
+LD			:= $(PREFIX)gcc
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
@@ -18,7 +19,7 @@ CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
-CFLAGS 		+= -Os -flto -g3 -mtune=nehalem -march=nehalem
+CFLAGS 		+= -Os -flto -g3 -mtune=nehalem -march=nehalem -flto
 CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mno-red-zone -nostdlib
 CFLAGS		+= -lgcc

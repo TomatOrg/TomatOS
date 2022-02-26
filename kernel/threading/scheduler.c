@@ -821,6 +821,7 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
         //       to call signal from here?!
 
         // mark this cpu as idle
+        // TODO: make this nicer, I don't like the way it is currently
         lock_scheduler();
         m_idle_cpus |= 1 << get_cpu_id();
         m_idle_cpus_count++;
