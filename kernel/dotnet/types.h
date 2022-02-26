@@ -20,9 +20,31 @@ struct object {
     //
     // GC related stuff
     //
-    uint8_t color;
     object_t** log_pointer;
-    list_entry_t link;
+
+    // the color of the object, black and white switch during collection
+    // and blue means unallocated
+    uint8_t color;
+
+    // the rank of the object from the allocator
+    uint8_t rank;
+
+    uint8_t _reserved0;
+    uint8_t _reserved1;
+
+    union {
+        struct {
+            // next free object in the chunk
+            object_t* next;
+
+            // next chunk
+            object_t* chunk_next;
+        };
+
+        // next allocated object
+        // TODO: rcu? is this even a valid case for rcu?
+        list_entry_t entry;
+    };
 };
 
 typedef struct member_info {

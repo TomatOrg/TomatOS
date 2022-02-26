@@ -2,6 +2,7 @@
 
 #include "stivale2.h"
 #include "threading/scheduler.h"
+#include "dotnet/heap.h"
 
 #include <threading/cpu_local.h>
 #include <threading/thread.h>

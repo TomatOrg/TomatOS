@@ -211,14 +211,18 @@ err_t init_tls(void* kernel) {
     err_t err = NO_ERROR;
     Elf64_Ehdr* ehdr = kernel;
 
-    // find the TLS table
+    // Find the stuff we need
     CHECK(ehdr->e_phoff != 0);
     Elf64_Phdr* segments = kernel + ehdr->e_phoff;
     for (int i = 0; i < ehdr->e_phnum; i++) {
         Elf64_Phdr* segment = &segments[i];
         if (segment->p_type == PT_TLS) {
             CHECK(segment->p_filesz == 0); // TODO: preset stuff
+
+            // take the tls size and properly align it
             m_tls_size = segment->p_memsz;
+            m_tls_size += (-m_tls_size - segment->p_vaddr) & (segment->p_align - 1);
+
             TRACE("tls: %d bytes", m_tls_size);
             break;
         }
@@ -280,7 +284,7 @@ static thread_t* get_free_thread() {
 retry:
     // If we have no threads and there are threads in the global free list pull
     // some threads to us, only take up to 32 entries
-    if (thread_list_empty(free_threads) &&!thread_list_empty(&m_global_free_threads)) {
+    if (thread_list_empty(free_threads) && !thread_list_empty(&m_global_free_threads)) {
         // We got no threads on our cpu, move a batch to our cpu
         spinlock_lock(&m_global_free_threads_lock);
         while (m_free_threads_count < 32) {
@@ -332,7 +336,7 @@ cleanup:
     if (IS_ERROR(err)) {
         if (thread != NULL) {
             if (thread->tcb != 0) {
-                free((void*)(thread->tcb - m_tls_size));
+                free((void*)thread->tcb - m_tls_size);
             }
             free(thread);
             thread = NULL;

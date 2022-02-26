@@ -21,10 +21,39 @@ typedef struct gc_local_data {
     object_set_t snooped;
 } gc_local_data_t;
 
+/**
+ * Blue color is used to indicate
+ * unallocated objects
+ */
+#define COLOR_BLUE 2
+
+/**
+ * Initialize the garbage collector
+ */
 err_t init_gc();
 
-object_t* gc_new(type_t* type, size_t count);
+/**
+ * Allocate a new object from the garbage collector of the given type and of
+ * the given size
+ *
+ * @param type      [IN] The type of the object
+ * @param count     [IN] The size to allocate
+ */
+object_t* gc_new(type_t* type, size_t size);
 
+/**
+ * Update a pointer on the heap
+ *
+ * @remark
+ * This must take an object that is allocated on the heap, it should not be used for local
+ * pointers on the stack or for global variables.
+ *
+ * TODO: maybe just give the field info
+ *
+ * @param o         [IN] The object we are updating
+ * @param offset    [IN] The offset of the field to update
+ * @param new       [IN] The new object we are updating
+ */
 void gc_update(object_t* o, size_t offset, object_t* new);
 
 /**

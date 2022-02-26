@@ -3,6 +3,7 @@
 #include "types.h"
 #include "util/stb_ds.h"
 #include "sync/conditional.h"
+#include "heap.h"
 
 #include <threading/scheduler.h>
 #include <threading/thread.h>
@@ -27,21 +28,22 @@ static void write_field(object_t* o, size_t offset, object_t* new) {
     *(object_t**)((uintptr_t)o + offset) = new;
 }
 
-static spinlock_t m_all_objects_lock = INIT_SPINLOCK();
+static mutex_t m_all_objects_lock = { 0 };
 static list_t m_all_objects = INIT_LIST(m_all_objects);
 
-object_t* gc_new(type_t* type, size_t count) {
+object_t* gc_new(type_t* type, size_t size) {
     scheduler_preempt_disable();
 
-    object_t* o = malloc(type->managed_size * count);
+    object_t* o = heap_alloc(size);
+    o->next = NULL;
     o->color = GCL->alloc_color;
     o->type = type;
 
-    TRACE("Allocated %p", o);
+    mutex_lock(&m_all_objects_lock);
+    list_add(&m_all_objects, &o->entry);
+    mutex_unlock(&m_all_objects_lock);
 
-    spinlock_lock(&m_all_objects_lock);
-    list_add(&m_all_objects, &o->link);
-    spinlock_unlock(&m_all_objects_lock);
+    TRACE("Allocated %p", o);
 
     scheduler_preempt_enable();
     return o;
@@ -215,19 +217,19 @@ static void sweep() {
     }
     unlock_all_threads();
 
-    // TODO: go over all objects in the heap
-
-    spinlock_lock(&m_all_objects_lock);
+    // TODO: I hate this, I have to essentially lock the allocator just so we can
+    //       iterate properly over the allocated items...
+    mutex_lock(&m_all_objects_lock);
     object_t* swept;
     object_t* temp;
-    LIST_FOR_EACH_ENTRY_SAFE(swept, temp, &m_all_objects, link) {
+    LIST_FOR_EACH_ENTRY_SAFE(swept, temp, &m_all_objects, entry) {
         if (swept->color == m_color_white) {
             TRACE("Freeing %p", swept);
-            list_del(&swept->link);
-            free(swept);
+            swept->color = COLOR_BLUE;
+            heap_free(swept);
         }
     }
-    spinlock_unlock(&m_all_objects_lock);
+    mutex_unlock(&m_all_objects_lock);
 }
 
 static void prepare_next_collection() {
@@ -255,6 +257,8 @@ static void gc_collection_cycle() {
     trace_heap();
     sweep();
     prepare_next_collection();
+
+    // TODO: heap_flush every so often
 }
 
 static bool m_running = true;
