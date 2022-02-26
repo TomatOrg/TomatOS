@@ -821,6 +821,10 @@ static thread_t* find_runnable(bool* inherit_time) {
             }
         }
 
+        // TODO: check if we should trigger a collection
+        // TODO: how the fuck do I trigger a collection lmao, is it safe
+        //       to call signal from here?!
+
         // mark this cpu as idle
         lock_scheduler();
         m_idle_cpus |= 1 << get_cpu_id();
@@ -848,6 +852,9 @@ static thread_t* find_runnable(bool* inherit_time) {
                 return thread;
             }
         }
+
+        // set a quick preemption timer so we can steal work later
+        lapic_set_deadline(1000000);
 
         // wait for next interrupt, we are already running from interrupt
         // context so we need to re-enable interrupts first
@@ -895,9 +902,15 @@ static void schedule(interrupt_context_t* ctx) {
 // Scheduler callbacks
 //----------------------------------------------------------------------------------------------------------------------
 
-void scheduler_on_schedule(interrupt_context_t* ctx) {
+void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
+
+    // check if we are sleeping and this was just a quick wakeup
+    // for the cpu to check for work stealing or gc work
+    if (from_preempt && current_thread == NULL) {
+        return;
+    }
 
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 

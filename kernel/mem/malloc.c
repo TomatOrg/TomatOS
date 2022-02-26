@@ -36,6 +36,16 @@ void* malloc(size_t size) {
     return ptr;
 }
 
+void* malloc_aligned(size_t size, size_t alignment) {
+    spinlock_lock(&m_tlsf_lock);
+    void* ptr = tlsf_memalign(m_tlsf, alignment, size);
+    spinlock_unlock(&m_tlsf_lock);
+    if (ptr != NULL) {
+        memset(ptr, 0, size);
+    }
+    return ptr;
+}
+
 void* realloc(void* ptr, size_t size) {
     spinlock_lock(&m_tlsf_lock);
     ptr = tlsf_realloc(m_tlsf, ptr, size);

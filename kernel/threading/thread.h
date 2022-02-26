@@ -1,9 +1,11 @@
 #pragma once
 
-#include "sync/spinlock.h"
-#include "arch/idt.h"
-#include "util/except.h"
-#include "dotnet/gc.h"
+#include <sync/spinlock.h>
+#include <util/except.h>
+#include <dotnet/gc.h>
+#include <arch/idt.h>
+
+#include <stdalign.h>
 
 typedef enum thread_status {
     /**
@@ -54,7 +56,60 @@ typedef enum thread_status {
     THREAD_SUSPEND = 0x1000,
 } thread_status_t;
 
-typedef struct thread_registers {
+typedef struct thread_fx_save_state {
+    uint16_t fcw;
+    uint16_t fsw;
+    uint16_t ftw;
+    uint16_t opcode;
+    uint32_t eip;
+    uint16_t cs;
+    uint16_t _reserved1;
+    uint32_t dataoffset;
+    uint16_t ds;
+    uint8_t _reserved2[2];
+    uint32_t mxcsr;
+    uint32_t mxcsr_mask;
+    uint8_t st0mm0[10];
+    uint8_t _reserved3[6];
+    uint8_t st1mm1[10];
+    uint8_t _reserved4[6];
+    uint8_t st2mm2[10];
+    uint8_t _reserved5[6];
+    uint8_t st3mm3[10];
+    uint8_t _reserved6[6];
+    uint8_t st4mm4[10];
+    uint8_t _reserved7[6];
+    uint8_t st5mm5[10];
+    uint8_t _reserved8[6];
+    uint8_t st6mm6[10];
+    uint8_t _reserved9[6];
+    uint8_t st7mm7[10];
+    uint8_t _reserved10[6];
+    uint8_t xmm0[16];
+    uint8_t xmm1[16];
+    uint8_t xmm2[16];
+    uint8_t xmm3[16];
+    uint8_t xmm4[16];
+    uint8_t xmm5[16];
+    uint8_t xmm6[16];
+    uint8_t xmm7[16];
+    uint8_t xmm8[16];
+    uint8_t xmm9[16];
+    uint8_t xmm10[16];
+    uint8_t xmm11[16];
+    uint8_t xmm12[16];
+    uint8_t xmm13[16];
+    uint8_t xmm14[16];
+    uint8_t xmm15[16];
+    uint8_t _reserved11[6 * 16];
+} PACKED thread_fx_save_state_t;
+STATIC_ASSERT(sizeof(thread_fx_save_state_t) == 512);
+
+typedef struct thread_save_state {
+    // fpu/sse/sse2
+    alignas(16) thread_fx_save_state_t fx_save_state;
+
+    // gprs
     uint64_t r15;
     uint64_t r14;
     uint64_t r13;
@@ -73,7 +128,7 @@ typedef struct thread_registers {
     uint64_t rip;
     uint64_t rflags;
     uint64_t rsp;
-} thread_registers_t;
+} thread_save_state_t;
 
 typedef struct thread_control_block {
     struct thread_control_block* tcb;
@@ -89,7 +144,7 @@ typedef struct thread {
     //
 
     // gprs
-    thread_registers_t regs;
+    thread_save_state_t save_state;
 
     // thread control block
     thread_control_block_t* tcb;

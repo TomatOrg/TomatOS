@@ -155,7 +155,7 @@ void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new
 }
 
 void save_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
-    thread_registers_t* regs = &target->regs;
+    thread_save_state_t* regs = &target->save_state;
     regs->r15 = ctx->r15;
     regs->r14 = ctx->r14;
     regs->r13 = ctx->r13;
@@ -174,10 +174,11 @@ void save_thread_context(thread_t* restrict target, interrupt_context_t* restric
     regs->rip = ctx->rip;
     regs->rflags = ctx->rflags;
     regs->rsp = ctx->rsp;
+    _fxsave64(&regs->fx_save_state);
 }
 
 void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
-    thread_registers_t* regs = &target->regs;
+    thread_save_state_t* regs = &target->save_state;
     ctx->r15 = regs->r15;
     ctx->r14 = regs->r14;
     ctx->r13 = regs->r13;
@@ -196,6 +197,7 @@ void restore_thread_context(thread_t* restrict target, interrupt_context_t* rest
     ctx->rip = regs->rip;
     ctx->rflags = regs->rflags;
     ctx->rsp = regs->rsp;
+    _fxrstor64(&regs->fx_save_state);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,6 +208,11 @@ void restore_thread_context(thread_t* restrict target, interrupt_context_t* rest
  * The TLS size
  */
 static size_t m_tls_size = 0;
+
+/**
+ * The TLS alignement
+ */
+static size_t m_tls_align = 0;
 
 err_t init_tls(void* kernel) {
     err_t err = NO_ERROR;
@@ -222,6 +229,7 @@ err_t init_tls(void* kernel) {
             // take the tls size and properly align it
             m_tls_size = segment->p_memsz;
             m_tls_size += (-m_tls_size - segment->p_vaddr) & (segment->p_align - 1);
+            m_tls_align = segment->p_align;
 
             TRACE("tls: %d bytes", m_tls_size);
             break;
@@ -321,11 +329,11 @@ cleanup:
 static thread_t* alloc_thread() {
     err_t err = NO_ERROR;
 
-    thread_t* thread = malloc(sizeof(thread_t));
+    thread_t* thread = malloc_aligned(sizeof(thread_t), alignof(thread_t));
     CHECK(thread != NULL);
 
     // allocate the tcb
-    void* tcb_bottom = malloc(m_tls_size + sizeof(thread_control_block_t));
+    void* tcb_bottom = malloc_aligned(m_tls_size + sizeof(thread_control_block_t), m_tls_align);
     CHECK(tcb_bottom != 0);
     thread->tcb = tcb_bottom + m_tls_size;
 
@@ -359,16 +367,16 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     vsnprintf(thread->name, sizeof(thread->name), fmt, ap);
     va_end(ap);
 
-    thread->regs.rip = (uint64_t) entry;
-    thread->regs.rflags = BIT1 | BIT9 | BIT21; // Always 1 bit, Interrupt enable flag, Able to use CPUID instruction
-    thread->regs.rsp = (uint64_t)alloc_stack();
+    thread->save_state.rip = (uint64_t) entry;
+    thread->save_state.rflags = BIT1 | BIT9 | BIT21; // Always 1 bit, Interrupt enable flag, Able to use CPUID instruction
+    thread->save_state.rsp = (uint64_t)alloc_stack();
 
     // we want the return address to be thread_exit
     // and the stack to be aligned to 16 bytes + 8
     // as per the sys-v abi (http://www.x86-64.org/documentation/abi.pdf)
-    PUSH64(thread->regs.rsp, 0);
-    PUSH64(thread->regs.rsp, 0);
-    PUSH64(thread->regs.rsp, thread_exit);
+    PUSH64(thread->save_state.rsp, 0);
+    PUSH64(thread->save_state.rsp, 0);
+    PUSH64(thread->save_state.rsp, thread_exit);
 
     // set the state as waiting
     cas_thread_state(thread, THREAD_STATUS_DEAD, THREAD_STATUS_WAITING);

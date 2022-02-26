@@ -698,12 +698,12 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
 
     switch (ctx->int_num) {
         case IRQ_PREEMPT: {
-            scheduler_on_schedule(ctx);
+            scheduler_on_schedule(ctx, true);
             lapic_eoi();
         } break;
 
         case IRQ_SCHEDULE: {
-            scheduler_on_schedule(ctx);
+            scheduler_on_schedule(ctx, false);
         } break;
 
         case IRQ_YIELD: {

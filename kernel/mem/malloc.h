@@ -10,6 +10,8 @@ void check_malloc();
 
 void* malloc(size_t size);
 
+void* malloc_aligned(size_t size, size_t alignment);
+
 void* realloc(void* ptr, size_t size);
 
 void free(void* ptr);
