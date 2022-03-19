@@ -16,7 +16,7 @@ sudo mkfs.ext4 `cat out/build/loopback_dev`p1
 sudo mount `cat out/build/loopback_dev`p1 out/build/test_image
 sudo mkdir out/build/test_image/boot
 sudo cp -rv out/bin/pentagon.elf test/limine.cfg limine/limine.sys out/build/test_image/boot/
-sudo cp -rv CoreLib/bin/Release/net5.0/CoreLib.dll out/build/test_image/boot/
+sudo cp -rv Pentagon/Corelib/bin/Release/net5.0/Corelib.dll out/build/test_image/boot/
 sync
 sudo umount out/build/test_image/
 sudo losetup -d `cat out/build/loopback_dev`

@@ -53,6 +53,7 @@ static ZyanStatus ZydisFormatterPrintAddressAbsolute(const ZydisFormatter* forma
 }
 
 void debug_disasm_at(void* ptr, int opcodes) {
+    return;
     // initialize decoder and formatter
     ZydisDecoder decoder;
     ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);

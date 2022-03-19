@@ -765,7 +765,7 @@ err_t palloc_reclaim() {
     TRACE("Reclaiming memory");
     for (int i = 0; i < arrlen(to_reclaim); i++) {
         struct stivale2_mmap_entry* entry = &to_reclaim[i];
-        TRACE("\t%p-%p: %llu bytes", entry->base, entry->base + entry->length, entry->length);
+        TRACE("\t%p-%p: %S", entry->base, entry->base + entry->length, entry->length);
 
         void* ptr = PHYS_TO_DIRECT(entry->base);
         size_t length = entry->length;

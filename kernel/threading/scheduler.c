@@ -625,14 +625,18 @@ void scheduler_resume_thread(suspend_state_t state) {
 // Preemption
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+static size_t CPU_LOCAL m_preempt_disable_depth;
+
 void scheduler_preempt_disable(void) {
-    ASSERT(__readcr8() == PRIORITY_NORMAL);
-    __writecr8(PRIORITY_NO_PREEMPT);
+    if (m_preempt_disable_depth++ == 0) {
+        __writecr8(PRIORITY_NO_PREEMPT);
+    }
 }
 
 void scheduler_preempt_enable(void) {
-    ASSERT(__readcr8() == PRIORITY_NO_PREEMPT);
-    __writecr8(PRIORITY_NORMAL);
+    if (--m_preempt_disable_depth == 0) {
+        __writecr8(PRIORITY_NORMAL);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

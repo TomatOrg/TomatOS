@@ -3,6 +3,7 @@
 #include "stivale2.h"
 #include "threading/scheduler.h"
 #include "dotnet/heap.h"
+#include "dotnet/loader.h"
 
 #include <threading/cpu_local.h>
 #include <threading/thread.h>
@@ -198,23 +199,11 @@ cleanup:
     while (1) asm("hlt");
 }
 
-static void test() {
-    STACK_FRAME(2);
-
-    type_t type = {
-        .managed_size = sizeof(object_t),
-        .managed_pointer_offsets = NULL
-    };
-    object_t* lol = NULL;
-    gc_new(&type, 10, &lol);
-    gc_new(&type, 10, &lol);
-    gc_new(&type, 10, &frame->pointers[0]);
-    gc_new(&type, 10, &frame->pointers[1]);
-
-    TRACE("Triggering collector");
-    gc_wait();
-    TRACE("We came back!");
-}
+/**
+ * This is the module of the corelib, will be freed once the corelib is loaded
+ */
+static void* m_corelib_module;
+static size_t m_corelib_module_size;
 
 static void start_thread() {
     err_t err = NO_ERROR;
@@ -224,12 +213,8 @@ static void start_thread() {
     // start the gc
     CHECK_AND_RETHROW(init_gc());
 
-    // allocate something
-    test();
-
-    TRACE("Triggering collector again!");
-    gc_wait();
-    TRACE("We came back!");
+    // initialize the corelib, no need to track the output since it is going to be saved by itself
+    CHECK_AND_RETHROW(load_assembly_from_memory(NULL, m_corelib_module, m_corelib_module_size));
 
 cleanup:
     ASSERT(!IS_ERROR(err));
@@ -332,9 +317,15 @@ void _start(struct stivale2_struct* stivale2) {
         CHECK(get_apic_id() == 0);
     }
 
-    // load the corlib
-//    struct stivale2_module* module = get_stivale2_module("corlib.dll");
-//    CHECK_ERROR(module != NULL, ERROR_NOT_FOUND);
+    // load the corelib module
+    struct stivale2_module* module = get_stivale2_module("Corelib.dll");
+    CHECK_ERROR(module != NULL, ERROR_NOT_FOUND);
+    m_corelib_module_size = module->end - module->begin;
+    m_corelib_module = malloc(m_corelib_module_size);
+    memcpy(m_corelib_module, (void*)module->begin, m_corelib_module_size);
+    TRACE("Corelib: %S", m_corelib_module_size);
+
+    // TODO: load the kernel module along side the initial drivers
 
     // reclaim memory
     CHECK_AND_RETHROW(palloc_reclaim());

@@ -4,6 +4,7 @@
 #include "util/stb_ds.h"
 #include "sync/conditional.h"
 #include "heap.h"
+#include "loader.h"
 
 #include <threading/scheduler.h>
 #include <threading/thread.h>
@@ -20,57 +21,52 @@
 static int m_color_black = 0;
 static int m_color_white = 1;
 
-static object_t* read_field(object_t* o, size_t offset) {
-    return *(object_t**)((uintptr_t)o + offset);
+static System_Object* read_field(System_Object* o, size_t offset) {
+    return *(System_Object**)((uintptr_t)o + offset);
 }
 
-static void write_field(object_t* o, size_t offset, object_t* new) {
-    *(object_t**)((uintptr_t)o + offset) = new;
+static void write_field(System_Object* o, size_t offset, System_Object* new) {
+    *(System_Object**)((uintptr_t)o + offset) = new;
 }
 
 /**
  * Singly linked list of all the allocated objects
  */
-static object_t* m_all_objects = NULL;
+static System_Object* m_all_objects = NULL;
 
-void gc_new(type_t* type, size_t size, object_t** output) {
+void* gc_new(System_Type* type, size_t size) {
     scheduler_preempt_disable();
 
-    object_t* o = heap_alloc(size);
+    System_Object* o = heap_alloc(size);
     o->next = NULL;
     o->color = GCL->alloc_color;
-    o->type = type;
+    o->Type = type;
 
     // add to the all objects list atomically
     o->next = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
     while (!atomic_compare_exchange_weak_explicit(&m_all_objects, &o->next, o, memory_order_relaxed, memory_order_relaxed));
 
-    TRACE("Allocated %p", o);
-
-    // set it out
-    *output = o;
-
     scheduler_preempt_enable();
+
+    return o;
 }
 
-void gc_update(object_t* o, size_t offset, object_t* new) {
+void gc_update(System_Object* o, size_t offset, System_Object* new) {
     scheduler_preempt_disable();
 
     if (GCL->trace_on && o->color == m_color_white) {
         if (o->log_pointer) { // object not dirty
             int temp_pos = arrlen(GCL->buffer);
 
-            size_t* managed_pointer_offsets = o->type->managed_pointer_offsets;
-            arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets) + 1);
-            for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
-                GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
-            }
+            // TODO: managed pointers
+//            size_t* managed_pointer_offsets = o->Type->managed_pointer_offsets;
+//            arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets));
+//            for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
+//                GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
+//            }
 
             // is it still not dirty?
             if (o->log_pointer == NULL) {
-                // add pointer to object
-//                GCL->buffer[++temp_pos] = (object_t*)((uintptr_t) o | 1);
-
                 // committing values in buffer
                 arrsetlen(GCL->buffer, temp_pos);
 
@@ -147,17 +143,7 @@ static void get_roots() {
         gcl->alloc_color = m_color_black;
         gcl->snoop = false;
 
-        // copy thread local state...
-        stack_frame_t* frame = gcl->top_of_stack;
-        while (frame != NULL) {
-            for (int j = 0; j < frame->count; j++) {
-                object_t* obj = frame->pointers[j];
-                if (obj != NULL) {
-                    hmput(m_roots, obj, obj);
-                }
-            }
-            frame = frame->prev;
-        }
+        // TODO: copy thread local state...
 
         scheduler_resume_thread(state);
     }
@@ -172,27 +158,37 @@ static void get_roots() {
 
         // copy and clear snooped objects set
         for (int j = 0; j < hmlen(thread->tcb->gc_local_data.snooped); j++) {
-            object_t* o = thread->tcb->gc_local_data.snooped[j].key;
+            System_Object* o = thread->tcb->gc_local_data.snooped[j].key;
             hmput(m_roots, o, o);
         }
         hmfree(thread->tcb->gc_local_data.snooped);
     }
     unlock_all_threads();
+
+    // add all the globals
+    // TODO: dotnet globals
+
+    // runtime globals
+    hmput(m_roots, (System_Object*)g_corelib, (System_Object*)g_corelib);
 }
 
-static object_t** m_mark_stack = NULL;
+static System_Object** m_mark_stack = NULL;
 
-static void trace(object_t* o) {
+static void trace(System_Object* o) {
     if (o->color == m_color_white) {
         if (o->log_pointer == NULL) {
             // if not dirty
 
             // getting a replica
-            size_t count = arrlen(o->type->managed_pointer_offsets);
-            object_t* temp[count];
-            for (int i = 0; i < count; i++) {
-                temp[i] = read_field(o, o->type->managed_pointer_offsets[i]);
-            }
+            // TODO: managed pointers
+//            size_t count = arrlen(o->Type->managed_pointer_offsets);
+//            System_Object* temp[count];
+//            for (int i = 0; i < count; i++) {
+//                temp[i] = read_field(o, o->Type->managed_pointer_offsets[i]);
+//            }
+
+            size_t count = 0;
+            System_Object* temp[count];
 
             if (o->log_pointer == NULL) {
                 for (int i = 0; i < count; i++) {
@@ -201,10 +197,10 @@ static void trace(object_t* o) {
             }
         } else {
             // object is dirty
-            for (int i = 0; i < arrlen(o->type->managed_pointer_offsets); i++) {
-                int ni = arrlen(o->type->managed_pointer_offsets) - i - 1;
-                arrpush(m_mark_stack, o->log_pointer[ni]);
-            }
+//            for (int i = 0; i < arrlen(o->Type->managed_pointer_offsets); i++) {
+//                int ni = arrlen(o->Type->managed_pointer_offsets) - i - 1;
+//                arrpush(m_mark_stack, o->log_pointer[ni]);
+//            }
         }
 
         o->color = m_color_black;
@@ -213,12 +209,12 @@ static void trace(object_t* o) {
 
 static void trace_heap() {
     for (int i = 0; i < hmlen(m_roots); i++) {
-        object_t* o = m_roots[i].key;
+        System_Object* o = m_roots[i].key;
         arrpush(m_mark_stack, o);
     }
 
     while (arrlen(m_mark_stack) != 0) {
-        object_t* o = arrpop(m_mark_stack);
+        System_Object* o = arrpop(m_mark_stack);
         trace(o);
     }
 }
@@ -236,17 +232,18 @@ static void sweep() {
     unlock_all_threads();
 
     // special handling for the swept object
-    object_t* last = NULL;
-    object_t* swept = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
+    System_Object* last = NULL;
+    System_Object* swept = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
     while (swept != NULL) {
         // save the next for when we need it
-        object_t* next = swept->next;
+        System_Object* next = swept->next;
 
         if (swept->color == m_color_white) {
             // remove from the queue
             if (last == NULL) {
                 // removing the first object is a bit special
-                object_t* first_now = swept;
+                // TODO: maybe we can do this just with exchange :think:
+                System_Object* first_now = swept;
                 if (!atomic_compare_exchange_weak_explicit(&m_all_objects, &first_now, swept->next, memory_order_relaxed, memory_order_relaxed)) {
                     // the compare exchange failed, this means that the swept is no longer
                     // the first item and the object that we have in our hand is the new first
@@ -290,7 +287,7 @@ static void prepare_next_collection() {
         if (thread == get_current_thread()) continue;
 
         // Clear all log pointers
-        object_t** buffer = thread->tcb->gc_local_data.buffer;
+        System_Object** buffer = thread->tcb->gc_local_data.buffer;
         for (int j = 0; j < arrlen(buffer); j++) {
             buffer[j]->log_pointer = NULL;
         }
@@ -411,13 +408,4 @@ err_t init_gc() {
 
 cleanup:
     return err;
-}
-
-void stack_frame_cleanup(stack_frame_t** ptr) {
-    GCL->top_of_stack = (*ptr)->prev;
-}
-
-void stack_frame_push(stack_frame_t* frame) {
-    frame->prev = GCL->top_of_stack;
-    GCL->top_of_stack = frame;
 }
