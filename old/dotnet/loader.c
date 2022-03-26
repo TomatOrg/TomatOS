@@ -13,12 +13,12 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 System_Type* typeof_System_Reflection_Assembly = NULL;
-System_Type* typeof_System_Reflection_Module = NULL;
 System_Type* typeof_System_Reflection_FieldInfo = NULL;
-
+System_Type* typeof_System_Reflection_Module = NULL;
 System_Type* typeof_System_Array = NULL;
 System_Type* typeof_System_Type = NULL;
 System_Type* typeof_System_String = NULL;
+
 
 #define TYPEOF_INIT(_namespace, _name) \
     (typeof_init_entry_t) { \
@@ -35,9 +35,8 @@ typedef struct typeof_init_entry {
 
 static typeof_init_entry_t m_typeof_init[] = {
     TYPEOF_INIT(System_Reflection, Assembly),
-    TYPEOF_INIT(System_Reflection, Module),
     TYPEOF_INIT(System_Reflection, FieldInfo),
-
+    TYPEOF_INIT(System_Reflection, Module),
     TYPEOF_INIT(System, Array),
     TYPEOF_INIT(System, Type),
     TYPEOF_INIT(System, String),

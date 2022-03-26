@@ -1,10 +1,8 @@
 #include "kernel.h"
 
 #include "stivale2.h"
-#include "threading/scheduler.h"
-#include "dotnet/heap.h"
-#include "dotnet/loader.h"
 
+#include <threading/scheduler.h>
 #include <threading/cpu_local.h>
 #include <threading/thread.h>
 
@@ -12,7 +10,6 @@
 
 #include <util/except.h>
 #include <util/string.h>
-#include <util/elf64.h>
 #include <util/defs.h>
 
 #include <mem/malloc.h>
@@ -210,11 +207,7 @@ static void start_thread() {
 
     TRACE("Entered kernel thread!");
 
-    // start the gc
-    CHECK_AND_RETHROW(init_gc());
 
-    // initialize the corelib, no need to track the output since it is going to be saved by itself
-    CHECK_AND_RETHROW(load_assembly_from_memory(NULL, m_corelib_module, m_corelib_module_size));
 
 cleanup:
     ASSERT(!IS_ERROR(err));

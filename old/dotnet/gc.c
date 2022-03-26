@@ -35,7 +35,7 @@ static void write_field(System_Object* o, size_t offset, System_Object* new) {
 static System_Object* m_all_objects = NULL;
 
 void* gc_new(System_Type* type, size_t size) {
-    scheduler_preempt_disable();
+    ASSERT(!scheduler_is_preemption());
 
     System_Object* o = heap_alloc(size);
     o->next = NULL;
@@ -46,13 +46,11 @@ void* gc_new(System_Type* type, size_t size) {
     o->next = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
     while (!atomic_compare_exchange_weak_explicit(&m_all_objects, &o->next, o, memory_order_relaxed, memory_order_relaxed));
 
-    scheduler_preempt_enable();
-
     return o;
 }
 
 void gc_update(System_Object* o, size_t offset, System_Object* new) {
-    scheduler_preempt_disable();
+    ASSERT(!scheduler_is_preemption());
 
     if (GCL->trace_on && o->color == m_color_white) {
         if (o->log_pointer) { // object not dirty
@@ -81,8 +79,6 @@ void gc_update(System_Object* o, size_t offset, System_Object* new) {
     if (GCL->snoop && new != NULL) {
         stbds_hmput(GCL->snooped, new, new);
     }
-
-    scheduler_preempt_enable();
 }
 
 /**

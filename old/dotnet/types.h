@@ -97,14 +97,14 @@ typedef struct System_Reflection_FieldInfo {
 } System_Reflection_FieldInfo;
 
 struct System_Type {
-    System_Object Object;
-    System_Reflection_Assembly* Assembly;
-    System_String* Name;
+    System_Reflection_MemberInfo MemberInfo;
+
+    // The namespace
     System_String* Namespace;
 
     // Fields and methods
     System_Array* Fields;
-    System_Array* Methods;
+//    System_Array* Methods;
 
     // The element type, relevant for anything 
     System_Type* ElementType;

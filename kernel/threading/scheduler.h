@@ -1,8 +1,8 @@
 #pragma once
 
 #include "thread.h"
-#include "util/except.h"
 
+#include <util/except.h>
 #include <arch/idt.h>
 
 #include <stdbool.h>
@@ -54,9 +54,20 @@ void scheduler_resume_thread(suspend_state_t status);
 // Preemption stuff
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * Disable preemption, nestable
+ */
 void scheduler_preempt_disable(void);
 
+/**
+ * Enable preemption, nestable
+ */
 void scheduler_preempt_enable(void);
+
+/**
+ * Returns true if preemption is enabled
+ */
+bool scheduler_is_preemption(void);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Callbacks from interrupts to the scheduler

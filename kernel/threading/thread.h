@@ -2,7 +2,6 @@
 
 #include <sync/spinlock.h>
 #include <util/except.h>
-#include <dotnet/gc.h>
 #include <arch/idt.h>
 
 #include <stdalign.h>
@@ -132,7 +131,6 @@ typedef struct thread_save_state {
 
 typedef struct thread_control_block {
     struct thread_control_block* tcb;
-    gc_local_data_t gc_local_data;
 } thread_control_block_t;
 
 typedef struct thread {

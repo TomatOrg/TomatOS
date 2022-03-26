@@ -37,10 +37,11 @@ System_Type* get_array_type(System_Type* baseType) {
     }
 
     // allocate a new type object for the new array type
-    System_Type* new_array_type = gc_new(NULL, sizeof(System_Type));
+    System_Type* new_array_type = GC_NEW(NULL, sizeof(System_Type));
     gc_update((System_Object*)baseType, offsetof(System_Type, ArrayType), (System_Object*)new_array_type);
 
     // setup the new obejct
+    new_array_type
     new_array_type->Name = typeof_System_Array->Name;
     new_array_type->Namespace = typeof_System_Array->Namespace;
     new_array_type->Assembly = typeof_System_Array->Assembly;

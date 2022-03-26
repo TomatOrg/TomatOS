@@ -4,7 +4,7 @@ namespace System.Reflection
     {
 
         private Assembly _assembly;
-        private int _metadataToken;
+        private string _name;
 
     }
 }

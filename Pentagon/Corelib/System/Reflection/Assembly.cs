@@ -3,7 +3,7 @@ namespace System.Reflection
     public class Assembly
     {
 
-        private TypeInfo[] _definedTypes;
+        private Type[] _definedTypes;
 
     }
 }

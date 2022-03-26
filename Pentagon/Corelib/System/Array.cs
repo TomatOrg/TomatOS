@@ -4,7 +4,6 @@ namespace System
     {
 
         private int _length;
-        private int _rank;
 
     }
 }

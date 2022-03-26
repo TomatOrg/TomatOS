@@ -8,7 +8,7 @@
 
 extern System_Type* typeof_System_Reflection_Assembly;
 extern System_Type* typeof_System_Reflection_FieldInfo;
-
+extern System_Type* typeof_System_Reflection_Module;
 extern System_Type* typeof_System_Array;
 extern System_Type* typeof_System_Type;
 extern System_Type* typeof_System_String;
