@@ -158,7 +158,7 @@ typedef struct thread {
     bool preempt_stop;
 
     // The current status of the thread
-    thread_status_t status;
+    _Atomic(thread_status_t) status;
 
     // Link for the scheduler
     struct thread* sched_link;

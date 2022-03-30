@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 typedef struct mutex {
-    int32_t state;
+    _Atomic(int32_t) state;
     semaphore_t semaphore;
 } mutex_t;
 

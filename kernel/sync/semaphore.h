@@ -5,10 +5,10 @@
 #include <threading/thread.h>
 
 typedef struct semaphore {
-    uint32_t value;
+    _Atomic(uint32_t) value;
     spinlock_t lock;
     waiting_thread_t* waiters;
-    uint32_t nwait;
+    _Atomic(uint32_t) nwait;
 } semaphore_t;
 
 void semaphore_acquire(semaphore_t* semaphore, bool lifo);

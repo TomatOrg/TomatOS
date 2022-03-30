@@ -103,7 +103,7 @@ static int32_t m_global_run_queue_size;
 
 // The idle cpus
 static uint64_t m_idle_cpus;
-static uint32_t m_idle_cpus_count;
+static _Atomic(uint32_t) m_idle_cpus_count;
 
 // spinlock to protect the scheduler internal stuff
 static spinlock_t m_scheduler_lock = INIT_SPINLOCK();
@@ -213,10 +213,10 @@ INTERRUPT static void wake_cpu() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct local_run_queue {
-    uint32_t head;
-    uint32_t tail;
+    _Atomic(uint32_t) head;
+    _Atomic(uint32_t) tail;
     thread_t* queue[256];
-    thread_t* next;
+    _Atomic(thread_t*) next;
 } local_run_queue_t;
 
 static local_run_queue_t* m_run_queues;
@@ -537,6 +537,11 @@ suspend_state_t scheduler_suspend_thread(thread_t* thread) {
     for (int i = 0;; i++) {
         thread_status_t status = get_thread_status(thread);
         switch (status) {
+            default:
+                // the thread is already suspended, make sure of it
+                ASSERT(status & THREAD_SUSPEND);
+                break;
+
             case THREAD_STATUS_DEAD:
                 // nothing to suspend.
                 return (suspend_state_t){ .dead = true };
@@ -772,7 +777,7 @@ static bool CPU_LOCAL m_spinning;
 /**
  * Number of spinning CPUs in the system
  */
-static uint32_t m_number_spinning = 0;
+static _Atomic(uint32_t) m_number_spinning = 0;
 
 INTERRUPT static thread_t* steal_work() {
     for (int i = 0; i < 4; i++) {

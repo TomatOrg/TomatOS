@@ -132,19 +132,19 @@ static void enable_cpu_features() {
 /**
  * How many cpus have started
  */
-static int m_startup_count = 0;
+static _Atomic(int) m_startup_count = 0;
 
 /**
  * Set to true if we got an error on smp setup
  */
-static bool m_smp_error = false;
+static _Atomic(bool) m_smp_error = false;
 
 /**
  * Start the scheduler
  */
-static bool m_start_scheduler = false;
+static _Atomic(bool) m_start_scheduler = false;
 
-static size_t m_cpu_count = 1;
+static _Atomic(size_t) m_cpu_count = 1;
 
 size_t get_cpu_count() {
     return m_cpu_count;
@@ -293,7 +293,7 @@ void _start(struct stivale2_struct* stivale2) {
 
             // setup the entry for the given CPU
             smp->smp_info[i].target_stack = (uintptr_t)(palloc(PAGE_SIZE) + PAGE_SIZE);
-            atomic_store(&smp->smp_info[i].goto_address, (uintptr_t)per_cpu_start);
+            smp->smp_info[i].goto_address = (uintptr_t)per_cpu_start;
         }
 
         // wait for all the cores to start

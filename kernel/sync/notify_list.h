@@ -9,13 +9,13 @@
 typedef struct notify_list {
     // the ticket number of the next waiter. It is atomically
     // incremented outside the lock
-    uint32_t wait;
+    _Atomic(uint32_t) wait;
 
     // the ticket number of the next waiter to be notified. It can
     // be read outside the lock, but is only written with the lock held.
     // both wait and notify can wrap around, and such cases will be
     // correctly handled as long as their "wrapped" difference is bounded by 2^31.
-    uint32_t notify;
+    _Atomic(uint32_t) notify;
 
     // list of parked waiters
     spinlock_t lock;

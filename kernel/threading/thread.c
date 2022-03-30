@@ -45,8 +45,10 @@
 #include "util/stb_ds.h"
 #include "arch/msr.h"
 
+#include <util/elf64.h>
+
 #include <stdatomic.h>
-#include <elf.h>
+
 
 //
 // Global waiting thread cache
@@ -155,9 +157,13 @@ void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new
     }
 }
 
+static void save_fx_state(thread_fx_save_state_t* state) {
+    _fxsave64(state);
+}
+
 INTERRUPT void save_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
     thread_save_state_t* regs = &target->save_state;
-    _fxsave64(&regs->fx_save_state);
+    save_fx_state(&regs->fx_save_state);
     regs->r15 = ctx->r15;
     regs->r14 = ctx->r14;
     regs->r13 = ctx->r13;
@@ -176,6 +182,10 @@ INTERRUPT void save_thread_context(thread_t* restrict target, interrupt_context_
     regs->rip = ctx->rip;
     regs->rflags = ctx->rflags;
     regs->rsp = ctx->rsp;
+}
+
+static void restore_fx_state(thread_fx_save_state_t* state) {
+    _fxrstor64(state);
 }
 
 INTERRUPT void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx) {
@@ -198,7 +208,7 @@ INTERRUPT void restore_thread_context(thread_t* restrict target, interrupt_conte
     ctx->rip = regs->rip;
     ctx->rflags = regs->rflags;
     ctx->rsp = regs->rsp;
-    _fxrstor64(&regs->fx_save_state);
+    restore_fx_state(&regs->fx_save_state);
     __writemsr(MSR_IA32_FS_BASE, (uintptr_t)target->tcb);
 }
 

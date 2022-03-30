@@ -136,7 +136,7 @@ static void mutex_lock_slow(mutex_t* mutex) {
 
 void mutex_lock(mutex_t* mutex) {
     // Fast path: grab unlocked mutex.
-    uint32_t zero = 0;
+    int32_t zero = 0;
     if (atomic_compare_exchange_weak(&mutex->state, &zero, MUTEX_LOCKED)) {
         return;
     }

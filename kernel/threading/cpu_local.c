@@ -1,7 +1,9 @@
 #include "cpu_local.h"
-#include "arch/intrin.h"
-#include "arch/msr.h"
-#include "kernel.h"
+
+#include <mem/malloc.h>
+#include <arch/intrin.h>
+#include <arch/msr.h>
+#include <kernel.h>
 
 extern char __cpu_local_size[];
 
