@@ -33,6 +33,34 @@ err_t init_gc();
 void* gc_new(System_Type type, size_t size);
 
 /**
+ * Helper to allocate a new gc object
+ */
+#define GC_NEW(type) \
+    ({ \
+        System_Type __type = type; \
+        gc_new(__type, __type->managed_size); \
+    })
+
+#define GC_NEW_STRING(count) \
+    ({ \
+        size_t __count = count; \
+        gc_new(tSystem_String, tSystem_String->managed_size + 2 * __count); \
+    })
+
+/**
+ * Helper to allocate a new array
+ */
+#define GC_NEW_ARRAY(elementType, count) \
+    ({ \
+        size_t __count = count; \
+        System_Type __elementType = elementType; \
+        System_Type __arrayType = get_array_type(__elementType); \
+        System_Array __newArray = gc_new(__arrayType, __arrayType->managed_size + __elementType->stack_size * __count); \
+        __newArray->Length = __count; \
+        (void*)__newArray; \
+    })
+
+/**
  * Update a pointer on the heap
  *
  * @remark
@@ -56,6 +84,12 @@ void gc_update(void* o, size_t offset, void* new);
     do { \
         typeof(o) _o = o; \
         gc_update(_o, offsetof(typeof(*(_o)), field), new); \
+    } while (0)
+
+#define GC_UPDATE_ARRAY(o, idx, new) \
+    do { \
+        typeof(o) _o = o; \
+        gc_update(_o, offsetof(typeof(*(_o)), Data) + idx * sizeof(typeof(_o->Data[0])), new); \
     } while (0)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

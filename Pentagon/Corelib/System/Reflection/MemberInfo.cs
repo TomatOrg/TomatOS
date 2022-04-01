@@ -4,8 +4,8 @@ namespace System.Reflection
     {
 
         private Type _declaringType;
-        private string _name;
         private Module _module;
+        private string _name;
 
     }
 }

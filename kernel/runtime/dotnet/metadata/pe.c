@@ -66,7 +66,7 @@ err_t pe_parse(pe_file_t* ctx) {
     pe_cli_header_t* cli_header = NULL;
 
     // Get the lfanew and verify it
-    CHECK(0x3c < ctx->file_size);
+    CHECK(0x3c < ctx->file_size, "Expected %d bytes, file only has %d bytes", 0x3c, ctx->file_size);
     uint32_t lfanew = READ32(ctx->file + 0x3c);
     uint32_t sections_offset = lfanew + 4 + sizeof(pe_file_header_t) + sizeof(pe_optional_header_t);
     CHECK(sections_offset < ctx->file_size);

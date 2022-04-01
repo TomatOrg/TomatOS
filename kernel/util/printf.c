@@ -34,6 +34,7 @@
 #include "except.h"
 #include "buffer.h"
 #include "stb_ds.h"
+#include "runtime/dotnet/types.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -926,6 +927,39 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         format++;
         break;
       }
+
+        case 'U' : {
+            const System_String str = va_arg(va, System_String);
+            const wchar_t* p = NULL;
+            unsigned int l = 0;
+
+            if (str == NULL) {
+                p = L"(null)";
+                l = ARRAY_LEN(L"(null)");
+            } else {
+                p = str->Chars;
+                l = str->Length;
+            }
+
+            if (!(flags & FLAGS_LEFT)) {
+                while (l++ < width) {
+                    out(' ', buffer, idx++, maxlen);
+                }
+            }
+
+            while ((*p != L'\0') && (!(flags & FLAGS_PRECISION) || precision--)) {
+                out((char)*(p++), buffer, idx++, maxlen);
+            }
+
+            if (flags & FLAGS_LEFT) {
+                while (l++ < width) {
+                    out(' ', buffer, idx++, maxlen);
+                }
+            }
+
+            format++;
+            break;
+        }
 
       case 'p' : {
         width = sizeof(void*) * 2U;

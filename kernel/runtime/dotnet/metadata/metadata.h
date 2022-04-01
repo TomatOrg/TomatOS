@@ -15,6 +15,16 @@ typedef struct metadata {
     metadata_table_t tables[64];
 } metadata_t;
 
+static inline metadata_type_def_t* metadata_get_type_def(metadata_t* metadata, int index) {
+    ASSERT(index < metadata->tables[METADATA_TYPE_DEF].rows);
+    return &((metadata_type_def_t*)metadata->tables[METADATA_TYPE_DEF].table)[index];
+}
+
+static inline metadata_field_t* metadata_get_field(metadata_t* metadata, int index) {
+    ASSERT(index < metadata->tables[METADATA_FIELD].rows);
+    return &((metadata_field_t*)metadata->tables[METADATA_FIELD].table)[index];
+}
+
 /**
  * Parse all the metadata stream into the metadata structure organized in nice addressable tables
  *

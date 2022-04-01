@@ -4,6 +4,7 @@ namespace System.Reflection
     {
         private ushort _attributes;
         private Type _fieldType;
+        private string _name;
 
     }
 }

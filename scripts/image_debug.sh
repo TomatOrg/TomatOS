@@ -1,27 +1,42 @@
 #!/usr/bin/env bash
 
-# Create the disk
+# Create the disk, single partition which is the ESP
 rm -f out/build/test.hdd
 dd if=/dev/zero bs=1M count=0 seek=64 of=out/build/test.hdd
 parted -s out/build/test.hdd mklabel gpt
-parted -s out/build/test.hdd mkpart primary 2048s 100%
+parted -s out/build/test.hdd mkpart ESP fat32 2048s 100%
+parted -s out/build/test.hdd set 1 esp on
 
-# Setup ext2 with limine
-sudo umount out/build/test_image
-sudo rm -rf out/build/test_image/
-sudo mkdir out/build/test_image
-sudo losetup -Pf --show out/build/test.hdd > out/build/loopback_dev
-sudo partprobe `cat out/build/loopback_dev`
-sudo mkfs.ext4 `cat out/build/loopback_dev`p1
+# Setup limine
+limine/limine-s2deploy out/build/test.hdd
+
+# Setup the mount
+sudo losetup -Pf --show out/build/test.hdd >out/build/loopback_dev
+sudo mkfs.fat -F 32 `cat out/build/loopback_dev`p1
+mkdir -p out/build/test_image
 sudo mount `cat out/build/loopback_dev`p1 out/build/test_image
-sudo mkdir out/build/test_image/boot
-sudo cp -rv out/bin/pentagon.elf test/limine.cfg limine/limine.sys out/build/test_image/boot/
-sudo cp -rv Pentagon/Corelib/bin/Release/net5.0/Corelib.dll out/build/test_image/boot/
+
+# Create dirs
+sudo mkdir -p out/build/test_image/EFI/BOOT
+sudo mkdir -p out/build/test_image/boot
+
+# Copy the limine UEFI bootloader
+sudo cp -rv limine/BOOTX64.EFI out/build/test_image/EFI/BOOT/
+sudo cp -rv limine/limine.sys out/build/test_image/boot/
+
+# Copy the kernel contents
+sudo cp -rv \
+  out/bin/pentagon.elf \
+  test/limine.cfg \
+  Pentagon/Corelib/bin/Release/net5.0/Corelib.dll \
+  out/build/test_image/boot/
+
+# Finish with the disk, umount it
 sync
-sudo umount out/build/test_image/
+sudo umount out/build/test_image
 sudo losetup -d `cat out/build/loopback_dev`
-rm -rf out/build/test_image out/build/loopback_dev
-./limine/limine-install-linux-x86_64 out/build/test.hdd
+rm -rf out/build/loopback_dev out/build/test_image
+
 qemu-system-x86_64 \
   -hda out/build/test.hdd \
   -monitor telnet:localhost:1235,server,nowait \
@@ -32,6 +47,6 @@ qemu-system-x86_64 \
   -smp 4 \
   -m 4G \
   -s \
-  -S \
   -no-reboot \
-  -no-shutdown
+  -no-shutdown \
+  -S

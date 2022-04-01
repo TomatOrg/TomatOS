@@ -7,3 +7,6 @@
 [submodule "lib/zydis"]
 	path = lib/zydis
 	url = git@github.com:zyantific/zydis.git
+[submodule "lib/utf8-utf16-converter"]
+	path = lib/utf8-utf16-converter
+	url = git@github.com:Davipb/utf8-utf16-converter.git

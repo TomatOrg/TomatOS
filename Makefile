@@ -19,12 +19,14 @@ CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
-CFLAGS 		+= -Os -flto -g3 -mtune=nehalem -march=nehalem -flto
+#CFLAGS 		+= -Os -flto
+CFLAGS 		+= -g3 -mtune=nehalem -march=nehalem -flto
 CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mcmodel=kernel -mno-red-zone
 CFLAGS 		+= -nostdlib -nostdinc
 CFLAGS 		+= -Ikernel -Ilib
 CFLAGS 		+= -isystem lib/libc
+CFLAGS 		+= -fms-extensions -Wno-microsoft-anon-tag
 
 SRCS 		:= $(shell find kernel -name '*.c')
 
@@ -37,6 +39,14 @@ CFLAGS 		+= -D__posix
 CFLAGS		+= -DPRINTF_NTOA_BUFFER_SIZE=64
 CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_FLOAT
 CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_EXPONENTIAL
+
+#-----------------------------------------------------------------------------------------------------------------------
+# utf8-utf16-converter
+#-----------------------------------------------------------------------------------------------------------------------
+
+CFLAGS		+= -Ilib/utf8-utf16-converter/converter/include
+
+SRCS		+= lib/utf8-utf16-converter/converter/src/converter.c
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Zydis

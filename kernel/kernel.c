@@ -1,6 +1,7 @@
 #include "kernel.h"
 
 #include "stivale2.h"
+#include "runtime/dotnet/loader.h"
 
 #include <runtime/dotnet/gc/gc.h>
 
@@ -209,9 +210,9 @@ static void start_thread() {
 
     TRACE("Entered kernel thread!");
 
-    TRACE("Initializing kernel GC");
-    init_gc();
-
+    // Initialize the runtime
+    CHECK_AND_RETHROW(init_gc());
+    CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
 
 cleanup:
     ASSERT(!IS_ERROR(err));
@@ -321,8 +322,6 @@ void _start(struct stivale2_struct* stivale2) {
     m_corelib_module = malloc(m_corelib_module_size);
     memcpy(m_corelib_module, (void*)module->begin, m_corelib_module_size);
     TRACE("Corelib: %S", m_corelib_module_size);
-
-    // TODO: load the kernel module along side the initial drivers
 
     // reclaim memory
     CHECK_AND_RETHROW(palloc_reclaim());
