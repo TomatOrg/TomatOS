@@ -1,7 +1,7 @@
 #include "gc.h"
 
-#include "heap.h"
 #include "gc_thread_data.h"
+#include "heap.h"
 
 #include <threading/scheduler.h>
 #include <threading/thread.h>
@@ -27,8 +27,8 @@ static int m_color_white = 1;
 /**
  * Read object field
  */
-static gc_object_t* read_field(void* o, size_t offset) {
-    return *(gc_object_t**)((uintptr_t)o + offset);
+static System_Object read_field(void* o, size_t offset) {
+    return *(System_Object*)((uintptr_t)o + offset);
 }
 
 /**
@@ -41,27 +41,29 @@ static void write_field(void* o, size_t offset, void* new) {
 /**
  * Singly linked list of all the allocated objects in the system
  */
-static _Atomic(gc_object_t*) m_all_objects = NULL;
+static _Atomic(System_Object) m_all_objects = NULL;
 
-void* gc_new(gc_object_t* type, size_t size) {
-    ASSERT(!scheduler_is_preemption());
+void* gc_new(System_Type type, size_t size) {
+    scheduler_preempt_disable();
 
-    gc_object_t* o = heap_alloc(size);
+    System_Object o = heap_alloc(size);
     o->next = NULL;
     o->color = GCL->alloc_color;
-//    o->Type = type;
+    o->type = type;
 
     // add to the all objects list atomically
     o->next = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
     while (!atomic_compare_exchange_weak_explicit(&m_all_objects, &o->next, o, memory_order_relaxed, memory_order_relaxed));
 
+    scheduler_preempt_enable();
+
     return o;
 }
 
 void gc_update(void* o, size_t offset, void* new) {
-    ASSERT(!scheduler_is_preemption());
+    scheduler_preempt_disable();
 
-    gc_object_t* object = o;
+    System_Object object = o;
 
     if (GCL->trace_on && object->color == m_color_white) {
         if (object->log_pointer) { // object not dirty
@@ -90,6 +92,8 @@ void gc_update(void* o, size_t offset, void* new) {
     if (GCL->snoop && new != NULL) {
         stbds_hmput(GCL->snooped, new, new);
     }
+
+    scheduler_preempt_enable();
 }
 
 static void initiate_collection_cycle() {
@@ -157,7 +161,7 @@ static void get_roots() {
 
         // copy and clear snooped objects set
         for (int j = 0; j < hmlen(thread->tcb->gc_data.snooped); j++) {
-            gc_object_t* o = thread->tcb->gc_data.snooped[j].key;
+            System_Object o = thread->tcb->gc_data.snooped[j].key;
             hmput(m_roots, o, o);
         }
         hmfree(thread->tcb->gc_data.snooped);
@@ -171,9 +175,9 @@ static void get_roots() {
     // TODO: runtime globals
 }
 
-static gc_object_t** m_mark_stack = NULL;
+static System_Object* m_mark_stack = NULL;
 
-static void trace(gc_object_t* o) {
+static void trace(System_Object o) {
     if (o->color == m_color_white) {
         if (o->log_pointer == NULL) {
             // if not dirty
@@ -187,7 +191,7 @@ static void trace(gc_object_t* o) {
 //            }
 
             size_t count = 0;
-            gc_object_t* temp[count];
+            System_Object temp[count];
 
             if (o->log_pointer == NULL) {
                 for (int i = 0; i < count; i++) {
@@ -208,12 +212,12 @@ static void trace(gc_object_t* o) {
 
 static void trace_heap() {
     for (int i = 0; i < hmlen(m_roots); i++) {
-        gc_object_t* o = m_roots[i].key;
+        System_Object o = m_roots[i].key;
         arrpush(m_mark_stack, o);
     }
 
     while (arrlen(m_mark_stack) != 0) {
-        gc_object_t* o = arrpop(m_mark_stack);
+        System_Object o = arrpop(m_mark_stack);
         trace(o);
     }
 }
@@ -232,18 +236,18 @@ static void sweep() {
     unlock_all_threads();
 
     // special handling for the swept object
-    gc_object_t* last = NULL;
-    gc_object_t* swept = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
+    System_Object last = NULL;
+    System_Object swept = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
     while (swept != NULL) {
         // save the next for when we need it
-        gc_object_t* next = swept->next;
+        System_Object next = swept->next;
 
         if (swept->color == m_color_white) {
             // remove from the queue
             if (last == NULL) {
                 // removing the first object is a bit special
                 // TODO: maybe we can do this just with exchange :think:
-                gc_object_t* first_now = swept;
+                System_Object first_now = swept;
                 if (!atomic_compare_exchange_weak_explicit(&m_all_objects, &first_now, swept->next, memory_order_relaxed, memory_order_relaxed)) {
                     // the compare exchange failed, this means that the swept is no longer
                     // the first item and the object that we have in our hand is the new first
@@ -288,7 +292,7 @@ static void prepare_next_collection() {
         if (thread == get_current_thread()) continue;
 
         // Clear all log pointers
-        gc_object_t** buffer = thread->tcb->gc_data.buffer;
+        System_Object* buffer = thread->tcb->gc_data.buffer;
         for (int j = 0; j < arrlen(buffer); j++) {
             buffer[j]->log_pointer = NULL;
         }

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "object.h"
+struct System_Object;
 
 #include <stdbool.h>
 #include <stdint.h>
 
 typedef union object_set_entry {
-    gc_object_t* key;
-    gc_object_t* value;
+    struct System_Object* key;
+    struct System_Object* value;
 } object_set_entry_t;
 
 typedef object_set_entry_t* object_set_t;
@@ -31,7 +31,7 @@ typedef struct gc_thread_data {
     /**
      * The tracing buffer of the thread
      */
-    gc_object_t** buffer;
+    struct System_Object** buffer;
 
     /**
      * The snooped object object set

@@ -9,11 +9,11 @@
 #include <stdatomic.h>
 
 #define UNIT 64
-STATIC_ASSERT((UNIT >> 1) < sizeof(gc_object_t));
-STATIC_ASSERT(UNIT >= sizeof(gc_object_t));
+STATIC_ASSERT((UNIT >> 1) < sizeof(struct System_Object));
+STATIC_ASSERT(UNIT >= sizeof(struct System_Object));
 
 typedef struct heap_rank {
-    _Atomic(gc_object_t*) chunks;
+    _Atomic(System_Object) chunks;
     size_t freed;
 } heap_rank_t;
 
@@ -24,7 +24,7 @@ typedef struct heap_rank {
  * - on collector thread it is used to have a bunch of objects to form a chunk
  *   to then release to the allocator at once (for performance reasons)
  */
-static THREAD_LOCAL gc_object_t* m_rank_head[7] = {0 };
+static THREAD_LOCAL System_Object m_rank_head[7] = {0 };
 
 /**
  * The heaps are global to all the cores...
@@ -39,7 +39,7 @@ static heap_rank_t m_heap_ranks[7];
  * Grow the heap by allocating a new chunk for the given rank, the chunk is made of objects
  * following each other in a singly linked list
  */
-static gc_object_t* heap_rank_allocate_chunk(size_t rank, size_t count) {
+static System_Object heap_rank_allocate_chunk(size_t rank, size_t count) {
     size_t size = UNIT << rank;
     size_t length = size * count;
     void* block = palloc(length);
@@ -50,7 +50,7 @@ static gc_object_t* heap_rank_allocate_chunk(size_t rank, size_t count) {
     for (size_t i = 1; i < count; i++) {
         // set the object, including color, rank and the next
         // free object
-        gc_object_t* obj = p;
+        System_Object obj = p;
         obj->color = GC_COLOR_BLUE;
         obj->rank = rank;
         obj->next = (void*)(p += size);
@@ -58,7 +58,7 @@ static gc_object_t* heap_rank_allocate_chunk(size_t rank, size_t count) {
 
     // This is the last object, don't set a
     // next pointer
-    gc_object_t* obj = p;
+    System_Object obj = p;
     obj->color = GC_COLOR_BLUE;
     obj->rank = rank;
 
@@ -70,9 +70,9 @@ static gc_object_t* heap_rank_allocate_chunk(size_t rank, size_t count) {
  * Allocate an object from the heap, try to get a chunk that can be used
  * and if no chunk is available then allocate a new one
  */
-static gc_object_t* heap_rank_alloc(heap_rank_t* heap, size_t rank, size_t count) {
+static System_Object heap_rank_alloc(heap_rank_t* heap, size_t rank, size_t count) {
     // attempt to take a chunk from the existing heap
-    gc_object_t* p = atomic_load_explicit(&heap->chunks, memory_order_acquire);
+    System_Object p = atomic_load_explicit(&heap->chunks, memory_order_acquire);
     while (p != NULL && !atomic_compare_exchange_weak_explicit(&heap->chunks, &p, p->chunk_next, memory_order_acquire, memory_order_acquire));
 
     if (p == NULL) {
@@ -94,7 +94,7 @@ static gc_object_t* heap_rank_alloc(heap_rank_t* heap, size_t rank, size_t count
  */
 static void heap_rank_return(heap_rank_t* heap, size_t rank) {
     // take the head and set the next chunk as the thing
-    gc_object_t* o = m_rank_head[rank];
+    System_Object o = m_rank_head[rank];
     o->chunk_next = atomic_load_explicit(&heap->chunks, memory_order_relaxed);
     while (!atomic_compare_exchange_weak_explicit(&heap->chunks, &o->chunk_next, o, memory_order_relaxed, memory_order_relaxed));
 
@@ -118,7 +118,7 @@ static void heap_rank_flush(heap_rank_t* heap, size_t rank) {
  * Free a single object, queueing it to a chunk that will eventually be flushed to
  * the global rank
  */
-static void heap_rank_free(heap_rank_t* heap, size_t rank, size_t count, gc_object_t* obj) {
+static void heap_rank_free(heap_rank_t* heap, size_t rank, size_t count, System_Object obj) {
     // queue it
     obj->next = m_rank_head[rank];
     m_rank_head[rank] = obj;
@@ -172,8 +172,8 @@ STATIC_ASSERT(HEAP_RANK_6_SIZE == UNIT << 6);
  * @param rank          [IN] The rank of this object
  * @param count         [IN] The count
  */
-static gc_object_t* heap_allocate_from(heap_rank_t* heap_rank, size_t rank, size_t count) {
-    gc_object_t* p = heap_rank_alloc(heap_rank, rank, count);
+static System_Object heap_allocate_from(heap_rank_t* heap_rank, size_t rank, size_t count) {
+    System_Object p = heap_rank_alloc(heap_rank, rank, count);
     m_rank_head[rank] = p->next;
     return p;
 }
@@ -182,8 +182,8 @@ static gc_object_t* heap_allocate_from(heap_rank_t* heap_rank, size_t rank, size
  * Allocate an object from the heap, if there is one available locally take it, otherwise
  * allocate a new one from the global heap
  */
-static gc_object_t* heap_allocate(heap_rank_t* heap_rank, size_t rank, size_t count) {
-    gc_object_t* p = m_rank_head[rank];
+static System_Object heap_allocate(heap_rank_t* heap_rank, size_t rank, size_t count) {
+    System_Object p = m_rank_head[rank];
     if (p == NULL) {
         return heap_allocate_from(heap_rank, rank, count);
     }
@@ -192,20 +192,20 @@ static gc_object_t* heap_allocate(heap_rank_t* heap_rank, size_t rank, size_t co
 }
 
 // for easier access to each of the levels
-static gc_object_t* heap_allocate_0() { return heap_allocate(&m_heap_ranks[0], 0, HEAP_RANK_0_COUNT); }
-static gc_object_t* heap_allocate_1() { return heap_allocate(&m_heap_ranks[1], 1, HEAP_RANK_1_COUNT); }
-static gc_object_t* heap_allocate_2() { return heap_allocate(&m_heap_ranks[2], 2, HEAP_RANK_2_COUNT); }
-static gc_object_t* heap_allocate_3() { return heap_allocate(&m_heap_ranks[3], 3, HEAP_RANK_3_COUNT); }
-static gc_object_t* heap_allocate_4() { return heap_allocate(&m_heap_ranks[4], 4, HEAP_RANK_4_COUNT); }
-static gc_object_t* heap_allocate_5() { return heap_allocate(&m_heap_ranks[5], 5, HEAP_RANK_5_COUNT); }
-static gc_object_t* heap_allocate_6() { return heap_allocate(&m_heap_ranks[6], 6, HEAP_RANK_6_COUNT); }
+static System_Object heap_allocate_0() { return heap_allocate(&m_heap_ranks[0], 0, HEAP_RANK_0_COUNT); }
+static System_Object heap_allocate_1() { return heap_allocate(&m_heap_ranks[1], 1, HEAP_RANK_1_COUNT); }
+static System_Object heap_allocate_2() { return heap_allocate(&m_heap_ranks[2], 2, HEAP_RANK_2_COUNT); }
+static System_Object heap_allocate_3() { return heap_allocate(&m_heap_ranks[3], 3, HEAP_RANK_3_COUNT); }
+static System_Object heap_allocate_4() { return heap_allocate(&m_heap_ranks[4], 4, HEAP_RANK_4_COUNT); }
+static System_Object heap_allocate_5() { return heap_allocate(&m_heap_ranks[5], 5, HEAP_RANK_5_COUNT); }
+static System_Object heap_allocate_6() { return heap_allocate(&m_heap_ranks[6], 6, HEAP_RANK_6_COUNT); }
 
 /**
  * Allocate a large object, used when the object is larger than any
  * of the pre-made heaps
  */
-static gc_object_t* heap_allocate_large(size_t size) {
-    gc_object_t* o = palloc(size);
+static System_Object heap_allocate_large(size_t size) {
+    System_Object o = palloc(size);
     ASSERT(o != NULL);
     o->rank = -1;
     return o;
@@ -214,7 +214,7 @@ static gc_object_t* heap_allocate_large(size_t size) {
 /**
  * Allocate a medium object, one which doesn't fit to the first level heap
  */
-static gc_object_t* heap_allocate_medium(size_t size) {
+static System_Object heap_allocate_medium(size_t size) {
     if (size < HEAP_RANK_1_SIZE) return heap_allocate_1();
     if (size < HEAP_RANK_2_SIZE) return heap_allocate_2();
     if (size < HEAP_RANK_3_SIZE) return heap_allocate_3();
@@ -224,7 +224,7 @@ static gc_object_t* heap_allocate_medium(size_t size) {
     return heap_allocate_large(size);
 }
 
-gc_object_t* heap_alloc(size_t size) {
+System_Object heap_alloc(size_t size) {
     // fast path for small objects
     if (size < HEAP_RANK_0_SIZE) {
         return heap_allocate_0();
@@ -232,7 +232,7 @@ gc_object_t* heap_alloc(size_t size) {
     return heap_allocate_medium(size);
 }
 
-void heap_free(gc_object_t* object) {
+void heap_free(System_Object object) {
     switch (object->rank) {
         case 0: heap_rank_free(&m_heap_ranks[0], 0, HEAP_RANK_0_COUNT, object); break;
         case 1: heap_rank_free(&m_heap_ranks[1], 1, HEAP_RANK_1_COUNT, object); break;

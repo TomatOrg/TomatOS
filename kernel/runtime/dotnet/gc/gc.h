@@ -1,6 +1,6 @@
 #pragma once
 
-#include "object.h"
+#include <runtime/dotnet/types.h>
 
 #include <util/except.h>
 
@@ -30,7 +30,7 @@ err_t init_gc();
  * @param type      [IN] The type of the object
  * @param count     [IN] The size to allocate
  */
-//void* gc_new(System_Type* type, size_t size);
+void* gc_new(System_Type type, size_t size);
 
 /**
  * Update a pointer on the heap

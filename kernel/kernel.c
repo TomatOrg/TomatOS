@@ -1,7 +1,8 @@
 #include "kernel.h"
 
 #include "stivale2.h"
-#include "runtime/gc/gc.h"
+
+#include <runtime/dotnet/gc/gc.h>
 
 #include <threading/scheduler.h>
 #include <threading/cpu_local.h>

@@ -1,18 +1,18 @@
 #pragma once
 
-#include "object.h"
+#include <runtime/dotnet/types.h>
 
 #include <stddef.h>
 
 /**
  * Request an object of the given size from the heap
  */
-gc_object_t* heap_alloc(size_t size);
+System_Object heap_alloc(size_t size);
 
 /**
  * Return an object to the heap
  */
-void heap_free(gc_object_t* object);
+void heap_free(System_Object object);
 
 /**
  * Flush all freed objects, this will will possibly create small chunks
