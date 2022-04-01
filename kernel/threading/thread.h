@@ -1,5 +1,7 @@
 #pragma once
 
+#include <runtime/gc/gc_thread_data.h>
+
 #include <sync/spinlock.h>
 #include <util/except.h>
 #include <arch/idt.h>
@@ -131,6 +133,9 @@ typedef struct thread_save_state {
 
 typedef struct thread_control_block {
     struct thread_control_block* tcb;
+
+    // The per-thread data for the gc
+    gc_thread_data_t gc_data;
 } thread_control_block_t;
 
 typedef struct thread {
@@ -183,6 +188,12 @@ typedef struct waiting_thread {
  * For thread-locals
  */
 #define THREAD_LOCAL _Thread_local
+
+///**
+// * The default thread control block, this is what we set when
+// * a new thread is created, must be called under the thread lock
+// */
+//extern thread_control_block_t m_default_tcb;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Waiting thread item

@@ -44,6 +44,7 @@
 #include "mem/stack.h"
 #include "util/stb_ds.h"
 #include "arch/msr.h"
+#include "sync/mutex.h"
 
 #include <util/elf64.h>
 
@@ -278,11 +279,14 @@ static thread_t* thread_list_pop(thread_list_t* list) {
 }
 
 // all the threads in the system
-static spinlock_t m_all_threads_lock = INIT_SPINLOCK();
+static mutex_t m_all_threads_lock = { 0 };
 thread_t** g_all_threads = NULL;
 
 static void add_to_all_threads(thread_t* thread) {
     lock_all_threads();
+    // set the default gc thread data, updated by the gc whenever it iterates the
+    // thread list and does stuff
+    thread->tcb->gc_data = m_default_gc_thread_data;
     arrpush(g_all_threads, thread);
     unlock_all_threads();
 }
@@ -397,11 +401,11 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
 }
 
 void lock_all_threads() {
-    spinlock_lock(&m_all_threads_lock);
+    mutex_lock(&m_all_threads_lock);
 }
 
 void unlock_all_threads() {
-    spinlock_unlock(&m_all_threads_lock);
+    mutex_unlock(&m_all_threads_lock);
 }
 
 void thread_exit() {

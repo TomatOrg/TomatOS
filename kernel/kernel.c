@@ -1,6 +1,7 @@
 #include "kernel.h"
 
 #include "stivale2.h"
+#include "runtime/gc/gc.h"
 
 #include <threading/scheduler.h>
 #include <threading/cpu_local.h>
@@ -207,6 +208,8 @@ static void start_thread() {
 
     TRACE("Entered kernel thread!");
 
+    TRACE("Initializing kernel GC");
+    init_gc();
 
 
 cleanup:
