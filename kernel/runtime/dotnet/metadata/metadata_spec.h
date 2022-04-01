@@ -27,6 +27,11 @@ STATIC_ASSERT(sizeof(token_t) == sizeof(int));
 // Metadata entries
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef struct blob_entry {
+    const uint8_t* data;
+    size_t size;
+} blob_entry_t;
+
 #define METADATA_MODULE 0x00
 typedef struct metadata_module {
     uint16_t generation;
@@ -57,7 +62,7 @@ typedef struct metadata_type_def {
 typedef struct metadata_field {
     uint16_t flags;
     const char* name;
-    const uint8_t* signature;
+    blob_entry_t signature;
 } PACKED metadata_field_t;
 
 #define METADATA_METHOD_DEF 0x06
@@ -66,7 +71,7 @@ typedef struct metadata_method_def {
     uint16_t impl_flags;
     uint16_t flags;
     const char* name;
-    const uint8_t* signature;
+    blob_entry_t signature;
     token_t param_list;
 } PACKED metadata_method_def_t;
 
@@ -87,28 +92,28 @@ typedef struct metadata_interface_impl {
 typedef struct metadata_member_ref {
     token_t class;
     const char* name;
-    const uint8_t* signature;
+    blob_entry_t signature;
 } PACKED metadata_member_ref_t;
 
 #define METADATA_CONSTANT 0x0b
 typedef struct metadata_constant {
     uint16_t type;
     token_t parent;
-    const uint8_t* value;
+    blob_entry_t value;
 } PACKED metadata_constant_t;
 
 #define METADATA_CUSTOM_ATTRIBUTE 0x0c
 typedef struct metadata_custom_attribute {
     token_t parent;
     token_t type;
-    const uint8_t* value;
+    blob_entry_t value;
 } PACKED metadata_custom_attribute_t;
 
 #define METADATA_DECL_SECURITY 0x0e
 typedef struct metadata_decl_security {
     uint16_t action;
     token_t parent;
-    const uint8_t* permission_set;
+    blob_entry_t permission_set;
 } PACKED metadata_decl_security_t;
 
 #define METADATA_CLASS_LAYOUT 0x0f
@@ -126,7 +131,7 @@ typedef struct metadata_Field_layout {
 
 #define METADATA_STAND_ALONE_SIG 0x11
 typedef struct metadata_stand_alone_sig {
-    const uint8_t* signature;
+    blob_entry_t signature;
 } PACKED metadata_stand_alone_sig_t;
 
 #define METADATA_EVENT_MAP 0x12
@@ -152,7 +157,7 @@ typedef struct metadata_property_map {
 typedef struct metadata_property {
     uint16_t flags;
     const char* name;
-    const uint8_t* type;
+    blob_entry_t type;
 } PACKED metadata_property_t;
 
 #define METADATA_METHOD_SEMANTICS 0x18
@@ -171,7 +176,7 @@ typedef struct metadata_method_impl {
 
 #define METADATA_TYPE_SPEC 0x1b
 typedef struct metadata_type_spec {
-    const uint8_t* signature;
+    blob_entry_t signature;
 } PACKED metadata_type_spec_t;
 
 #define METADATA_ASSEMBLY 0x20
@@ -182,7 +187,7 @@ typedef struct metadata_assembly {
     uint16_t build_number;
     uint16_t revision_number;
     uint32_t flags;
-    const uint8_t* public_key;
+    blob_entry_t public_key;
     const char* name;
     const char* culture;
 } PACKED metadata_assembly_t;
@@ -194,10 +199,10 @@ typedef struct metadata_assembly_ref {
     uint16_t build_number;
     uint16_t revision_number;
     uint32_t flags;
-    const uint8_t* public_key_or_token;
+    blob_entry_t public_key_or_token;
     const char* name;
     const char* culture;
-    const uint8_t* hash_value;
+    blob_entry_t hash_value;
 } PACKED metadata_assembly_ref_t;
 
 #define METADATA_ASSEMBLY_REF_OS 0x25

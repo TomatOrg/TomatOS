@@ -38,13 +38,13 @@ void* gc_new(System_Type type, size_t size);
 #define GC_NEW(type) \
     ({ \
         System_Type __type = type; \
-        gc_new(__type, __type->managed_size); \
+        gc_new(__type, __type->ManagedSize); \
     })
 
 #define GC_NEW_STRING(count) \
     ({ \
         size_t __count = count; \
-        gc_new(tSystem_String, tSystem_String->managed_size + 2 * __count); \
+        gc_new(tSystem_String, tSystem_String->ManagedSize + 2 * __count); \
     })
 
 /**
@@ -55,7 +55,7 @@ void* gc_new(System_Type type, size_t size);
         size_t __count = count; \
         System_Type __elementType = elementType; \
         System_Type __arrayType = get_array_type(__elementType); \
-        System_Array __newArray = gc_new(__arrayType, __arrayType->managed_size + __elementType->stack_size * __count); \
+        System_Array __newArray = gc_new(__arrayType, __arrayType->ManagedSize + __elementType->StackSize * __count); \
         __newArray->Length = __count; \
         (void*)__newArray; \
     })

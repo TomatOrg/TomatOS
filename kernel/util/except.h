@@ -36,8 +36,33 @@ typedef enum err {
 #define IS_ERROR(err) (err != NO_ERROR)
 
 //----------------------------------------------------------------------------------------------------------------------
+// Misc utilities
+//----------------------------------------------------------------------------------------------------------------------
+
+#define WARN_ON(check, ...)     \
+    do {                        \
+        if (check) {            \
+            WARN(__VA_ARGS__);  \
+        }                       \
+    } while(0)
+
+#define ASSERT(check) \
+    do { \
+        if (!(check)) { \
+           ERROR("Assert failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
+            __builtin_trap(); \
+        } \
+    } while(0)
+
+//----------------------------------------------------------------------------------------------------------------------
 // A check that fails if the expression returns false
 //----------------------------------------------------------------------------------------------------------------------
+
+#if 1
+#define ASSERT_ON_CHECK ASSERT(0)
+#else
+#define ASSERT_ON_CHECK
+#endif
 
 #define CHECK_ERROR_LABEL(check, error, label, ...) \
     do { \
@@ -45,6 +70,7 @@ typedef enum err {
             err = error; \
             IF(HAS_ARGS(__VA_ARGS__))(ERROR(__VA_ARGS__)); \
             ERROR("Check failed with error %R in function %s (%s:%d)", err, __FUNCTION__, __FILE__, __LINE__); \
+            ASSERT_ON_CHECK; \
             goto label; \
         } \
     } while(0)
@@ -80,22 +106,3 @@ typedef enum err {
     } while(0)
 
 #define CHECK_AND_RETHROW(error) CHECK_AND_RETHROW_LABEL(error, cleanup)
-
-//----------------------------------------------------------------------------------------------------------------------
-// Misc utilities
-//----------------------------------------------------------------------------------------------------------------------
-
-#define WARN_ON(check, ...)     \
-    do {                        \
-        if (check) {            \
-            WARN(__VA_ARGS__);  \
-        }                       \
-    } while(0)
-
-#define ASSERT(check) \
-    do { \
-        if (!(check)) { \
-           ERROR("Assert failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
-            __builtin_trap(); \
-        } \
-    } while(0)

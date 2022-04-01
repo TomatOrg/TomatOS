@@ -70,11 +70,11 @@ void gc_update(void* o, size_t offset, void* new) {
             int temp_pos = arrlen(GCL->buffer);
 
             // TODO: managed pointers
-//            size_t* managed_pointer_offsets = o->Type->managed_pointer_offsets;
-//            arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets));
-//            for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
-//                GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
-//            }
+            size_t* managed_pointer_offsets = object->type->managed_pointer_offsets;
+            arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets));
+            for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
+                GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
+            }
 
             // is it still not dirty?
             if (object->log_pointer == NULL) {
@@ -184,14 +184,11 @@ static void trace(System_Object o) {
 
             // getting a replica
             // TODO: managed pointers
-//            size_t count = arrlen(o->Type->managed_pointer_offsets);
-//            System_Object* temp[count];
-//            for (int i = 0; i < count; i++) {
-//                temp[i] = read_field(o, o->Type->managed_pointer_offsets[i]);
-//            }
-
-            size_t count = 0;
+            size_t count = arrlen(o->type->managed_pointer_offsets);
             System_Object temp[count];
+            for (int i = 0; i < count; i++) {
+                temp[i] = read_field(o, o->type->managed_pointer_offsets[i]);
+            }
 
             if (o->log_pointer == NULL) {
                 for (int i = 0; i < count; i++) {
@@ -200,10 +197,10 @@ static void trace(System_Object o) {
             }
         } else {
             // object is dirty
-//            for (int i = 0; i < arrlen(o->Type->managed_pointer_offsets); i++) {
-//                int ni = arrlen(o->Type->managed_pointer_offsets) - i - 1;
-//                arrpush(m_mark_stack, o->log_pointer[ni]);
-//            }
+            for (int i = 0; i < arrlen(o->type->managed_pointer_offsets); i++) {
+                int ni = arrlen(o->type->managed_pointer_offsets) - i - 1;
+                arrpush(m_mark_stack, o->log_pointer[ni]);
+            }
         }
 
         o->color = m_color_black;

@@ -1,6 +1,7 @@
 #include "metadata.h"
 
 #include "metadata_spec.h"
+#include "sig.h"
 
 #include <util/string.h>
 #include <util/defs.h>
@@ -261,7 +262,7 @@ static err_t parse_single_table(metadata_parse_ctx_t* ctx, int table_id) {
             case GET_RVA: row_size += 4; in_memory_size += 4; break;
             case GET_UINT16: row_size += 2; in_memory_size += 2; break;
             case GET_UINT32: row_size += 4; in_memory_size += 4; break;
-            case GET_BLOB: row_size += ctx->long_blob_index ? 4 : 2; in_memory_size += sizeof(void*); break;
+            case GET_BLOB: row_size += ctx->long_blob_index ? 4 : 2; in_memory_size += sizeof(blob_entry_t); break;
             case GET_GUID: row_size += ctx->long_guid_index ? 4 : 2; in_memory_size += sizeof(void*); break;
             case GET_STRING: row_size += ctx->long_string_index ? 4 : 2; in_memory_size += sizeof(void*); break;
             case GET_CODED_INDEX_BASE ... GET_CODED_INDEX_MAX: row_size += ctx->long_coded_index[*cur_op - GET_CODED_INDEX_BASE] ? 4 : 2; in_memory_size += sizeof(token_t); break;
@@ -302,10 +303,25 @@ static err_t parse_single_table(metadata_parse_ctx_t* ctx, int table_id) {
                 } break;
 
                 case GET_BLOB: {
+                    // get the entry
                     uint32_t idx = ctx->long_blob_index ? FETCH_UINT32() : FETCH_UINT16();
                     CHECK(idx < ctx->file->blob_size);
-                    *(const uint8_t**)table = &ctx->file->blob[idx];
-                    table += sizeof(uint8_t*);
+
+                    // parse the compressed length
+                    uint32_t blob_size = 0;
+                    blob_entry_t entry = {
+                        .data = &ctx->file->blob[idx],
+                        .size = ctx->file->blob_size - idx,
+                    };
+                    CHECK_AND_RETHROW(parse_compressed_integer(&entry, &blob_size));
+
+                    // validate and set the length
+                    CHECK(blob_size <= ctx->file->blob_size - idx);
+                    entry.size = blob_size;
+
+                    // set the entry
+                    *(blob_entry_t*)table = entry;
+                    table += sizeof(blob_entry_t);
                 } break;
 
                 case GET_GUID: {
