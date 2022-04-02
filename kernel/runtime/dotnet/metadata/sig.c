@@ -1,6 +1,7 @@
 #include "sig.h"
 
 #include "sig_spec.h"
+#include "runtime/dotnet/gc/gc.h"
 
 #define NEXT_BYTE \
     do { \
@@ -164,6 +165,73 @@ cleanup:
     return err;
 }
 
+static err_t parse_ret_type(System_Reflection_Assembly assembly, blob_entry_t* sig, System_Type* out_type)  {
+    err_t err = NO_ERROR;
+
+    // get custom mods
+    // TODO: wtf is a custom mod
+    bool found = false;
+    do {
+        CHECK_AND_RETHROW(parse_custom_mod(sig, &found));
+    } while (found);
+
+    // actually get the type
+    bool is_by_ref = false;
+    CHECK(sig->size > 0);
+    switch (sig->data[0]) {
+        case ELEMENT_TYPE_TYPEDBYREF: {
+            NEXT_BYTE;
+            CHECK_FAIL("TODO: wtf is this");
+        } break;
+
+        // we got a byref element, let it fall down
+        case ELEMENT_TYPE_BYREF:
+            NEXT_BYTE;
+            is_by_ref = true;
+
+        // we got void, let it fall down
+        case ELEMENT_TYPE_VOID:
+        default: {
+            CHECK_AND_RETHROW(parse_type(assembly, sig, out_type, true));
+        } break;
+    }
+
+cleanup:
+    return err;
+}
+
+static err_t parse_param(System_Reflection_Assembly assembly, blob_entry_t* sig, System_Reflection_ParameterInfo parameter) {
+    err_t err = NO_ERROR;
+
+    // get custom mods
+    // TODO: wtf is a custom mod
+    bool found = false;
+    do {
+        CHECK_AND_RETHROW(parse_custom_mod(sig, &found));
+    } while (found);
+
+    // actually get the type
+    bool is_by_ref = false;
+    CHECK(sig->size > 0);
+    switch (sig->data[0]) {
+        case ELEMENT_TYPE_TYPEDBYREF: {
+            NEXT_BYTE;
+            CHECK_FAIL("TODO: wtf is this");
+        } break;
+
+        case ELEMENT_TYPE_BYREF:
+            NEXT_BYTE;
+            is_by_ref = true;
+
+        default: {
+            CHECK_AND_RETHROW(parse_type(assembly, sig, &parameter->ParameterType, false));
+        } break;
+    }
+
+cleanup:
+    return err;
+}
+
 err_t parse_field_sig(blob_entry_t _sig, System_Reflection_FieldInfo field) {
     err_t err = NO_ERROR;
     blob_entry_t* sig = &_sig;
@@ -180,6 +248,48 @@ err_t parse_field_sig(blob_entry_t _sig, System_Reflection_FieldInfo field) {
 
     // parse the actual field
     CHECK_AND_RETHROW(parse_type(field->Module->Assembly, sig, &field->FieldType, false));
+
+cleanup:
+    return err;
+}
+
+err_t parse_stand_alone_method_sig(blob_entry_t _sig, System_Reflection_MethodInfo method) {
+    err_t err = NO_ERROR;
+    blob_entry_t* sig = &_sig;
+
+    uint8_t header = CONSUME_BYTE();
+
+    // check the calling convention
+    uint8_t cc = header & 0xf;
+    CHECK(cc == DEFAULT || cc == VARARG || cc == C || cc == STDCALL || cc == THISCALL || cc == FASTCALL);
+    if (header & EXPLICITTHIS) {
+        CHECK(header & HASTHIS);
+    }
+
+    if (header & HASTHIS) {
+        // must be non-static if has this
+        CHECK(!method_is_static(method));
+    }
+
+    // get the param count
+    uint32_t param_count = 0;
+    CHECK_AND_RETHROW(parse_compressed_integer(sig, &param_count));
+
+    // get the return type
+    CHECK_AND_RETHROW(parse_ret_type(method->Module->Assembly, sig, &method->ReturnType));
+
+    // allocate the parameters and update it
+    GC_UPDATE(method, Parameters, GC_NEW_ARRAY(tSystem_Reflection_ParameterInfo, param_count));
+    for (int i = 0; i < param_count; i++) {
+        System_Reflection_ParameterInfo parameter = GC_NEW(tSystem_Reflection_ParameterInfo);
+        CHECK_AND_RETHROW(parse_param(method->Module->Assembly, sig, parameter));
+        GC_UPDATE_ARRAY(method->Parameters, i, parameter);
+    }
+
+    if (header & SENTINEL) {
+        CHECK_FAIL("I HAVE NO IDEA WHATS GOING ON");
+    }
+
 
 cleanup:
     return err;

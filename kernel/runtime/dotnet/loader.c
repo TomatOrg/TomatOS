@@ -122,9 +122,15 @@ static err_t init_type_methods(metadata_t* metadata, System_Reflection_Assembly 
 
         // init the field
         methodInfo->Attributes = method_def->flags;
+        methodInfo->ImplAttributes = method_def->impl_flags;
         GC_UPDATE(methodInfo, DeclaringType, type);
         GC_UPDATE(methodInfo, Module, Assembly->Module);
         GC_UPDATE(methodInfo, Name, new_string_from_utf8(method_def->name, strlen(method_def->name)));
+
+        // parse the method signature
+        CHECK_AND_RETHROW(parse_stand_alone_method_sig(method_def->signature, methodInfo));
+
+        // TODO: il code
 
         // store it
         GC_UPDATE_ARRAY(type->Methods, i, methodInfo);

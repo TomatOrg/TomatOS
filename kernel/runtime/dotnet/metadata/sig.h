@@ -7,3 +7,5 @@
 err_t parse_compressed_integer(blob_entry_t* sig, uint32_t* value);
 
 err_t parse_field_sig(blob_entry_t sig, System_Reflection_FieldInfo field);
+
+err_t parse_stand_alone_method_sig(blob_entry_t sig, System_Reflection_MethodInfo method);

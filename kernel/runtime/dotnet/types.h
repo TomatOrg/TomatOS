@@ -205,6 +205,7 @@ typedef struct System_Reflection_MethodBody {
 
 typedef struct System_Reflection_MethodBase {
     struct System_Reflection_MemberInfo;
+    uint16_t ImplAttributes;
     uint16_t Attributes;
     System_Reflection_MethodBody MethodBody;
     System_Reflection_ParameterInfo_Array Parameters;
@@ -216,6 +217,15 @@ struct System_Reflection_MethodInfo {
     struct System_Reflection_MethodBase;
     System_Type ReturnType;
 };
+
+// TODO: access
+
+static inline bool method_is_static(System_Reflection_MethodInfo method) { return method->Attributes & 0x0010; }
+static inline bool method_is_final(System_Reflection_MethodInfo method) { return method->Attributes & 0x0020; }
+static inline bool method_is_virtual(System_Reflection_MethodInfo method) { return method->Attributes & 0x0040; }
+static inline bool method_is_new_slot(System_Reflection_MethodInfo method) { return method->Attributes & 0x0100; }
+static inline bool method_is_strict(System_Reflection_MethodInfo method) { return method->Attributes & 0x0200; }
+static inline bool method_is_abstract(System_Reflection_MethodInfo method) { return method->Attributes & 0x0400; }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

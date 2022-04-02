@@ -240,9 +240,44 @@ static void start_thread() {
         }
 
         for (int j = 0; j < type->Methods->Length; j++) {
-            CHECK(type->Methods->Data[j] != NULL);
-            TRACE("\t\t%U",
-                  type->Methods->Data[j]->Name);
+            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
+            CHECK(mi != NULL);
+
+            #define APPEND(...) \
+                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
+
+            char mi_str[512] = { 0 };
+            int offset = 0;
+
+            if (method_is_static(mi)) {
+                APPEND("static ");
+            }
+
+            if (method_is_final(mi)) {
+                APPEND("final ");
+            }
+
+            if (method_is_virtual(mi)) {
+                APPEND("virtual ");
+            }
+
+            if (mi->ReturnType == NULL) {
+                APPEND("void ");
+            } else {
+                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
+            }
+            APPEND("%U", mi->Name);
+            APPEND("(");
+
+            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
+                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
+                if (pi + 1 != mi->Parameters->Length) {
+                    APPEND(", ");
+                }
+            }
+            APPEND(")");
+
+            TRACE("\t\t%s", mi_str);
         }
 
         TRACE("");

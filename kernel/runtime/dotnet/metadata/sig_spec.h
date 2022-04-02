@@ -1,6 +1,15 @@
 #pragma once
 
 #define FIELD 0x6
+#define HASTHIS 0x20
+#define EXPLICITTHIS 0x40
+#define DEFAULT 0x0
+#define VARARG 0x5
+#define C 0x1
+#define STDCALL 0x2
+#define THISCALL 0x3
+#define FASTCALL 0x4
+#define SENTINEL 0x41
 
 typedef enum element_type {
     ELEMENT_TYPE_END = 0x00,
@@ -25,7 +34,7 @@ typedef enum element_type {
     ELEMENT_TYPE_VAR = 0x13,
     ELEMENT_TYPE_ARRAY = 0x14,
     ELEMENT_TYPE_GENERICINST = 0x15,
-    ELEMENT_TYPE_TYPEBYREF = 0x16,
+    ELEMENT_TYPE_TYPEDBYREF = 0x16,
     // 0x17
     ELEMENT_TYPE_I = 0x18,
     ELEMENT_TYPE_U = 0x19,
