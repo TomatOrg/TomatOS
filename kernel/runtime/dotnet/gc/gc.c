@@ -2,6 +2,7 @@
 
 #include "gc_thread_data.h"
 #include "heap.h"
+#include "time/timer.h"
 
 #include <threading/scheduler.h>
 #include <threading/thread.h>
@@ -43,6 +44,15 @@ static void write_field(void* o, size_t offset, void* new) {
  */
 static _Atomic(System_Object) m_all_objects = NULL;
 
+static mutex_t m_global_roots_mutex;
+static System_Object** m_global_roots = NULL;
+
+void gc_add_root(void* object) {
+    mutex_lock(&m_global_roots_mutex);
+    arrpush(m_global_roots, object);
+    mutex_unlock(&m_global_roots_mutex);
+}
+
 void* gc_new(System_Type type, size_t size) {
     scheduler_preempt_disable();
 
@@ -69,11 +79,26 @@ void gc_update(void* o, size_t offset, void* new) {
         if (object->log_pointer) { // object not dirty
             int temp_pos = arrlen(GCL->buffer);
 
-            // TODO: managed pointers
-            size_t* managed_pointer_offsets = object->type->ManagedPointersOffsets;
-            arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets));
-            for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
-                GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
+            // Get a snapshot of the object
+            if (object->type->IsArray) {
+                // array object, check if we need to trace items
+                if (!object->type->ElementType->IsValueType) {
+                    System_Array array = o;
+                    arrsetcap(GCL->buffer, arrlen(GCL->buffer) + array->Length + 1);
+                    for (int i = 0; i < array->Length; i++) {
+                        size_t offset = sizeof(struct System_Array) +  + i * sizeof(void*);
+                        GCL->buffer[++temp_pos] = read_field(o, offset);
+                    }
+
+                    GCL->buffer[++temp_pos] = (System_Object)array->type;
+                }
+            } else {
+                // normal object, trace its fields
+                size_t* managed_pointer_offsets = object->type->ManagedPointersOffsets;
+                arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets));
+                for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
+                    GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
+                }
             }
 
             // is it still not dirty?
@@ -168,11 +193,13 @@ static void get_roots() {
     }
     unlock_all_threads();
 
-    // add all the globals
-    // TODO: dotnet globals
-
-    // runtime globals
-    // TODO: runtime globals
+    // add all the globals to the current roots
+    mutex_lock(&m_global_roots_mutex);
+    for (int i = 0; i < arrlen(m_global_roots); i++) {
+        System_Object o = *m_global_roots[i];
+        hmput(m_roots, o, o);
+    }
+    mutex_unlock(&m_global_roots_mutex);
 }
 
 static System_Object* m_mark_stack = NULL;
@@ -183,22 +210,57 @@ static void trace(System_Object o) {
             // if not dirty
 
             // getting a replica
-            // TODO: managed pointers
-            size_t count = arrlen(o->type->ManagedPointersOffsets);
-            System_Object temp[count];
-            for (int i = 0; i < count; i++) {
-                temp[i] = read_field(o, o->type->ManagedPointersOffsets[i]);
+            size_t count = 0;
+            System_Object* temp = NULL;
+            if (o->type->IsArray) {
+                // array object, check if we need to trace items
+                if (!o->type->ElementType->IsValueType) {
+                    System_Array array = (System_Array)o;
+                    count = array->Length + 1;
+                    temp = __builtin_alloca(count * sizeof(System_Object));
+                    for (int i = 0; i < array->Length; i++) {
+                        size_t offset = sizeof(struct System_Array) + i * sizeof(void*);
+                        temp[i] = read_field(o, offset);
+                    }
+
+                    // don't forget about the Type object
+                    temp[array->Length] = (System_Object)array->type;
+                }
+            } else {
+                // normal object, trace its fields
+                size_t* managed_pointer_offsets = o->type->ManagedPointersOffsets;
+                count = arrlen(managed_pointer_offsets);
+                temp = __builtin_alloca(count * sizeof(System_Object));
+                for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
+                    temp[i] = read_field(o, managed_pointer_offsets[i]);
+                }
             }
 
             if (o->log_pointer == NULL) {
                 for (int i = 0; i < count; i++) {
+                    if (temp[i] == NULL) continue;
                     arrpush(m_mark_stack, temp[i]);
                 }
             }
         } else {
             // object is dirty
-            for (int i = 0; i < arrlen(o->type->ManagedPointersOffsets); i++) {
-                int ni = arrlen(o->type->ManagedPointersOffsets) - i - 1;
+
+            size_t count = 0;
+            if (o->type->IsArray) {
+                // array object, check if we need to trace items
+                if (!o->type->ElementType->IsValueType) {
+                    System_Array array = (System_Array)o;
+                    count = array->Length + 1;
+                }
+            } else {
+                // normal object, trace its fields
+                size_t* managed_pointer_offsets = o->type->ManagedPointersOffsets;
+                count = arrlen(managed_pointer_offsets);
+            }
+
+            for (int i = 0; i < count; i++) {
+                int ni = count - i - 1;
+                if (o->log_pointer[ni] == NULL) continue;
                 arrpush(m_mark_stack, o->log_pointer[ni]);
             }
         }
@@ -210,6 +272,7 @@ static void trace(System_Object o) {
 static void trace_heap() {
     for (int i = 0; i < hmlen(m_roots); i++) {
         System_Object o = m_roots[i].key;
+        if (o == NULL) continue;
         arrpush(m_mark_stack, o);
     }
 
@@ -268,7 +331,6 @@ static void sweep() {
             // TODO: we technically need to queue this for finalization and
             //       only then destroy it...
             swept->color = GC_COLOR_BLUE;
-            TRACE("Swept %p", swept);
             heap_free(swept);
         } else {
             // the last object is this one since it is still alive
@@ -387,13 +449,14 @@ noreturn static void gc_thread(void* ctx) {
     TRACE("gc: GC thread started");
 
     while (true) {
-        TRACE("gc: Going to sleep");
         mutex_lock(&m_gc_mutex);
         gc_conductor_next();
         mutex_unlock(&m_gc_mutex);
         TRACE("gc: Starting collection");
 
+        uint64_t start = microtime();
         gc_collection_cycle();
+        TRACE("gc: Collection finished after %dus", microtime() - start);
     }
 }
 

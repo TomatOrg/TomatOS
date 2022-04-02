@@ -224,7 +224,11 @@ static System_Object heap_allocate_medium(size_t size) {
     return heap_allocate_large(size);
 }
 
+static atomic_size_t m_heap_alive = 0;
+
 System_Object heap_alloc(size_t size) {
+    m_heap_alive++;
+
     // fast path for small objects
     if (size < HEAP_RANK_0_SIZE) {
         return heap_allocate_0();
@@ -233,6 +237,8 @@ System_Object heap_alloc(size_t size) {
 }
 
 void heap_free(System_Object object) {
+    m_heap_alive--;
+
     switch (object->rank) {
         case 0: heap_rank_free(&m_heap_ranks[0], 0, HEAP_RANK_0_COUNT, object); break;
         case 1: heap_rank_free(&m_heap_ranks[1], 1, HEAP_RANK_1_COUNT, object); break;
@@ -255,4 +261,8 @@ void heap_flush() {
     heap_rank_flush(&m_heap_ranks[4], 4);
     heap_rank_flush(&m_heap_ranks[5], 5);
     heap_rank_flush(&m_heap_ranks[6], 6);
+}
+
+size_t heap_alive() {
+    return m_heap_alive;
 }

@@ -18,3 +18,8 @@ void heap_free(System_Object object);
  * Flush all freed objects, this will will possibly create small chunks
  */
 void heap_flush();
+
+/**
+ * Get the number of objects that are considered alive
+ */
+size_t heap_alive();

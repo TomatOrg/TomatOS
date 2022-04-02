@@ -2,6 +2,12 @@
 
 #include <stddef.h>
 #include "util/except.h"
+#include "types.h"
+
+/**
+ * The core library instance
+ */
+extern System_Reflection_Assembly g_corelib;
 
 /**
  * Loading the corelib itself

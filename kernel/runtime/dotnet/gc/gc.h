@@ -24,6 +24,13 @@ err_t init_gc();
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /**
+ * Add a root to the gc, required for proper garbage collection
+ *
+ * @param object    [IN] The object to add
+ */
+void gc_add_root(void* object);
+
+/**
  * Allocate a new object from the garbage collector of the given type and of
  * the given size
  *

@@ -2,6 +2,7 @@
 
 #include "stivale2.h"
 #include "runtime/dotnet/loader.h"
+#include "runtime/dotnet/gc/heap.h"
 
 #include <runtime/dotnet/gc/gc.h>
 
@@ -210,6 +211,12 @@ static void start_thread() {
     // Initialize the runtime
     CHECK_AND_RETHROW(init_gc());
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
+
+    TRACE("before collection - %d", heap_alive());
+
+    gc_wait();
+
+    TRACE("after collection - %d", heap_alive());
 
 cleanup:
     ASSERT(!IS_ERROR(err));

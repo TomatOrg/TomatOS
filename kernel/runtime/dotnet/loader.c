@@ -119,6 +119,11 @@ static err_t init_type_sizes(System_Type Type) {
 
         alignment = Type->BaseType->ManagedAlignment;
         size = Type->BaseType->ManagedSize;
+
+        // copy the manged pointers from the base
+        arrsetlen(Type->ManagedPointersOffsets, arrlen(Type->BaseType->ManagedPointersOffsets));
+        memcpy(Type->ManagedPointersOffsets, Type->BaseType->ManagedPointersOffsets,
+               arrlen(Type->BaseType->ManagedPointersOffsets) * sizeof(size_t));
     }
 
     // continue from the last type
@@ -143,6 +148,11 @@ static err_t init_type_sizes(System_Type Type) {
 
         // set the field offset
         FieldInfo->MemoryOffset = size;
+
+        if (!FieldType->IsValueType) {
+            // save this as a managed pointer offset
+            arrpush(Type->ManagedPointersOffsets, FieldInfo->MemoryOffset);
+        }
 
         // add to the size
         size += FieldType->StackSize;
@@ -266,6 +276,8 @@ static void init_builtin_type(metadata_type_def_t* type_def, System_Type type) {
     }
 }
 
+System_Reflection_Assembly g_corelib = NULL;
+
 err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     err_t err = NO_ERROR;
 
@@ -369,6 +381,10 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
                   type->Fields->Data[j]->MemoryOffset);
         }
     }
+
+    // set the global and add it as a root
+    g_corelib = assembly;
+    gc_add_root(&g_corelib);
 
 cleanup:
     return err;
