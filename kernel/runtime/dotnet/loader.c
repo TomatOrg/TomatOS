@@ -44,6 +44,7 @@ static void init_type(metadata_t* metadata, System_Reflection_Assembly Assembly,
     GC_UPDATE(type, Module, Assembly->Module);
     GC_UPDATE(type, Name, new_string_from_utf8(type_def->type_name, strlen(type_def->type_name)));
     GC_UPDATE(type, Namespace, new_string_from_utf8(type_def->type_namespace, strlen(type_def->type_namespace)));
+    type->Attributes = type_def->flags;
 
     // handle the inheritance type
     if (type_def->extends.index != 0) {
@@ -96,15 +97,11 @@ cleanup:
 static err_t init_type_sizes(System_Type Type) {
     err_t err = NO_ERROR;
 
-    TRACE("- %U.%U", Type->Namespace, Type->Name);
-
     // we already initialized the size, continue
     if (Type->SizeValid) {
         CHECK(Type->StackAlignment != 0);
         goto cleanup;
     }
-
-    TRACE("--> %U.%U", Type->Namespace, Type->Name);
 
     Type->SizeValid = true;
 
@@ -117,6 +114,7 @@ static err_t init_type_sizes(System_Type Type) {
 
         if (Type->BaseType->IsValueType) {
             Type->IsValueType = true;
+            CHECK(Type->BaseType->StackSize == 0);
         }
 
         alignment = Type->BaseType->ManagedAlignment;
@@ -130,19 +128,24 @@ static err_t init_type_sizes(System_Type Type) {
 
         CHECK_AND_RETHROW(init_type_sizes(FieldType));
 
+        // skip static fields
+        if (field_is_static(FieldInfo)) {
+            continue;
+        }
+
         // align to the current field
-        size = ALIGN_UP(size, FieldType->ManagedAlignment);
+        size = ALIGN_UP(size, FieldType->StackAlignment);
 
         // check if alignment should be changed
-        if (alignment < FieldType->ManagedAlignment) {
-            alignment = FieldType->ManagedAlignment;
+        if (alignment < FieldType->StackAlignment) {
+            alignment = FieldType->StackAlignment;
         }
 
         // set the field offset
         FieldInfo->MemoryOffset = size;
 
         // add to the size
-        size += FieldType->ManagedSize;
+        size += FieldType->StackSize;
     }
 
     // align the size of the whole thing
@@ -293,6 +296,7 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     for (int i = 0; i < type_count; i++) {
         metadata_type_def_t* type_def = metadata_get_type_def(&metadata, i);
         System_Type type = gc_new(NULL, sizeof(struct System_Type));
+        type->ArrayTypeMutex = malloc(sizeof(mutex_t));
         assembly->DefinedTypes->Data[i] = type;
         init_builtin_type(type_def, type);
     }
@@ -345,11 +349,20 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     TRACE("Types:");
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
         System_Type type = assembly->DefinedTypes->Data[i];
-        TRACE("\t%U.%U", type->Namespace, type->Name);
+        if (type->BaseType != NULL) {
+            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name,
+                  type->BaseType->Namespace, type->BaseType->Name);
+        } else {
+            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name);
+        }
 
         for (int j = 0; j < type->Fields->Length; j++) {
             CHECK(type->Fields->Data[j] != NULL);
-            TRACE("\t\t%U.%U %U; // offset 0x%02x",
+            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
+                  field_access_str(field_access(type->Fields->Data[j])),
+                  field_is_static(type->Fields->Data[j]) ? "static " : "",
                   type->Fields->Data[j]->FieldType->Namespace,
                   type->Fields->Data[j]->FieldType->Name,
                   type->Fields->Data[j]->Name,

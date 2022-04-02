@@ -70,7 +70,7 @@ void gc_update(void* o, size_t offset, void* new) {
             int temp_pos = arrlen(GCL->buffer);
 
             // TODO: managed pointers
-            size_t* managed_pointer_offsets = object->type->managed_pointer_offsets;
+            size_t* managed_pointer_offsets = object->type->ManagedPointersOffsets;
             arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets));
             for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
                 GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
@@ -184,10 +184,10 @@ static void trace(System_Object o) {
 
             // getting a replica
             // TODO: managed pointers
-            size_t count = arrlen(o->type->managed_pointer_offsets);
+            size_t count = arrlen(o->type->ManagedPointersOffsets);
             System_Object temp[count];
             for (int i = 0; i < count; i++) {
-                temp[i] = read_field(o, o->type->managed_pointer_offsets[i]);
+                temp[i] = read_field(o, o->type->ManagedPointersOffsets[i]);
             }
 
             if (o->log_pointer == NULL) {
@@ -197,8 +197,8 @@ static void trace(System_Object o) {
             }
         } else {
             // object is dirty
-            for (int i = 0; i < arrlen(o->type->managed_pointer_offsets); i++) {
-                int ni = arrlen(o->type->managed_pointer_offsets) - i - 1;
+            for (int i = 0; i < arrlen(o->type->ManagedPointersOffsets); i++) {
+                int ni = arrlen(o->type->ManagedPointersOffsets) - i - 1;
                 arrpush(m_mark_stack, o->log_pointer[ni]);
             }
         }

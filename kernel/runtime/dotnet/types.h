@@ -140,6 +140,23 @@ typedef struct System_Reflection_FieldInfo {
 
 DEFINE_ARRAY(System_Reflection_FieldInfo);
 
+typedef enum field_access {
+    FIELD_COMPILER_CONTROLLED,
+    FIELD_PRIVATE,                  // C# private
+    FIELD_FAMILY_AND_ASSEMBLY,      // C# private protected
+    FIELD_ASSEMBLY,                 // C# internal
+    FIELD_FAMILY,                   // C# protected
+    FIELD_FAMILY_OR_ASSEMBLY,       // C# protected internal
+    FIELD_PUBLIC,                   // C# public
+} field_access_t;
+
+static inline field_access_t field_access(System_Reflection_FieldInfo field) { return field->Attributes & 0b111; }
+static inline bool field_is_static(System_Reflection_FieldInfo field) { return field->Attributes & 0x0010; }
+static inline bool field_is_init_only(System_Reflection_FieldInfo field) { return field->Attributes & 0x0020; }
+static inline bool field_is_literal(System_Reflection_FieldInfo field) { return field->Attributes & 0x0040; }
+
+const char* field_access_str(field_access_t access);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct System_Type {
@@ -149,13 +166,20 @@ struct System_Type {
     System_String Namespace;
     System_Reflection_FieldInfo_Array Fields;
     System_Type ElementType;
+    uint32_t Attributes;
+    bool IsArray;
+    bool IsByRef;
+    bool IsPointer;
 
     //
     // For the runtime, unrelated to the System.Type stuff
     //
 
+    mutex_t* ArrayTypeMutex;
     System_Type ArrayType;
-    size_t* managed_pointer_offsets;
+
+    // array of managed offsets
+    size_t* ManagedPointersOffsets;
 
     size_t StackSize;
     size_t StackAlignment;
@@ -165,11 +189,31 @@ struct System_Type {
 
     bool SizeValid;
     bool IsValueType;
-
-    // TODO: need to figure the size of this structure so we can put
-    //       it in the dotnet side (?)
-    mutex_t array_type_mutex;
 };
+
+typedef enum type_visibility {
+    TYPE_NOT_PUBLIC,
+    TYPE_PUBLIC,
+    TYPE_NESTED_PUBLIC,
+    TYPE_NESTED_PRIVATE,
+    TYPE_NESTED_FAMILY,
+    TYPE_NESTED_ASSEMBLY,
+    TYPE_NESTED_FAMILY_AND_ASSEMBLY,
+    TYPE_NESTED_FAMILY_OR_ASSEMBLY,
+} type_visibility_t;
+
+typedef enum type_layout {
+    TYPE_AUTO_LAYOUT = 0,
+    TYPE_SEQUENTIAL_LAYOUT = 1,
+    TYPE_EXPLICIT_LAYOUT = 2,
+} type_layout_t;
+
+static inline type_visibility_t type_visibility(System_Type Type) { return Type->Attributes & 0b111; }
+static inline type_layout_t type_layout(System_Type Type) { return (Type->Attributes >> 3) & 0b11; }
+static inline bool type_is_abstract(System_Type Type) { return Type->Attributes & 0x00000080; }
+static inline bool type_is_sealed(System_Type Type) { return Type->Attributes & 0x00000100; }
+
+const char* type_visibility_str(type_visibility_t visibility);
 
 /**
  * Get the array type for the given type

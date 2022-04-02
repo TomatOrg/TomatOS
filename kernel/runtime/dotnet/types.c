@@ -1,8 +1,11 @@
 #include "types.h"
+#include "util/stb_ds.h"
 
 #include <runtime/dotnet/gc/gc.h>
 
 #include <util/string.h>
+
+#include <mem/mem.h>
 
 System_Type tSystem_ValueType = NULL;
 System_Type tSystem_Object = NULL;
@@ -68,10 +71,10 @@ System_Type get_array_type(System_Type Type) {
         return Type->ArrayType;
     }
 
-    mutex_lock(&Type->array_type_mutex);
+    mutex_lock(Type->ArrayTypeMutex);
 
     if (Type->ArrayType != NULL) {
-        mutex_unlock(&Type->array_type_mutex);
+        mutex_unlock(Type->ArrayTypeMutex);
         return Type->ArrayType;
     }
 
@@ -88,18 +91,55 @@ System_Type get_array_type(System_Type Type) {
     GC_UPDATE(ArrayType, BaseType, tSystem_Array);
     GC_UPDATE(ArrayType, Namespace, Type->Namespace);
 
+    // this is an array
+    ArrayType->IsArray = true;
+
     // set the sizes properly
     ArrayType->StackSize = tSystem_Array->StackSize;
     ArrayType->ManagedSize = tSystem_Array->ManagedSize;
     ArrayType->StackAlignment = tSystem_Array->StackAlignment;
     ArrayType->ManagedAlignment = tSystem_Array->ManagedAlignment;
 
+    // set the type mutex
+    ArrayType->ArrayTypeMutex = malloc(sizeof(mutex_t));
+
+    // There are no managed pointers in here (The gc will handle array
+    // stuff on its own)
+    ArrayType->ManagedPointersOffsets = NULL;
+
     // Set the element type
     GC_UPDATE(ArrayType, ElementType, Type);
 
     // Set the array type
     GC_UPDATE(Type, ArrayType, ArrayType);
-    mutex_unlock(&Type->array_type_mutex);
+    mutex_unlock(Type->ArrayTypeMutex);
 
     return Type->ArrayType;
+}
+
+const char* field_access_str(field_access_t access) {
+    static const char* strs[] = {
+        [FIELD_COMPILER_CONTROLLED] = "compilercontrolled",
+        [FIELD_PRIVATE] = "private",
+        [FIELD_FAMILY_AND_ASSEMBLY] = "private protected",
+        [FIELD_ASSEMBLY] = "internal",
+        [FIELD_FAMILY] = "protected",
+        [FIELD_FAMILY_OR_ASSEMBLY] = "protected internal",
+        [FIELD_PUBLIC] = "public",
+    };
+    return strs[access];
+}
+
+const char* type_visibility_str(type_visibility_t visibility) {
+    static const char* strs[] = {
+        [TYPE_NOT_PUBLIC] = "private",
+        [TYPE_PUBLIC] = "public",
+        [TYPE_NESTED_PUBLIC] = "nested public",
+        [TYPE_NESTED_PRIVATE] = "nested private",
+        [TYPE_NESTED_FAMILY] = "protected",
+        [TYPE_NESTED_ASSEMBLY] = "internal",
+        [TYPE_NESTED_FAMILY_AND_ASSEMBLY] = "private protected",
+        [TYPE_NESTED_FAMILY_OR_ASSEMBLY] = "protected internal",
+    };
+    return strs[visibility];
 }

@@ -8,7 +8,7 @@ parted -s out/build/test.hdd mkpart ESP fat32 2048s 100%
 parted -s out/build/test.hdd set 1 esp on
 
 # Setup limine
-limine/limine-s2deploy out/build/test.hdd
+limine/limine-deploy out/build/test.hdd
 
 # Setup the mount
 sudo losetup -Pf --show out/build/test.hdd >out/build/loopback_dev

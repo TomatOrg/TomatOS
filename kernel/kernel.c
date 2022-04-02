@@ -164,9 +164,6 @@ static void per_cpu_start(struct stivale2_smp_info* info) {
     CHECK_AND_RETHROW(init_apic());
     CHECK_AND_RETHROW(init_cpu_locals());
 
-    // move to higher half
-    info = PHYS_TO_DIRECT(info);
-
     // make sure this is valid
     CHECK(info->lapic_id == get_apic_id());
 
