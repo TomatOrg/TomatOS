@@ -29,6 +29,10 @@ System_Type tSystem_UIntPtr = NULL;
 System_Type tSystem_Reflection_Module = NULL;
 System_Type tSystem_Reflection_Assembly = NULL;
 System_Type tSystem_Reflection_FieldInfo = NULL;
+System_Type tSystem_Reflection_ParameterInfo = NULL;
+System_Type tSystem_Reflection_MethodBase = NULL;
+System_Type tSystem_Reflection_MethodBody = NULL;
+System_Type tSystem_Reflection_MethodInfo = NULL;
 
 System_String string_append_cstr(System_String old, const char* str) {
     size_t len = strlen(str);

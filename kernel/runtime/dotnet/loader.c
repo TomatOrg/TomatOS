@@ -94,6 +94,50 @@ cleanup:
     return err;
 }
 
+
+static err_t init_type_methods(metadata_t* metadata, System_Reflection_Assembly Assembly, System_Type type, int index) {
+    err_t err = NO_ERROR;
+
+    metadata_type_def_t* type_def = metadata_get_type_def(metadata, index);
+
+    // get the methods count
+    // TODO: this code is uglyyyyyyyy
+    size_t methods_base = type_def->method_list.index - 1;
+    size_t methods_count = 0;
+    CHECK(type_def->method_list.table == METADATA_METHOD_DEF);
+    if (index + 1 == metadata->tables[METADATA_TYPE_DEF].rows) {
+        methods_count = metadata->tables[METADATA_METHOD_DEF].rows - methods_base;
+    } else {
+        metadata_type_def_t* next_type_def = metadata_get_type_def(metadata, index + 1);
+        CHECK(next_type_def->method_list.table == METADATA_METHOD_DEF);
+        methods_count = (next_type_def->method_list.index - 1) - methods_base;
+    }
+    CHECK(methods_base + methods_count <= metadata->tables[METADATA_METHOD_DEF].rows);
+
+    // Allocate the array of methods
+    GC_UPDATE(type, Methods, GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, methods_count));
+    for (size_t i = 0; i < methods_count; i++) {
+        metadata_method_def_t* method_def = metadata_get_method_def(metadata, methods_base + i);
+        System_Reflection_MethodInfo methodInfo = GC_NEW(tSystem_Reflection_MethodInfo);
+
+        // init the field
+        methodInfo->Attributes = method_def->flags;
+        GC_UPDATE(methodInfo, DeclaringType, type);
+        GC_UPDATE(methodInfo, Module, Assembly->Module);
+        GC_UPDATE(methodInfo, Name, new_string_from_utf8(method_def->name, strlen(method_def->name)));
+
+        // store it
+        GC_UPDATE_ARRAY(type->Methods, i, methodInfo);
+
+        // store it in the global array
+        GC_UPDATE_ARRAY(type->Assembly->DefinedMethods, methods_base + i, methodInfo);
+    }
+
+cleanup:
+    return err;
+}
+
+
 static err_t init_type_sizes(System_Type Type) {
     err_t err = NO_ERROR;
 
@@ -230,28 +274,32 @@ typedef struct builtin_type {
     { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(code), alignof(code), true }
 
 static builtin_type_t m_builtin_types[] = {
-        BUILTIN_TYPE("System", "ValueType", System_ValueType),
-        BUILTIN_TYPE("System", "Object", System_Object),
-        BUILTIN_TYPE("System", "Type", System_Type),
-        BUILTIN_TYPE("System", "Array", System_Array),
-        BUILTIN_TYPE("System", "String", System_String),
-        BUILTIN_VALUE_TYPE("System", "Boolean", System_Boolean),
-        BUILTIN_VALUE_TYPE("System", "Char", System_Char),
-        BUILTIN_VALUE_TYPE("System", "SByte", System_SByte),
-        BUILTIN_VALUE_TYPE("System", "Byte", System_Byte),
-        BUILTIN_VALUE_TYPE("System", "Int16", System_Int16),
-        BUILTIN_VALUE_TYPE("System", "UInt16", System_UInt16),
-        BUILTIN_VALUE_TYPE("System", "Int32", System_Int32),
-        BUILTIN_VALUE_TYPE("System", "UInt32", System_UInt32),
-        BUILTIN_VALUE_TYPE("System", "Int64", System_Int64),
-        BUILTIN_VALUE_TYPE("System", "UInt64", System_UInt64),
-        BUILTIN_VALUE_TYPE("System", "Single", System_Single),
-        BUILTIN_VALUE_TYPE("System", "Double", System_Double),
-        BUILTIN_VALUE_TYPE("System", "IntPtr", System_IntPtr),
-        BUILTIN_VALUE_TYPE("System", "UIntPtr", System_UIntPtr),
-        BUILTIN_TYPE("System.Reflection", "Module", System_Reflection_Module),
-        BUILTIN_TYPE("System.Reflection", "Assembly", System_Reflection_Assembly),
-        BUILTIN_TYPE("System.Reflection", "FieldInfo", System_Reflection_FieldInfo),
+    BUILTIN_TYPE("System", "ValueType", System_ValueType),
+    BUILTIN_TYPE("System", "Object", System_Object),
+    BUILTIN_TYPE("System", "Type", System_Type),
+    BUILTIN_TYPE("System", "Array", System_Array),
+    BUILTIN_TYPE("System", "String", System_String),
+    BUILTIN_VALUE_TYPE("System", "Boolean", System_Boolean),
+    BUILTIN_VALUE_TYPE("System", "Char", System_Char),
+    BUILTIN_VALUE_TYPE("System", "SByte", System_SByte),
+    BUILTIN_VALUE_TYPE("System", "Byte", System_Byte),
+    BUILTIN_VALUE_TYPE("System", "Int16", System_Int16),
+    BUILTIN_VALUE_TYPE("System", "UInt16", System_UInt16),
+    BUILTIN_VALUE_TYPE("System", "Int32", System_Int32),
+    BUILTIN_VALUE_TYPE("System", "UInt32", System_UInt32),
+    BUILTIN_VALUE_TYPE("System", "Int64", System_Int64),
+    BUILTIN_VALUE_TYPE("System", "UInt64", System_UInt64),
+    BUILTIN_VALUE_TYPE("System", "Single", System_Single),
+    BUILTIN_VALUE_TYPE("System", "Double", System_Double),
+    BUILTIN_VALUE_TYPE("System", "IntPtr", System_IntPtr),
+    BUILTIN_VALUE_TYPE("System", "UIntPtr", System_UIntPtr),
+    BUILTIN_TYPE("System.Reflection", "Module", System_Reflection_Module),
+    BUILTIN_TYPE("System.Reflection", "Assembly", System_Reflection_Assembly),
+    BUILTIN_TYPE("System.Reflection", "FieldInfo", System_Reflection_FieldInfo),
+    BUILTIN_TYPE("System.Reflection", "ParameterInfo", System_Reflection_ParameterInfo),
+    BUILTIN_TYPE("System.Reflection", "MethodBase", System_Reflection_MethodBase),
+    BUILTIN_TYPE("System.Reflection", "MethodBody", System_Reflection_MethodBody),
+    BUILTIN_TYPE("System.Reflection", "MethodInfo", System_Reflection_MethodInfo),
 };
 
 static void init_builtin_type(metadata_type_def_t* type_def, System_Type type) {
@@ -337,7 +385,10 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
         CHECK(*bt->global != NULL, "Failed to find builtin type `%s.%s`", bt->namespace, bt->name);
     }
 
-    // first phase, initialize the basic type information
+    //------------------------------------------------------------------------------
+    // initialize the basic type information
+    //------------------------------------------------------------------------------
+
     for (int i = 0; i < type_count; i++) {
         // already initialized
         init_type(&metadata, assembly, assembly->DefinedTypes->Data[i], i);
@@ -346,40 +397,33 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     // we can now safely set the DefinedTypes type
     assembly->DefinedTypes->type = get_array_type(tSystem_Type);
 
-    // second phase, initialize the fields
+    //------------------------------------------------------------------------------
+    // initialize the methods
+    //------------------------------------------------------------------------------
+
+    GC_UPDATE(assembly, DefinedMethods, GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, metadata.tables[METADATA_METHOD_DEF].rows));
+
     for (int i = 0; i < type_count; i++) {
         // already initialized
-        init_type_fields(&metadata, assembly, assembly->DefinedTypes->Data[i], i);
+        CHECK_AND_RETHROW(init_type_methods(&metadata, assembly, assembly->DefinedTypes->Data[i], i));
     }
 
-    // third phase, initialize the offsets and sizes of everything
+    //------------------------------------------------------------------------------
+    // initialize the fields
+    //------------------------------------------------------------------------------
+
+    for (int i = 0; i < type_count; i++) {
+        // already initialized
+        CHECK_AND_RETHROW(init_type_fields(&metadata, assembly, assembly->DefinedTypes->Data[i], i));
+    }
+
+    //------------------------------------------------------------------------------
+    // initialize the offsets and sizes of everything
+    //------------------------------------------------------------------------------
+
     for (int i = 0; i < type_count; i++) {
         // already initialized
         CHECK_AND_RETHROW(init_type_sizes(assembly->DefinedTypes->Data[i]));
-    }
-
-    TRACE("Types:");
-    for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
-        System_Type type = assembly->DefinedTypes->Data[i];
-        if (type->BaseType != NULL) {
-            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
-                  type->Namespace, type->Name,
-                  type->BaseType->Namespace, type->BaseType->Name);
-        } else {
-            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
-                  type->Namespace, type->Name);
-        }
-
-        for (int j = 0; j < type->Fields->Length; j++) {
-            CHECK(type->Fields->Data[j] != NULL);
-            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
-                  field_access_str(field_access(type->Fields->Data[j])),
-                  field_is_static(type->Fields->Data[j]) ? "static " : "",
-                  type->Fields->Data[j]->FieldType->Namespace,
-                  type->Fields->Data[j]->FieldType->Name,
-                  type->Fields->Data[j]->Name,
-                  type->Fields->Data[j]->MemoryOffset);
-        }
     }
 
     // set the global and add it as a root

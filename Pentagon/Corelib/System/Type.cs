@@ -9,6 +9,7 @@ namespace System
         private Type _baseType;
         private string _namespace;
         private FieldInfo[] _fields;
+        private MethodInfo[] _methods;
         private Type _elementType;
         private uint _attributes;
         private bool _isArray;

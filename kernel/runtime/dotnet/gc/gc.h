@@ -96,7 +96,7 @@ void gc_update(void* o, size_t offset, void* new);
 #define GC_UPDATE_ARRAY(o, idx, new) \
     do { \
         typeof(o) _o = o; \
-        gc_update(_o, offsetof(typeof(*(_o)), Data) + idx * sizeof(typeof(_o->Data[0])), new); \
+        gc_update(_o, offsetof(typeof(*(_o)), Data) + (idx) * sizeof(typeof(_o->Data[0])), new); \
     } while (0)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

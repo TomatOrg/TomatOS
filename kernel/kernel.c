@@ -213,10 +213,40 @@ static void start_thread() {
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
 
     TRACE("before collection - %d", heap_alive());
-
     gc_wait();
-
     TRACE("after collection - %d", heap_alive());
+
+    TRACE("Types:");
+    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
+        System_Type type = g_corelib->DefinedTypes->Data[i];
+        if (type->BaseType != NULL) {
+            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name,
+                  type->BaseType->Namespace, type->BaseType->Name);
+        } else {
+            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name);
+        }
+
+        for (int j = 0; j < type->Fields->Length; j++) {
+            CHECK(type->Fields->Data[j] != NULL);
+            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
+                  field_access_str(field_access(type->Fields->Data[j])),
+                  field_is_static(type->Fields->Data[j]) ? "static " : "",
+                  type->Fields->Data[j]->FieldType->Namespace,
+                  type->Fields->Data[j]->FieldType->Name,
+                  type->Fields->Data[j]->Name,
+                  type->Fields->Data[j]->MemoryOffset);
+        }
+
+        for (int j = 0; j < type->Methods->Length; j++) {
+            CHECK(type->Methods->Data[j] != NULL);
+            TRACE("\t\t%U",
+                  type->Methods->Data[j]->Name);
+        }
+
+        TRACE("");
+    }
 
 cleanup:
     ASSERT(!IS_ERROR(err));

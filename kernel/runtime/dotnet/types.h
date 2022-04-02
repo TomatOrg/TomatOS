@@ -10,6 +10,7 @@
 
 typedef struct System_Object *System_Object;
 typedef struct System_Type *System_Type;
+typedef struct System_Reflection_MethodInfo *System_Reflection_MethodInfo;
 
 typedef struct System_Guid {
     uint32_t a;
@@ -24,6 +25,27 @@ typedef struct System_Guid {
     uint8_t j;
     uint8_t k;
 } System_Guid;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct System_ValueType {
+    // empty...
+} System_ValueType;
+
+typedef bool System_Boolean;
+typedef wchar_t System_Char;
+typedef int8_t System_SByte;
+typedef uint8_t System_Byte;
+typedef int16_t System_Int16;
+typedef uint16_t System_UInt16;
+typedef int32_t System_Int32;
+typedef uint32_t System_UInt32;
+typedef int64_t System_Int64;
+typedef uint64_t System_UInt64;
+typedef float System_Single;
+typedef double System_Double;
+typedef intptr_t System_IntPtr;
+typedef uintptr_t System_UIntPtr;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -68,6 +90,8 @@ typedef struct System_Array {
     } *type##_Array;
 
 DEFINE_ARRAY(System_Type);
+DEFINE_ARRAY(System_Reflection_MethodInfo);
+DEFINE_ARRAY(System_Byte);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -109,6 +133,7 @@ System_Type get_type_by_token(System_Reflection_Assembly assembly, token_t token
 struct System_Reflection_Assembly {
     struct System_Object;
     System_Type_Array DefinedTypes;
+    System_Reflection_MethodInfo_Array DefinedMethods;
     System_Reflection_Module Module;
 };
 
@@ -159,12 +184,48 @@ const char* field_access_str(field_access_t access);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef struct System_Reflection_ParameterInfo {
+    struct System_Object;
+    uint16_t Attributes;
+    System_String Name;
+    System_Type ParameterType;
+} *System_Reflection_ParameterInfo;
+
+DEFINE_ARRAY(System_Reflection_ParameterInfo);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct System_Reflection_MethodBody {
+    struct System_Object;
+    int32_t MaxStackSize;
+    System_Byte_Array Il;
+} *System_Reflection_MethodBody;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct System_Reflection_MethodBase {
+    struct System_Reflection_MemberInfo;
+    uint16_t Attributes;
+    System_Reflection_MethodBody MethodBody;
+    System_Reflection_ParameterInfo_Array Parameters;
+} *System_Reflection_MethodBase;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct System_Reflection_MethodInfo {
+    struct System_Reflection_MethodBase;
+    System_Type ReturnType;
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 struct System_Type {
     struct System_Reflection_MemberInfo;
     System_Reflection_Assembly Assembly;
     System_Type BaseType;
     System_String Namespace;
     System_Reflection_FieldInfo_Array Fields;
+    System_Reflection_MethodInfo_Array Methods;
     System_Type ElementType;
     uint32_t Attributes;
     bool IsArray;
@@ -224,27 +285,6 @@ System_Type get_array_type(System_Type Type);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-typedef struct System_ValueType {
-    // empty...
-} System_ValueType;
-
-typedef bool System_Boolean;
-typedef wchar_t System_Char;
-typedef int8_t System_SByte;
-typedef uint8_t System_Byte;
-typedef int16_t System_Int16;
-typedef uint16_t System_UInt16;
-typedef int32_t System_Int32;
-typedef uint32_t System_UInt32;
-typedef int64_t System_Int64;
-typedef uint64_t System_UInt64;
-typedef float System_Single;
-typedef double System_Double;
-typedef intptr_t System_IntPtr;
-typedef uintptr_t System_UIntPtr;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 extern System_Type tSystem_ValueType;
 extern System_Type tSystem_Object;
 extern System_Type tSystem_Type;
@@ -267,3 +307,7 @@ extern System_Type tSystem_UIntPtr;
 extern System_Type tSystem_Reflection_Module;
 extern System_Type tSystem_Reflection_Assembly;
 extern System_Type tSystem_Reflection_FieldInfo;
+extern System_Type tSystem_Reflection_ParameterInfo;
+extern System_Type tSystem_Reflection_MethodBase;
+extern System_Type tSystem_Reflection_MethodBody;
+extern System_Type tSystem_Reflection_MethodInfo;

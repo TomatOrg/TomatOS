@@ -57,6 +57,7 @@ void* gc_new(System_Type type, size_t size) {
     scheduler_preempt_disable();
 
     System_Object o = heap_alloc(size);
+    memset(o, 0, size);
     o->next = NULL;
     o->color = GCL->alloc_color;
     o->type = type;
@@ -204,7 +205,15 @@ static void get_roots() {
 
 static System_Object* m_mark_stack = NULL;
 
+#if 0
+    #define TRACE_PRINT(...) TRACE(__VA_ARGS__)
+#else
+    #define TRACE_PRINT(...)
+#endif
+
 static void trace(System_Object o) {
+    TRACE_PRINT("tracing %p (%U.%U)", o, o->type->Namespace, o->type->Name);
+
     if (o->color == m_color_white) {
         if (o->log_pointer == NULL) {
             // if not dirty
@@ -212,20 +221,20 @@ static void trace(System_Object o) {
             // getting a replica
             size_t count = 0;
             System_Object* temp = NULL;
-            if (o->type->IsArray) {
+            if (o->type->IsArray && !o->type->ElementType->IsValueType) {
                 // array object, check if we need to trace items
-                if (!o->type->ElementType->IsValueType) {
-                    System_Array array = (System_Array)o;
-                    count = array->Length + 1;
-                    temp = __builtin_alloca(count * sizeof(System_Object));
-                    for (int i = 0; i < array->Length; i++) {
-                        size_t offset = sizeof(struct System_Array) + i * sizeof(void*);
-                        temp[i] = read_field(o, offset);
-                    }
-
-                    // don't forget about the Type object
-                    temp[array->Length] = (System_Object)array->type;
+                System_Array array = (System_Array)o;
+                count = array->Length + 1;
+                temp = __builtin_alloca(count * sizeof(System_Object));
+                for (int i = 0; i < array->Length; i++) {
+                    size_t offset = sizeof(struct System_Array) + i * sizeof(void*);
+                    temp[i] = read_field(o, offset);
+                    TRACE_PRINT("\tadding %p (array item %d)", temp[i], i);
                 }
+
+                // don't forget about the Type object
+                temp[array->Length] = (System_Object)array->type;
+                TRACE_PRINT("\tadding %p (array type)", temp[array->Length]);
             } else {
                 // normal object, trace its fields
                 size_t* managed_pointer_offsets = o->type->ManagedPointersOffsets;
@@ -233,6 +242,7 @@ static void trace(System_Object o) {
                 temp = __builtin_alloca(count * sizeof(System_Object));
                 for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
                     temp[i] = read_field(o, managed_pointer_offsets[i]);
+                    TRACE_PRINT("\tadding %p (offset 0x%02x)", temp[i], managed_pointer_offsets[i]);
                 }
             }
 
@@ -261,6 +271,7 @@ static void trace(System_Object o) {
             for (int i = 0; i < count; i++) {
                 int ni = count - i - 1;
                 if (o->log_pointer[ni] == NULL) continue;
+                TRACE_PRINT("\tadding %p (dirty)", o->log_pointer[ni]);
                 arrpush(m_mark_stack, o->log_pointer[ni]);
             }
         }

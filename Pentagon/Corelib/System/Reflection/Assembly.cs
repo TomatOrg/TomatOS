@@ -4,6 +4,7 @@ namespace System.Reflection
     {
 
         private Type[] _definedTypes;
+        private MethodInfo[] _definedMethods;
         private Module _module;
 
     }
