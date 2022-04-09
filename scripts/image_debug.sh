@@ -47,6 +47,7 @@ qemu-system-x86_64 \
   -smp 4 \
   -m 4G \
   -s \
+  -S \
+  -d int \
   -no-reboot \
-  -no-shutdown \
-  -S
+  -no-shutdown

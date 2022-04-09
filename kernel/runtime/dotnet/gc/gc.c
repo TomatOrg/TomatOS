@@ -95,7 +95,7 @@ void gc_update(void* o, size_t offset, void* new) {
                 }
             } else {
                 // normal object, trace its fields
-                size_t* managed_pointer_offsets = object->type->ManagedPointersOffsets;
+                int* managed_pointer_offsets = object->type->ManagedPointersOffsets;
                 arrsetcap(GCL->buffer, arrlen(GCL->buffer) + arrlen(managed_pointer_offsets));
                 for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
                     GCL->buffer[++temp_pos] = read_field(o, managed_pointer_offsets[i]);
@@ -237,7 +237,7 @@ static void trace(System_Object o) {
                 TRACE_PRINT("\tadding %p (array type)", temp[array->Length]);
             } else {
                 // normal object, trace its fields
-                size_t* managed_pointer_offsets = o->type->ManagedPointersOffsets;
+                int* managed_pointer_offsets = o->type->ManagedPointersOffsets;
                 count = arrlen(managed_pointer_offsets);
                 temp = __builtin_alloca(count * sizeof(System_Object));
                 for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
@@ -264,7 +264,7 @@ static void trace(System_Object o) {
                 }
             } else {
                 // normal object, trace its fields
-                size_t* managed_pointer_offsets = o->type->ManagedPointersOffsets;
+                int* managed_pointer_offsets = o->type->ManagedPointersOffsets;
                 count = arrlen(managed_pointer_offsets);
             }
 
@@ -342,6 +342,7 @@ static void sweep() {
             // TODO: we technically need to queue this for finalization and
             //       only then destroy it...
             swept->color = GC_COLOR_BLUE;
+            TRACE_PRINT("Sweeping object at %p of type %U.%U", swept, swept->type->Namespace, swept->type->Name);
             heap_free(swept);
         } else {
             // the last object is this one since it is still alive

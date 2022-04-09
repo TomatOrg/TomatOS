@@ -832,6 +832,7 @@ void pfree(void* base) {
 
     buddy_tree_pos_t pos = position_for_address(base);
     ASSERT (buddy_tree_valid(pos));
+    memset(base, 0xCD, size_for_depth(pos.depth));
     buddy_tree_release(pos);
 
     spinlock_unlock(&m_palloc_lock);

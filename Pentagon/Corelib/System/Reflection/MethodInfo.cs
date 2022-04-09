@@ -4,6 +4,9 @@ namespace System.Reflection
     {
 
         private Type _returnType;
+        
+        private bool _isFilled;
+        private int _vtableOffset;
 
     }
 }

@@ -32,9 +32,6 @@ SRCS 		:= $(shell find kernel -name '*.c')
 
 LDFLAGS		+= -Tkernel/linker.ld
 
-# We are kinda like
-CFLAGS 		+= -D__posix
-
 # For the printf library
 CFLAGS		+= -DPRINTF_NTOA_BUFFER_SIZE=64
 CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_FLOAT

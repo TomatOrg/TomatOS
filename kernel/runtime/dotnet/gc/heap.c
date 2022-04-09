@@ -3,6 +3,7 @@
 #include "gc.h"
 
 #include <threading/thread.h>
+#include <util/string.h>
 #include <util/defs.h>
 #include <mem/mem.h>
 
@@ -122,6 +123,9 @@ static void heap_rank_free(heap_rank_t* heap, size_t rank, size_t count, System_
     // queue it
     obj->next = m_rank_head[rank];
     m_rank_head[rank] = obj;
+
+    // catch use-after-free
+    memset(obj, 0xCD, UNIT << rank);
 
     // check if we need to flush this as a single chunk
     if (++heap->freed >= count) {

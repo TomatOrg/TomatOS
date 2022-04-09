@@ -7,6 +7,7 @@
 
 #include <mem/mem.h>
 
+System_Type tSystem_Exception = NULL;
 System_Type tSystem_ValueType = NULL;
 System_Type tSystem_Object = NULL;
 System_Type tSystem_Type = NULL;
@@ -49,23 +50,23 @@ System_String string_append_cstr(System_String old, const char* str) {
     return new;
 }
 
-System_Type get_type_by_token(System_Reflection_Assembly assembly, token_t token) {
+System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, token_t token) {
     if (token.index == 0) {
-        ASSERT(!"get_type_by_token: NULL token");
+        // null token is valid for our case
         return NULL;
     }
 
     switch (token.table) {
         case METADATA_TYPE_DEF: {
             if (token.index - 1 >= assembly->DefinedTypes->Length) {
-                ASSERT(!"get_type_by_token: token outside of range");
+                ASSERT(!"assembly_get_type_by_token: token outside of range");
                 return NULL;
             }
             return assembly->DefinedTypes->Data[token.index - 1];
         } break;
 
         default:
-            ASSERT(!"get_type_by_token: invalid table for type");
+            ASSERT(!"assembly_get_type_by_token: invalid table for type");
             return NULL;
     }
 }
@@ -75,10 +76,10 @@ System_Type get_array_type(System_Type Type) {
         return Type->ArrayType;
     }
 
-    mutex_lock(Type->ArrayTypeMutex);
+    mutex_lock(&Type->ArrayTypeMutex);
 
     if (Type->ArrayType != NULL) {
-        mutex_unlock(Type->ArrayTypeMutex);
+        mutex_unlock(&Type->ArrayTypeMutex);
         return Type->ArrayType;
     }
 
@@ -97,15 +98,13 @@ System_Type get_array_type(System_Type Type) {
 
     // this is an array
     ArrayType->IsArray = true;
+    ArrayType->IsFilled = true;
 
     // set the sizes properly
     ArrayType->StackSize = tSystem_Array->StackSize;
     ArrayType->ManagedSize = tSystem_Array->ManagedSize;
     ArrayType->StackAlignment = tSystem_Array->StackAlignment;
     ArrayType->ManagedAlignment = tSystem_Array->ManagedAlignment;
-
-    // set the type mutex
-    ArrayType->ArrayTypeMutex = malloc(sizeof(mutex_t));
 
     // There are no managed pointers in here (The gc will handle array
     // stuff on its own)
@@ -116,7 +115,7 @@ System_Type get_array_type(System_Type Type) {
 
     // Set the array type
     GC_UPDATE(Type, ArrayType, ArrayType);
-    mutex_unlock(Type->ArrayTypeMutex);
+    mutex_unlock(&Type->ArrayTypeMutex);
 
     return Type->ArrayType;
 }

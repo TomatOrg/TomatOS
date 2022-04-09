@@ -1,4 +1,5 @@
 using System.Reflection;
+using Pentagon;
 
 namespace System
 {
@@ -15,15 +16,20 @@ namespace System
         private bool _isArray;
         private bool _isByRef;
         private bool _isPointer;
-        private unsafe void* _arrayTypeMutex; 
-        private Type _arrayType;
-        private unsafe nuint* _managedPointersOffsets;
-        private nuint _stackSize;
-        private nuint _stackAlignment;
-        private nuint _managedSize;
-        private nuint _managedAlignment;
-        private bool _sizeValid;
-        private bool _isValueType;
+        private Type[] _genericTypeArguments;
+        private Type[] _genericTypeParameters;
+        private Type[] _genericTypeDefinition;
 
+        private unsafe int* _managedPointersOffsets;
+        private bool _isFilled;
+        private bool _isValueType;
+        private MethodInfo[] VirtualMethods;
+        private int _managedSize;
+        private int _managedAlignment;
+        private int _stackSize;
+        private int _stackAlignment;
+        
+        private Type _arrayType;
+        private Mutex _arrayTypeMutex;
     }
 }

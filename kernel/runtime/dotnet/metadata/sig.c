@@ -129,7 +129,7 @@ static err_t parse_type(System_Reflection_Assembly assembly, blob_entry_t* sig, 
         case ELEMENT_TYPE_CLASS: {
             token_t token;
             CHECK_AND_RETHROW(parse_type_def_or_ref_or_spec_encoded(sig, &token));
-            *out_type = get_type_by_token(assembly, token);
+            *out_type = assembly_get_type_by_token(assembly, token);
             CHECK(*out_type != NULL);
         } break;
 
@@ -263,12 +263,14 @@ err_t parse_stand_alone_method_sig(blob_entry_t _sig, System_Reflection_MethodIn
     uint8_t cc = header & 0xf;
     CHECK(cc == DEFAULT || cc == VARARG || cc == C || cc == STDCALL || cc == THISCALL || cc == FASTCALL);
     if (header & EXPLICITTHIS) {
-        CHECK(header & HASTHIS);
+        CHECK(header & HASTHIS,
+              "If EXPLICITTHIS in the signature is set, then HASTHIS shall also be set");
+        CHECK_FAIL("The EXPLICITTHIS bit can be set only in signatures for function pointers: signatures whose MethodDefSig is preceded by FNPTR");
     }
 
     if (header & HASTHIS) {
-        // must be non-static if has this
-        CHECK(!method_is_static(method));
+        CHECK(!method_is_static(method),
+              "Signature: If the method is static, then the HASTHIS bit in the calling convention shall be 0");
     }
 
     // get the param count

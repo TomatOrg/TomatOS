@@ -5,12 +5,14 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "runtime/dotnet/metadata/metadata_spec.h"
+#include "runtime/dotnet/metadata/metadata.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct System_Object *System_Object;
 typedef struct System_Type *System_Type;
 typedef struct System_Reflection_MethodInfo *System_Reflection_MethodInfo;
+typedef struct System_Reflection_FieldInfo *System_Reflection_FieldInfo;
 
 typedef struct System_Guid {
     uint32_t a;
@@ -53,27 +55,36 @@ typedef uintptr_t System_UIntPtr;
  * Represents a dotnet object
  */
 struct System_Object {
-    // the type of the object, must be first
-    System_Type type;
+    union {
+        // while the object is alive
+        struct {
+            // the vtable of the object
+            void* native_vtable;
 
-    // the log pointer, for tracing object changes
-    System_Object* log_pointer;
+            // the type of the object, must be first
+            System_Type type;
 
-    // the color of the object, black and white switch during collection
-    // and blue means unallocated
-    uint8_t color;
+            // the log pointer, for tracing object changes
+            System_Object* log_pointer;
 
-    // the rank of the object from the allocator
-    uint8_t rank;
+            // the color of the object, black and white switch during collection
+            // and blue means unallocated
+            uint8_t color;
 
-    uint8_t _reserved0;
-    uint8_t _reserved1;
+            // the rank of the object from the allocator
+            uint8_t rank;
+        };
 
-    // next free object in the chunk
+        // while the object is in the heap
+        struct {
+            // next chunk
+            System_Object chunk_next;
+        };
+    };
+
+    // next free object in the chunk, and the next
+    // object in general on the heap for sweeping
     System_Object next;
-
-    // next chunk
-    System_Object chunk_next;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -119,14 +130,8 @@ typedef struct System_Reflection_Assembly *System_Reflection_Assembly;
 
 DEFINE_ARRAY(System_Reflection_Module);
 DEFINE_ARRAY(System_Reflection_Assembly);
-
-/**
- * Get a type by its token, returns NULL if not found
- *
- * @param assembly  [IN] The assembly this token is coming from
- * @param token     [IN] The token of the type to get
- */
-System_Type get_type_by_token(System_Reflection_Assembly assembly, token_t token);
+DEFINE_ARRAY(System_Reflection_FieldInfo);
+DEFINE_ARRAY(System_Int32);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -134,8 +139,17 @@ struct System_Reflection_Assembly {
     struct System_Object;
     System_Type_Array DefinedTypes;
     System_Reflection_MethodInfo_Array DefinedMethods;
+    System_Reflection_FieldInfo_Array DefinedFields;
     System_Reflection_Module Module;
 };
+
+/**
+ * Get a type by its token, returns NULL if not found
+ *
+ * @param assembly  [IN] The assembly this token is coming from
+ * @param token     [IN] The token of the type to get
+ */
+System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, token_t token);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -156,23 +170,22 @@ typedef struct System_Reflection_MemberInfo {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-typedef struct System_Reflection_FieldInfo {
+struct System_Reflection_FieldInfo {
     struct System_Reflection_MemberInfo;
-    uint16_t Attributes;
     System_Type FieldType;
-    size_t MemoryOffset;
-} *System_Reflection_FieldInfo;
-
-DEFINE_ARRAY(System_Reflection_FieldInfo);
+    uintptr_t MemoryOffset; // can be either absolute offset to a literal/rva, or an offset from
+                            // the start, depending on the attributes of the field
+    uint16_t Attributes;
+};
 
 typedef enum field_access {
     FIELD_COMPILER_CONTROLLED,
-    FIELD_PRIVATE,                  // C# private
-    FIELD_FAMILY_AND_ASSEMBLY,      // C# private protected
-    FIELD_ASSEMBLY,                 // C# internal
-    FIELD_FAMILY,                   // C# protected
-    FIELD_FAMILY_OR_ASSEMBLY,       // C# protected internal
-    FIELD_PUBLIC,                   // C# public
+    FIELD_PRIVATE,
+    FIELD_FAMILY_AND_ASSEMBLY,
+    FIELD_ASSEMBLY,
+    FIELD_FAMILY,
+    FIELD_FAMILY_OR_ASSEMBLY,
+    FIELD_PUBLIC,
 } field_access_t;
 
 static inline field_access_t field_access(System_Reflection_FieldInfo field) { return field->Attributes & 0b111; }
@@ -216,6 +229,9 @@ typedef struct System_Reflection_MethodBase {
 struct System_Reflection_MethodInfo {
     struct System_Reflection_MethodBase;
     System_Type ReturnType;
+
+    bool IsFilled;
+    int VtableOffset;
 };
 
 // TODO: access
@@ -226,6 +242,16 @@ static inline bool method_is_virtual(System_Reflection_MethodInfo method) { retu
 static inline bool method_is_new_slot(System_Reflection_MethodInfo method) { return method->Attributes & 0x0100; }
 static inline bool method_is_strict(System_Reflection_MethodInfo method) { return method->Attributes & 0x0200; }
 static inline bool method_is_abstract(System_Reflection_MethodInfo method) { return method->Attributes & 0x0400; }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct System_Exception *System_Exception;
+
+struct System_Exception {
+    struct System_Object;
+    System_String Message;
+    System_Exception InnerException;
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -241,26 +267,25 @@ struct System_Type {
     bool IsArray;
     bool IsByRef;
     bool IsPointer;
+    System_Type_Array GenericTypeArguments;
+    System_Type_Array GenericTypeParameters;
+    System_Type GenericTypeDefinition;
 
-    //
-    // For the runtime, unrelated to the System.Type stuff
-    //
-
-    mutex_t* ArrayTypeMutex;
-    System_Type ArrayType;
-
-    // array of managed offsets
-    size_t* ManagedPointersOffsets;
-
-    size_t StackSize;
-    size_t StackAlignment;
-
-    size_t ManagedSize;
-    size_t ManagedAlignment;
-
-    bool SizeValid;
+    int* ManagedPointersOffsets;
+    bool IsFilled;
     bool IsValueType;
+    System_Reflection_MethodInfo_Array VirtualMethods;
+    int ManagedSize;
+    int ManagedAlignment;
+    int StackSize;
+    int StackAlignment;
+
+    System_Type ArrayType;
+    mutex_t ArrayTypeMutex;
 };
+
+static inline bool type_is_generic_definition(System_Type type) { return type->GenericTypeParameters != NULL; }
+static inline bool type_is_generic_type(System_Type type) { return type_is_generic_definition(type) || type->GenericTypeArguments != NULL; }
 
 typedef enum type_visibility {
     TYPE_NOT_PUBLIC,
@@ -295,6 +320,7 @@ System_Type get_array_type(System_Type Type);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+extern System_Type tSystem_Exception;
 extern System_Type tSystem_ValueType;
 extern System_Type tSystem_Object;
 extern System_Type tSystem_Type;

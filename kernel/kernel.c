@@ -1,8 +1,8 @@
 #include "kernel.h"
 
 #include "stivale2.h"
-#include "runtime/dotnet/loader.h"
 #include "runtime/dotnet/gc/heap.h"
+#include "runtime/dotnet/loader.h"
 
 #include <runtime/dotnet/gc/gc.h>
 
@@ -164,6 +164,7 @@ static void per_cpu_start(struct stivale2_smp_info* info) {
     init_vmm_per_cpu();
     CHECK_AND_RETHROW(init_apic());
     CHECK_AND_RETHROW(init_cpu_locals());
+    CHECK_AND_RETHROW(init_tss());
 
     // make sure this is valid
     CHECK(info->lapic_id == get_apic_id());
@@ -320,6 +321,7 @@ void _start(struct stivale2_struct* stivale2) {
     // the apic (since it needs to be mapped before the switch)
     CHECK_AND_RETHROW(init_vmm());
     CHECK_AND_RETHROW(init_palloc());
+    CHECK_AND_RETHROW(init_tss());
     vmm_switch_allocator();
     CHECK_AND_RETHROW(init_malloc());
 

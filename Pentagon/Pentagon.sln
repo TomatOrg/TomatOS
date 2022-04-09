@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Corelib", "Corelib\Corelib.csproj", "{8491812C-29FD-4DFF-9968-9C7D4C6591F0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pentagon", "Pentagon\Pentagon.csproj", "{CB4CB788-862E-4E3C-904D-488DBA8B30D0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,9 @@ Global
 		{8491812C-29FD-4DFF-9968-9C7D4C6591F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8491812C-29FD-4DFF-9968-9C7D4C6591F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8491812C-29FD-4DFF-9968-9C7D4C6591F0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CB4CB788-862E-4E3C-904D-488DBA8B30D0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CB4CB788-862E-4E3C-904D-488DBA8B30D0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CB4CB788-862E-4E3C-904D-488DBA8B30D0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CB4CB788-862E-4E3C-904D-488DBA8B30D0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
