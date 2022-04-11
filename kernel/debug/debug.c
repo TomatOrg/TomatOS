@@ -69,7 +69,7 @@ void debug_disasm_at(void* ptr, int opcodes) {
 //    while (ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, ptr, UINT64_MAX,
 //                                               &instruction, operands, ZYDIS_MAX_OPERAND_COUNT_VISIBLE,
 //                                               ZYDIS_DFLAG_VISIBLE_OPERANDS_ONLY))) {
-//        // format the opcode
+//        // format the opcode_info
 //        char buffer[256];
 //        ZydisFormatterFormatInstruction(&formatter, &instruction, operands,
 //                                        instruction.operand_count_visible, buffer, sizeof(buffer),

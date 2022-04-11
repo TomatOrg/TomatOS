@@ -3,6 +3,7 @@
 #include "stivale2.h"
 #include "runtime/dotnet/gc/heap.h"
 #include "runtime/dotnet/loader.h"
+#include "runtime/dotnet/opcodes.h"
 
 #include <runtime/dotnet/gc/gc.h>
 
@@ -162,9 +163,9 @@ static void per_cpu_start(struct stivale2_smp_info* info) {
     init_gdt();
     init_idt();
     init_vmm_per_cpu();
+    CHECK_AND_RETHROW(init_tss());
     CHECK_AND_RETHROW(init_apic());
     CHECK_AND_RETHROW(init_cpu_locals());
-    CHECK_AND_RETHROW(init_tss());
 
     // make sure this is valid
     CHECK(info->lapic_id == get_apic_id());
@@ -211,7 +212,10 @@ static void start_thread() {
 
     // Initialize the runtime
     CHECK_AND_RETHROW(init_gc());
+
+    uint64_t start = microtime();
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
+    TRACE("Loading took %dms", (microtime() - start) / 1000);
 
     TRACE("before collection - %d", heap_alive());
     gc_wait();
@@ -259,7 +263,8 @@ static void start_thread() {
             }
 
             if (method_is_virtual(mi)) {
-                APPEND("virtual ");
+                APPEND("virtual[%d] ", mi->VtableOffset);
+                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
             }
 
             if (mi->ReturnType == NULL) {
@@ -279,6 +284,8 @@ static void start_thread() {
             APPEND(")");
 
             TRACE("\t\t%s", mi_str);
+
+            opcode_disasm_method(mi);
         }
 
         TRACE("");

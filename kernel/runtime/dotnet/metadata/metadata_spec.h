@@ -241,3 +241,30 @@ typedef struct metadata_generic_param_constraint {
     token_t owner;
     token_t constraint;
 } PACKED metadata_generic_param_constraint_t;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Method header
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#define CorILMethod_TinyFormat      0x2
+#define CorILMethod_FatFormat       0x3
+#define CorILMethod_MoreSects       0x8
+#define CorILMethod_InitLocals      0x10
+
+#define CorILMethod_Sect_EHTable    0x1
+#define CorILMethod_Sect_OptILTable 0x2
+#define CorILMethod_Sect_FatFormat  0x40
+#define CorILMethod_Sect_MoreSects  0x80
+
+typedef struct method_tiny_format {
+    uint8_t flags : 2;
+    uint8_t size : 6;
+} PACKED method_tiny_format_t;
+
+typedef struct method_fat_format {
+    uint16_t flags : 12;
+    uint16_t size : 4;
+    uint16_t max_stack;
+    uint32_t code_size;
+    uint32_t local_var_sig_tok;
+} PACKED method_fat_format_t;

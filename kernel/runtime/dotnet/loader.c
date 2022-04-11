@@ -31,14 +31,79 @@ cleanup:
 // All the basic type setup
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static err_t setup_type_info(metadata_t* metadata, System_Reflection_Assembly assembly) {
+static err_t parse_method_cil(System_Reflection_MethodInfo methodBase, blob_entry_t sig) {
+    err_t err = NO_ERROR;
+
+    System_Reflection_MethodBody body = GC_NEW(tSystem_Reflection_MethodBody);
+
+    // get the header type
+    CHECK(sig.size > 0);
+    uint8_t header_type = sig.data[0];
+
+    if ((header_type & 0b11) == CorILMethod_FatFormat) {
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // fat format header
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // fetch the header in its full
+        method_fat_format_t* header = (method_fat_format_t*) (sig.data);
+        CHECK(sizeof(method_fat_format_t) <= sig.size);
+        CHECK(header->size * 4 <= sig.size);
+
+        // TODO: variables
+
+        // TODO: exceptions
+
+        // skip the rest of the header
+        sig.size -= header->size * 4;
+        sig.data += header->size * 4;
+
+        // copy some info
+        body->MaxStackSize = header->max_stack;
+
+        // copy the il
+        CHECK(header->code_size <= sig.size);
+        GC_UPDATE(body, Il, GC_NEW_ARRAY(tSystem_Byte, header->code_size));
+        memcpy(body->Il->Data, sig.data, body->Il->Length);
+
+    } else if ((header_type & 0b11) == CorILMethod_TinyFormat) {
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // tiny format header
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // the size is known to be good since it is a single byte
+        method_tiny_format_t* header = (method_tiny_format_t*) (sig.data);
+
+        // skip the rest of the header
+        sig.size--;
+        sig.data++;
+
+        // set the default options
+        body->MaxStackSize = 8;
+
+        // copy the il
+        CHECK(header->size <= sig.size);
+        GC_UPDATE(body, Il, GC_NEW_ARRAY(tSystem_Byte, header->size));
+        memcpy(body->Il->Data, sig.data, body->Il->Length);
+    } else {
+        CHECK_FAIL("Invalid method format");
+    }
+
+    // set it
+    GC_UPDATE(methodBase, MethodBody, body);
+
+cleanup:
+    return err;
+}
+
+static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
 
     int types_count = metadata->tables[METADATA_TYPE_DEF].rows;
     metadata_type_def_t* type_defs = metadata->tables[METADATA_TYPE_DEF].table;
 
     int fields_count = metadata->tables[METADATA_FIELD].rows;
-    metadata_field_t* field_defs = metadata->tables[METADATA_FIELD].table;
+    int methods_count = metadata->tables[METADATA_METHOD_DEF].rows;
 
     for (int i = 0; i < types_count; i++) {
         metadata_type_def_t* type_def = &type_defs[i];
@@ -71,9 +136,11 @@ static err_t setup_type_info(metadata_t* metadata, System_Reflection_Assembly as
 
         type->Fields = GC_NEW_ARRAY(tSystem_Reflection_FieldInfo, last_idx - type_def->field_list.index + 1);
         for (int fi = 0; fi < type->Fields->Length; fi++) {
-            metadata_field_t* field = metadata_get_field(metadata, type_def->field_list.index + fi - 1);
+            size_t index = type_def->field_list.index + fi - 1;
+            metadata_field_t* field = metadata_get_field(metadata, index);
             System_Reflection_FieldInfo fieldInfo = GC_NEW(tSystem_Reflection_FieldInfo);
             GC_UPDATE_ARRAY(type->Fields, fi, fieldInfo);
+            GC_UPDATE_ARRAY(assembly->DefinedFields, index, fieldInfo);
 
             GC_UPDATE(fieldInfo, DeclaringType, type);
             GC_UPDATE(fieldInfo, Module, type->Module);
@@ -83,15 +150,50 @@ static err_t setup_type_info(metadata_t* metadata, System_Reflection_Assembly as
             CHECK_AND_RETHROW(parse_field_sig(field->signature, fieldInfo));
         }
 
-        // TODO: methods
-        type->Methods = GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, 0);
+        // setup fields
+        last_idx = (i + 1 == types_count) ?
+                       methods_count :
+                       type_def[1].method_list.index - 1;
+        CHECK(last_idx <= methods_count);
+
+        type->Methods = GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, last_idx - type_def->method_list.index + 1);
+        for (int mi = 0; mi < type->Methods->Length; mi++) {
+            size_t index = type_def->method_list.index + mi - 1;
+            metadata_method_def_t* method_def = metadata_get_method_def(metadata, index);
+            System_Reflection_MethodInfo methodInfo = GC_NEW(tSystem_Reflection_MethodInfo);
+            GC_UPDATE_ARRAY(type->Methods, mi, methodInfo);
+            GC_UPDATE_ARRAY(assembly->DefinedMethods, index, methodInfo);
+
+            GC_UPDATE(methodInfo, DeclaringType, type);
+            GC_UPDATE(methodInfo, Module, type->Module);
+            GC_UPDATE(methodInfo, Name, new_string_from_utf8(method_def->name, strlen(method_def->name)));
+            methodInfo->Attributes = method_def->flags;
+            methodInfo->ImplAttributes = method_def->impl_flags;
+
+            if (method_def->rva) {
+                // get the rva
+                pe_directory_t directory = {
+                        .rva = method_def->rva,
+                };
+                const void* rva_base = pe_get_rva_ptr(file, &directory);
+                CHECK(rva_base != NULL);
+
+                // parse the method info
+                CHECK_AND_RETHROW(parse_method_cil(methodInfo, (blob_entry_t){
+                    .size = directory.size,
+                    .data= rva_base
+                }));
+            }
+
+            CHECK_AND_RETHROW(parse_stand_alone_method_sig(method_def->signature, methodInfo));
+        }
     }
 
 cleanup:
     return err;
 }
 
-err_t loader_fill_method(System_Reflection_MethodInfo method, System_Type_Array genericTypeArguments, System_Type_Array genericMethodArguments) {
+err_t loader_fill_method(System_Type type, System_Reflection_MethodInfo method, System_Type_Array genericTypeArguments, System_Type_Array genericMethodArguments) {
     err_t err = NO_ERROR;
 
     // don't initialize twice
@@ -105,9 +207,8 @@ err_t loader_fill_method(System_Reflection_MethodInfo method, System_Type_Array 
         CHECK_AND_RETHROW(loader_fill_type(method->ReturnType, genericTypeArguments, genericMethodArguments));
     }
 
-    // TODO: this parameter? maybe fill somewhere else?
-
-    for (int i = 0; i < method->Parameters->Length; i++) {
+    // init all the other parameters
+    for (int i = 1; i < method->Parameters->Length; i++) {
         System_Reflection_ParameterInfo parameterInfo = method->Parameters->Data[i];
         CHECK_AND_RETHROW(loader_fill_type(parameterInfo->ParameterType, genericTypeArguments, genericMethodArguments));
     }
@@ -125,9 +226,7 @@ cleanup:
 err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments, System_Type_Array genericMethodArguments) {
     err_t err = NO_ERROR;
     static int depth = 0;
-
     TRACE_FILL_TYPE("%*s%U.%U", depth * 4, "", type->Namespace, type->Name);
-
     depth++;
 
     // the type is already filled, ignore it
@@ -310,7 +409,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         // Now fill all the method defs
         for (int i = 0; i < type->Methods->Length; i++) {
             System_Reflection_MethodInfo methodInfo = type->Methods->Data[i];
-            CHECK_AND_RETHROW(loader_fill_method(methodInfo, genericTypeArguments, genericMethodArguments));
+            CHECK_AND_RETHROW(loader_fill_method(type, methodInfo, genericTypeArguments, genericMethodArguments));
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -436,11 +535,10 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     metadata_type_def_t* type_defs = metadata.tables[METADATA_TYPE_DEF].table;
 
     int method_count = metadata.tables[METADATA_METHOD_DEF].rows;
-    metadata_method_def_t* method_defs = metadata.tables[METADATA_METHOD_DEF].table;
+    int field_count = metadata.tables[METADATA_FIELD].rows;
 
     // do first time allocation and init
     assembly->DefinedTypes = gc_new(NULL, sizeof(struct System_Array) + types_count * sizeof(System_Type));
-    CHECK(assembly->DefinedTypes != NULL);
     assembly->DefinedTypes->Length = types_count;
     for (int i = 0; i < types_count; i++) {
         metadata_type_def_t* type_def = &type_defs[i];
@@ -453,8 +551,13 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     assembly->Module = GC_NEW(tSystem_Reflection_Module);
     assembly->Module->Assembly = assembly;
 
+    assembly->DefinedMethods = gc_new(NULL, sizeof(struct System_Array) + method_count * sizeof(System_Reflection_MethodInfo));
+    assembly->DefinedMethods->Length = method_count;
+    assembly->DefinedFields = gc_new(NULL, sizeof(struct System_Array) + field_count * sizeof(System_Reflection_FieldInfo));
+    assembly->DefinedFields->Length = field_count;
+
     // do first time type init
-    CHECK_AND_RETHROW(setup_type_info(&metadata, assembly));
+    CHECK_AND_RETHROW(setup_type_info(&file, &metadata, assembly));
 
     // initialize all the types we have
     for (int i = 0; i < types_count; i++) {
@@ -463,7 +566,9 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
 
     // now set the base definitions for the stuff
     assembly->type = tSystem_Reflection_Assembly;
-    assembly->DefinedTypes->type= get_array_type(tSystem_Type);
+    assembly->DefinedTypes->type = get_array_type(tSystem_Type);
+    assembly->DefinedMethods->type = get_array_type(tSystem_Reflection_MethodInfo);
+    assembly->DefinedFields->type = get_array_type(tSystem_Reflection_FieldInfo);
     for (int i = 0; i < types_count; i++) {
         assembly->DefinedTypes->Data[i]->type = tSystem_Type;
     }

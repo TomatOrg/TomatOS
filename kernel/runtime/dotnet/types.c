@@ -71,6 +71,48 @@ System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, toke
     }
 }
 
+System_Reflection_MethodInfo assembly_get_method_by_token(System_Reflection_Assembly assembly, token_t token) {
+    if (token.index == 0) {
+        // null token is valid for our case
+        return NULL;
+    }
+
+    switch (token.table) {
+        case METADATA_METHOD_DEF: {
+            if (token.index - 1 >= assembly->DefinedMethods->Length) {
+                ASSERT(!"assembly_get_method_by_token: token outside of range");
+                return NULL;
+            }
+            return assembly->DefinedMethods->Data[token.index - 1];
+        } break;
+
+        default:
+            ASSERT(!"assembly_get_method_by_token: invalid table for type");
+            return NULL;
+    }
+}
+
+System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assembly assembly, token_t token) {
+    if (token.index == 0) {
+        // null token is valid for our case
+        return NULL;
+    }
+
+    switch (token.table) {
+        case METADATA_FIELD: {
+            if (token.index - 1 >= assembly->DefinedFields->Length) {
+                ASSERT(!"assembly_get_field_by_token: token outside of range");
+                return NULL;
+            }
+            return assembly->DefinedFields->Data[token.index - 1];
+        } break;
+
+        default:
+            ASSERT(!"assembly_get_field_by_token: invalid table for type");
+            return NULL;
+    }
+}
+
 System_Type get_array_type(System_Type Type) {
     if (Type->ArrayType != NULL) {
         return Type->ArrayType;

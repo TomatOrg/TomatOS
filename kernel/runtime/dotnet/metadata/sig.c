@@ -3,27 +3,6 @@
 #include "sig_spec.h"
 #include "runtime/dotnet/gc/gc.h"
 
-#define NEXT_BYTE \
-    do { \
-        sig->data++; \
-        sig->size--; \
-    } while (0)
-
-#define CONSUME_BYTE() \
-    ({ \
-        CHECK(sig->size > 0); \
-        uint8_t b = sig->data[0]; \
-        NEXT_BYTE; \
-        b; \
-    })
-
-#define EXPECT_BYTE(value) \
-    do { \
-        CHECK(sig->size > 0); \
-        CHECK(sig->data[0] == (value), "Expected %d, but got %d", value, sig->data[0]); \
-        NEXT_BYTE; \
-    } while (0)
-
 
 static err_t parse_custom_mod(blob_entry_t* sig, bool* found) {
     err_t err = NO_ERROR;
@@ -263,18 +242,17 @@ err_t parse_stand_alone_method_sig(blob_entry_t _sig, System_Reflection_MethodIn
     uint8_t cc = header & 0xf;
     CHECK(cc == DEFAULT || cc == VARARG || cc == C || cc == STDCALL || cc == THISCALL || cc == FASTCALL);
     if (header & EXPLICITTHIS) {
-        CHECK(header & HASTHIS,
-              "If EXPLICITTHIS in the signature is set, then HASTHIS shall also be set");
+        CHECK(header & HASTHIS, "Can't have an explicit `this` parameter without a `this` parameter");
         CHECK_FAIL("The EXPLICITTHIS bit can be set only in signatures for function pointers: signatures whose MethodDefSig is preceded by FNPTR");
-    }
-
-    if (header & HASTHIS) {
-        CHECK(!method_is_static(method),
-              "Signature: If the method is static, then the HASTHIS bit in the calling convention shall be 0");
     }
 
     // get the param count
     uint32_t param_count = 0;
+
+    if (header & HASTHIS) {
+        CHECK(!method_is_static(method), "Methods with this must not be static");
+    }
+
     CHECK_AND_RETHROW(parse_compressed_integer(sig, &param_count));
 
     // get the return type

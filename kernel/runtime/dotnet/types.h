@@ -151,6 +151,10 @@ struct System_Reflection_Assembly {
  */
 System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, token_t token);
 
+System_Reflection_MethodInfo assembly_get_method_by_token(System_Reflection_Assembly assembly, token_t token);
+
+System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assembly assembly, token_t token);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct System_Reflection_Module {

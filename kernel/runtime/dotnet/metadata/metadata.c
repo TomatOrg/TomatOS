@@ -268,7 +268,7 @@ static err_t parse_single_table(metadata_parse_ctx_t* ctx, int table_id) {
             case GET_CODED_INDEX_BASE ... GET_CODED_INDEX_MAX: row_size += ctx->long_coded_index[*cur_op - GET_CODED_INDEX_BASE] ? 4 : 2; in_memory_size += sizeof(token_t); break;
             case GET_TABLE_BASE ... GET_TABLE_MAX: row_size += ctx->metadata->tables[*cur_op - GET_TABLE_BASE].rows > UINT16_MAX ? 4 : 2; in_memory_size += sizeof(token_t); break;
             case DONE: break;
-            default: CHECK_FAIL("Invalid opcode");
+            default: CHECK_FAIL("Invalid opcode_info");
         }
         cur_op++;
     }
@@ -366,7 +366,7 @@ static err_t parse_single_table(metadata_parse_ctx_t* ctx, int table_id) {
                 } break;
 
                 case DONE: break;
-                default: CHECK_FAIL("Invalid opcode");
+                default: CHECK_FAIL("Invalid opcode_info");
             }
             cur_op++;
         }
