@@ -306,51 +306,54 @@ static void sweep() {
     }
     unlock_all_threads();
 
-    // special handling for the swept object
-    System_Object last = NULL;
-    System_Object swept = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
-    while (swept != NULL) {
-        // save the next for when we need it
-        System_Object next = swept->next;
+    // linked list of all swept objects
+    System_Object swept = NULL;
 
-        if (swept->color == m_color_white) {
+    // special handling for the iter object
+    System_Object last = NULL;
+    System_Object iter = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
+    while (iter != NULL) {
+        // save the next for when we need it
+        System_Object next = iter->next;
+
+        if (iter->color == m_color_white) {
             // remove from the queue
             if (last == NULL) {
                 // removing the first object is a bit special
                 // TODO: maybe we can do this just with exchange :think:
-                System_Object first_now = swept;
-                if (!atomic_compare_exchange_weak_explicit(&m_all_objects, &first_now, swept->next, memory_order_relaxed, memory_order_relaxed)) {
-                    // the compare exchange failed, this means that the swept is no longer
+                System_Object first_now = iter;
+                if (!atomic_compare_exchange_weak_explicit(&m_all_objects, &first_now, iter->next, memory_order_relaxed, memory_order_relaxed)) {
+                    // the compare exchange failed, this means that the iter is no longer
                     // the first item and the object that we have in our hand is the new first
                     // object, starting from it go to the next until we find the current item,
                     // setting the last along the way
                     do {
                         last = first_now;
                         first_now = first_now->next;
-                    } while (first_now != swept);
+                    } while (first_now != iter);
 
                     // we found it, remove
-                    last->next = swept->next;
+                    last->next = iter->next;
                 } else {
                     // the last is kept as NULL because it is now
                 }
             } else {
                 // easy case, we know the last, just remove it
-                last->next = swept->next;
+                last->next = iter->next;
             }
 
             // TODO: we technically need to queue this for finalization and
             //       only then destroy it...
-            swept->color = GC_COLOR_BLUE;
-            TRACE_PRINT("Sweeping object at %p of type %U.%U", swept, swept->type->Namespace, swept->type->Name);
-            heap_free(swept);
+            iter->color = GC_COLOR_BLUE;
+            TRACE_PRINT("Sweeping object at %p of type %U.%U", iter, iter->type->Namespace, iter->type->Name);
+            heap_free(iter);
         } else {
             // the last object is this one since it is still alive
-            last = swept;
+            last = iter;
         }
 
-        // set the swept item to be the next item
-        swept = next;
+        // set the iter item to be the next item
+        iter = next;
     }
 }
 

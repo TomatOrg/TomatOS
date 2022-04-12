@@ -35,6 +35,38 @@ System_Type tSystem_Reflection_MethodBase = NULL;
 System_Type tSystem_Reflection_MethodBody = NULL;
 System_Type tSystem_Reflection_MethodInfo = NULL;
 
+bool string_equals_cstr(System_String a, const char* b) {
+    if (a->Length != strlen(b)) {
+        return false;
+    }
+
+    for (int i = 0; i < a->Length; i++) {
+        if (a->Chars[i] != b[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool string_equals(System_String a, System_String b) {
+    if (a == b) {
+        return true;
+    }
+
+    if (a->Length != b->Length) {
+        return false;
+    }
+
+    for (int i = 0; i < a->Length; i++) {
+        if (a->Chars[i] != b->Chars[i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 System_String string_append_cstr(System_String old, const char* str) {
     size_t len = strlen(str);
 

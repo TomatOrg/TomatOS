@@ -73,6 +73,16 @@ struct System_Object {
 
             // the rank of the object from the allocator
             uint8_t rank;
+
+            // if true the finalizer should not run
+            uint8_t supress_finalizer;
+
+            // reserved for the future
+            uint8_t _reserved0;
+            uint8_t _reserved1;
+            uint8_t _reserved2;
+            uint8_t _reserved3;
+            uint8_t _reserved4;
         };
 
         // while the object is in the heap
@@ -113,6 +123,10 @@ typedef struct System_String {
 } *System_String;
 
 DEFINE_ARRAY(System_String);
+
+bool string_equals_cstr(System_String a, const char* b);
+
+bool string_equals(System_String a, System_String b);
 
 /**
  * Append a c null terminated ascii string to the given string, this
@@ -238,14 +252,46 @@ struct System_Reflection_MethodInfo {
     int VtableOffset;
 };
 
-// TODO: access
+typedef enum method_access {
+    METHOD_COMPILER_CONTROLLED = 0x0000,
+    METHOD_PRIVATE = 0x0001,
+    METHOD_FAMILY_AND_ASSEMBLY = 0x0002,
+    METHOD_ASSEMBLY = 0x0003,
+    METHOD_FAMILY = 0x0004,
+    METHOD_FAMILY_OR_ASSEMBLY = 0x0005,
+    METHOD_PUBLIC = 0x0006
+} method_access_t;
 
+static inline method_access_t method_get_access(System_Reflection_MethodInfo method) { return (method_access_t)(method->Attributes & 0x0007); }
+
+// method attribute impl helpers
+
+typedef enum method_code_type {
+    METHOD_IL = 0x0000,
+    METHOD_NATIVE = 0x0001,
+    METHOD_RUNTIME = 0x0003,
+} method_code_type_t;
+
+static inline method_code_type_t method_get_code_type(System_Reflection_MethodInfo method) { return (method_code_type_t)(method->ImplAttributes & 0x0003); }
+static inline bool method_is_unmanaged(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0004; }
+static inline bool method_is_forward_ref(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0010; }
+static inline bool method_is_preserve_sig(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0080; }
+static inline bool method_is_internal_call(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x1000; }
+static inline bool method_is_synchronized(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0020; }
+static inline bool method_is_no_inlining(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0008; }
+static inline bool method_is_no_optimization(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0040; }
+
+// method attributes helpers
 static inline bool method_is_static(System_Reflection_MethodInfo method) { return method->Attributes & 0x0010; }
 static inline bool method_is_final(System_Reflection_MethodInfo method) { return method->Attributes & 0x0020; }
 static inline bool method_is_virtual(System_Reflection_MethodInfo method) { return method->Attributes & 0x0040; }
+static inline bool method_is_hide_by_sig(System_Reflection_MethodInfo method) { return method->Attributes & 0x0080; }
 static inline bool method_is_new_slot(System_Reflection_MethodInfo method) { return method->Attributes & 0x0100; }
 static inline bool method_is_strict(System_Reflection_MethodInfo method) { return method->Attributes & 0x0200; }
 static inline bool method_is_abstract(System_Reflection_MethodInfo method) { return method->Attributes & 0x0400; }
+static inline bool method_is_special_name(System_Reflection_MethodInfo method) { return method->Attributes & 0x0800; }
+static inline bool method_is_pinvoke_impl(System_Reflection_MethodInfo method) { return method->Attributes & 0x2000; }
+static inline bool method_is_rt_special_name(System_Reflection_MethodInfo method) { return method->Attributes & 0x1000; }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -279,6 +325,7 @@ struct System_Type {
     bool IsFilled;
     bool IsValueType;
     System_Reflection_MethodInfo_Array VirtualMethods;
+    System_Reflection_MethodInfo Finalize;
     int ManagedSize;
     int ManagedAlignment;
     int StackSize;

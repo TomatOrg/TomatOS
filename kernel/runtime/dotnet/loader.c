@@ -223,6 +223,67 @@ cleanup:
     #define TRACE_FILL_TYPE(...)
 #endif
 
+static err_t override_method(System_Type type, System_Reflection_MethodInfo method) {
+    err_t err = NO_ERROR;
+
+    while (type != NULL) {
+        // TODO: search MethodImpl table
+
+        // this type does not have a method table, meaning
+        // we can stop our search now
+        if (type->VirtualMethods == NULL) {
+            break;
+        }
+
+        // Use normal inheritance (I.8.10.4)
+        for (int i = 0; i < type->VirtualMethods->Length; i++) {
+            System_Reflection_MethodInfo info = type->VirtualMethods->Data[i];
+            if (!method_is_virtual(info)) continue;
+
+            // match the name
+            if (!string_equals(info->Name, method->Name)) continue;
+
+            // if this method is hidden by signature then check the
+            // full signature match
+            if (method_is_hide_by_sig(info)) {
+                // check the return type
+                if (info->ReturnType != method->ReturnType) continue;
+
+                // Check parameter count matches
+                if (info->Parameters->Length != method->Parameters->Length) continue;
+
+                // check the parameters
+                bool signatureMatch = true;
+                for (int j = 0; j < info->Parameters->Length; j++) {
+                    System_Reflection_ParameterInfo paramA = info->Parameters->Data[j];
+                    System_Reflection_ParameterInfo paramB = method->Parameters->Data[j];
+                    if (paramA->ParameterType != paramB->ParameterType) {
+                        signatureMatch = false;
+                        break;
+                    }
+                }
+                if (!signatureMatch) continue;
+            }
+
+            // found it!
+            CHECK(!method_is_final(info), "Trying to override a final method");
+
+            // set the offset
+            method->VtableOffset = info->VtableOffset;
+            goto cleanup;
+        }
+
+        // get the parent for next iteration
+        type = type->BaseType;
+    }
+
+    // the vtable slot was not found, we will simply allocate a new slot
+    err = ERROR_NOT_FOUND;
+
+cleanup:
+    return err;
+}
+
 err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments, System_Type_Array genericMethodArguments) {
     err_t err = NO_ERROR;
     static int depth = 0;
@@ -245,6 +306,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
     }
 
     // first check the parent
+    bool need_new_vtable = false;
     int virtualOfs = 0;
     int managedSize = 0;
     int managedSizePrev = 0;
@@ -285,15 +347,60 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             System_Reflection_MethodInfo methodInfo = type->Methods->Data[i];
 
             if (method_is_virtual(methodInfo)) {
-                if (method_is_new_slot(methodInfo) || type->BaseType == NULL) {
-                    // this is a newslot or a base type, allocate
-                    // a new vtable slot
+                // we have a virtual method, we must have a new vtable
+                need_new_vtable = true;
+
+                if (method_is_new_slot(methodInfo)) {
+                    // this is a newslot, always allocate a new slot
                     methodInfo->VtableOffset = virtualOfs++;
                 } else {
-                    CHECK_FAIL("TODO: implement method overriding");
+                    err = override_method(type->BaseType, methodInfo);
+                    if (err == ERROR_NOT_FOUND) {
+                        // The base method was not found, just allocate a new slot per the spec.
+                        methodInfo->VtableOffset = virtualOfs++;
+                        err = NO_ERROR;
+                    }
+                    CHECK_AND_RETHROW(err);
                 }
             }
         }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Virtual Method Table initial creation, the rest will be handled later
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // we must create the vtable before other type resolution is done because we must
+        // have the subtypes know about the amount of virtual entries we have, and we must populate
+        // our stuff at the very end
+        if (need_new_vtable) {
+            // we have our own vtable, if we have a parent with a vtable then copy
+            // its vtable entries to our vtable
+            type->VirtualMethods = GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, virtualOfs);
+            if (type->BaseType != NULL && type->BaseType->VirtualMethods != NULL) {
+                for (int i = 0; i < type->BaseType->VirtualMethods->Length; i++) {
+                    GC_UPDATE_ARRAY(type->VirtualMethods, i, type->BaseType->VirtualMethods->Data[i]);
+                }
+            }
+        } else {
+            // just inherit the vtable
+            if (type->BaseType != NULL) {
+                type->VirtualMethods = type->BaseType->VirtualMethods;
+            }
+        }
+
+        // Now fill with our own methods
+        for (int i = 0; i < type->Methods->Length; i++) {
+            System_Reflection_MethodInfo methodInfo = type->Methods->Data[i];
+
+            if (method_is_virtual(methodInfo)) {
+                GC_UPDATE_ARRAY(type->VirtualMethods, methodInfo->VtableOffset, methodInfo);
+            }
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // process all the non-static fields at this moment, we are going to calculate the size the
+        // same way SysV does it
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         // If its not a value-type and the stack-size is not present, then set it up now.
         // It needs to be done here as non-static fields in non-value types can point to
@@ -301,11 +408,6 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         if (type->StackSize == 0 && !type->IsValueType) {
             type->StackSize = sizeof(void*);
         }
-
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // process all the non-static fields at this moment, we are going to calculate the size the
-        // same way SysV does it
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
         for (int i = 0; i < type->Fields->Length; i++) {
             System_Reflection_FieldInfo fieldInfo = type->Fields->Data[i];
@@ -379,15 +481,6 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         // Now handle all the methods
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // setup the new virtual method table
-        type->VirtualMethods = GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, virtualOfs);
-        if (type->BaseType != NULL && type->BaseType->VirtualMethods != NULL) {
-            // copy the virtual table base
-            for (int i = 0; i < type->BaseType->VirtualMethods->Length; i++) {
-                GC_UPDATE_ARRAY(type->VirtualMethods, i, type->BaseType->VirtualMethods->Data[i]);
-            }
-        }
-
         for (int i = 0; i < type->Methods->Length; i++) {
             System_Reflection_MethodInfo methodInfo = type->Methods->Data[i];
 
@@ -396,15 +489,33 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                 CHECK_FAIL("TODO: Handle generic instantiation");
             }
 
-            // TODO: figure finalizer and cctor
+            if (method_is_rt_special_name(methodInfo)) {
+                // TODO: .ctor
+                // TODO: .cctor
+            }
 
-            // Insert to vtable if needed
-            if (method_is_virtual(methodInfo)) {
-                GC_UPDATE_ARRAY(type->VirtualMethods, methodInfo->VtableOffset, methodInfo);
+            // for performance reason we are not going to have every method have a finalizer
+            // but instead we are going to have it virtually virtual
+            if (string_equals_cstr(methodInfo->Name, "Finalize")) {
+                // check the signature
+                if (methodInfo->ReturnType == NULL && methodInfo->Parameters->Length == 0) {
+                    CHECK(type->Finalize == NULL);
+                    GC_UPDATE(type, Finalize, methodInfo);
+                }
             }
         }
 
-        // TODO: Finalizer inheritance handling
+        // figure out if a subclass of us has a finalizer
+        if (type->Finalize == NULL) {
+            System_Type base = type->BaseType;
+            while (base != NULL) {
+                if (base->Finalize != NULL) {
+                    GC_UPDATE(type, Finalize, base->Finalize);
+                    break;
+                }
+                base = base->BaseType;
+            }
+        }
 
         // Now fill all the method defs
         for (int i = 0; i < type->Methods->Length; i++) {

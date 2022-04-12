@@ -23,7 +23,8 @@ namespace System
         private unsafe int* _managedPointersOffsets;
         private bool _isFilled;
         private bool _isValueType;
-        private MethodInfo[] VirtualMethods;
+        private MethodInfo[] _virtualMethods;
+        private MethodInfo _finalize;
         private int _managedSize;
         private int _managedAlignment;
         private int _stackSize;
