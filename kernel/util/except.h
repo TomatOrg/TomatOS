@@ -28,6 +28,11 @@ typedef enum err {
      * Got a bad format, most likely when parsing file
      */
     ERROR_BAD_FORMAT,
+
+    /**
+     * The runtime found an invalid opcode
+     */
+    ERROR_INVALID_OPCODE,
 } err_t;
 
 /**

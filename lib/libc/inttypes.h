@@ -14,13 +14,6 @@
 #define __CLANG_INTTYPES_H
 #endif
 
-#if defined(_MSC_VER) && _MSC_VER < 1800
-#error MSVC does not have inttypes.h prior to Visual Studio 2013
-#endif
-
-#include_next <inttypes.h>
-
-#if defined(_MSC_VER) && _MSC_VER < 1900
 /* MSVC headers define int32_t as int, but PRIx32 as "lx" instead of "x".
  * This triggers format warnings, so fix it up here. */
 #undef PRId32
@@ -92,6 +85,5 @@
 #define SCNx32 "x"
 #define SCNxLEAST32 "x"
 #define SCNxFAST32 "x"
-#endif
 
 #endif /* __CLANG_INTTYPES_H */

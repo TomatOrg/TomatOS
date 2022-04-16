@@ -4,7 +4,6 @@
 #include "encoding.h"
 #include "runtime/dotnet/metadata/sig.h"
 #include "util/stb_ds.h"
-#include "proc/app_domain.h"
 
 #include <util/string.h>
 #include <mem/mem.h>
@@ -571,7 +570,6 @@ typedef struct type_init {
     { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(code), alignof(code) }
 
 static type_init_t m_type_init[] = {
-    TYPE_INIT("System", "AppDomain", System_AppDomain),
     TYPE_INIT("System", "Exception", System_Exception),
     VALUE_TYPE_INIT("System", "ValueType", System_ValueType),
     TYPE_INIT("System", "Object", System_Object),

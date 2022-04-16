@@ -8,6 +8,8 @@ opcode_info_t g_dotnet_opcodes[] = {
         .name = _sname, \
         .operand = OPCODE_OPERAND_##_operand, \
         .control_flow = OPCODE_CONTROL_FLOW_##_flow, \
+        .pop = OPCODE_STACK_BEHAVIOUR_##_pop, \
+        .push = OPCODE_STACK_BEHAVIOUR_##_push, \
     },
 #include "metadata/opcode.def"
 #undef OPDEF
@@ -27,7 +29,6 @@ uint16_t g_dotnet_opcode_lookup[] = {
 };
 
 void opcode_disasm_method(System_Reflection_MethodInfo method) {
-    int offset = 0;
     System_Reflection_MethodBody body = method->MethodBody;
     System_Reflection_Assembly assembly = method->Module->Assembly;
 

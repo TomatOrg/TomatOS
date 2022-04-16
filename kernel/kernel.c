@@ -5,6 +5,7 @@
 #include "runtime/dotnet/loader.h"
 #include "runtime/dotnet/opcodes.h"
 #include "runtime/dotnet/encoding.h"
+#include "runtime/dotnet/jit/jit.h"
 
 #include <runtime/dotnet/gc/gc.h>
 
@@ -233,75 +234,77 @@ static void start_thread() {
     gc_wait();
     TRACE("after collection - %d", heap_alive());
 
-//    TRACE("Types:");
-//    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
-//        System_Type type = g_corelib->DefinedTypes->Data[i];
-//        if (type->BaseType != NULL) {
-//            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
-//                  type->Namespace, type->Name,
-//                  type->BaseType->Namespace, type->BaseType->Name);
-//        } else {
-//            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
-//                  type->Namespace, type->Name);
-//        }
-//
-//        for (int j = 0; j < type->Fields->Length; j++) {
-//            CHECK(type->Fields->Data[j] != NULL);
-//            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
-//                  field_access_str(field_access(type->Fields->Data[j])),
-//                  field_is_static(type->Fields->Data[j]) ? "static " : "",
-//                  type->Fields->Data[j]->FieldType->Namespace,
-//                  type->Fields->Data[j]->FieldType->Name,
-//                  type->Fields->Data[j]->Name,
-//                  type->Fields->Data[j]->MemoryOffset);
-//        }
-//
-//        for (int j = 0; j < type->Methods->Length; j++) {
-//            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
-//            CHECK(mi != NULL);
-//
-//            #define APPEND(...) \
-//                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
-//
-//            char mi_str[512] = { 0 };
-//            int offset = 0;
-//
-//            if (method_is_static(mi)) {
-//                APPEND("static ");
-//            }
-//
-//            if (method_is_final(mi)) {
-//                APPEND("final ");
-//            }
-//
-//            if (method_is_virtual(mi)) {
-//                APPEND("virtual[%d] ", mi->VtableOffset);
-//                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
-//            }
-//
-//            if (mi->ReturnType == NULL) {
-//                APPEND("void ");
-//            } else {
-//                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
-//            }
-//            APPEND("%U", mi->Name);
-//            APPEND("(");
-//
-//            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
-//                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
-//                if (pi + 1 != mi->Parameters->Length) {
-//                    APPEND(", ");
-//                }
-//            }
-//            APPEND(")");
-//
-//            TRACE("\t\t%s", mi_str);
-//
-//            opcode_disasm_method(mi);
-//        }
-//
-//        TRACE("");
-//    }
+    TRACE("Types:");
+    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
+        System_Type type = g_corelib->DefinedTypes->Data[i];
+        if (type->BaseType != NULL) {
+            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name,
+                  type->BaseType->Namespace, type->BaseType->Name);
+        } else {
+            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name);
+        }
+
+        for (int j = 0; j < type->Fields->Length; j++) {
+            CHECK(type->Fields->Data[j] != NULL);
+            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
+                  field_access_str(field_access(type->Fields->Data[j])),
+                  field_is_static(type->Fields->Data[j]) ? "static " : "",
+                  type->Fields->Data[j]->FieldType->Namespace,
+                  type->Fields->Data[j]->FieldType->Name,
+                  type->Fields->Data[j]->Name,
+                  type->Fields->Data[j]->MemoryOffset);
+        }
+
+        for (int j = 0; j < type->Methods->Length; j++) {
+            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
+            CHECK(mi != NULL);
+
+            #define APPEND(...) \
+                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
+
+            char mi_str[512] = { 0 };
+            int offset = 0;
+
+            if (method_is_static(mi)) {
+                APPEND("static ");
+            }
+
+            if (method_is_final(mi)) {
+                APPEND("final ");
+            }
+
+            if (method_is_virtual(mi)) {
+                APPEND("virtual[%d] ", mi->VtableOffset);
+                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
+            }
+
+            if (mi->ReturnType == NULL) {
+                APPEND("void ");
+            } else {
+                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
+            }
+            APPEND("%U", mi->Name);
+            APPEND("(");
+
+            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
+                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
+                if (pi + 1 != mi->Parameters->Length) {
+                    APPEND(", ");
+                }
+            }
+            APPEND(")");
+
+            TRACE("\t\t%s", mi_str);
+
+            opcode_disasm_method(mi);
+
+            CHECK_AND_RETHROW(jit_method(mi));
+        }
+
+        TRACE("");
+    }
 
 cleanup:
     ASSERT(!IS_ERROR(err));

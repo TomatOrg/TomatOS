@@ -14,7 +14,7 @@ BUILD_DIR	:= $(OUT_DIR)/build
 #-----------------------------------------------------------------------------------------------------------------------
 
 CFLAGS 		:= -target x86_64-pc-none-elf
-CFLAGS		+= -Werror -std=gnu11
+CFLAGS		+= -Werror -std=gnu11 -DNDEBUG
 CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
@@ -59,16 +59,6 @@ SRCS		+= lib/utf8-utf16-converter/converter/src/converter.c
 #CFLAGS 		+= -DZYAN_NO_LIBC
 #CFLAGS 		+= -DZYCORE_STATIC_BUILD
 #CFLAGS 		+= -DZYDIS_STATIC_BUILD
-
-#-----------------------------------------------------------------------------------------------------------------------
-# Mir library
-#-----------------------------------------------------------------------------------------------------------------------
-
-## Add MIR sources
-#SRCS 		+= lib/mir/mir.c
-#SRCS 		+= lib/mir/mir-gen.c
-#
-#CFLAGS		+= -DMIR_NO_SCAN
 
 ########################################################################################################################
 # Targets

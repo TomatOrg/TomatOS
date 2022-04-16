@@ -14,11 +14,6 @@ namespace System
             
         }
 
-        ~Exception()
-        {
-            
-        }
-
         public Exception(string message)
         {
             _message = message;

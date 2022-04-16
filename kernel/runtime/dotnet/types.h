@@ -75,9 +75,8 @@ struct System_Object {
             uint8_t suppress_finalizer;
 
             // the app domain this object was created under
-            uint16_t app_domain_id;
-
-            // reserved for the future
+            uint8_t _reserved0;
+            uint8_t _reserved1;
             uint8_t _reserved2;
             uint8_t _reserved3;
             uint8_t _reserved4;
