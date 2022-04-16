@@ -60,6 +60,16 @@ SRCS		+= lib/utf8-utf16-converter/converter/src/converter.c
 #CFLAGS 		+= -DZYCORE_STATIC_BUILD
 #CFLAGS 		+= -DZYDIS_STATIC_BUILD
 
+#-----------------------------------------------------------------------------------------------------------------------
+# Mir library
+#-----------------------------------------------------------------------------------------------------------------------
+
+# Add MIR sources
+SRCS 		+= lib/mir/mir.c
+SRCS 		+= lib/mir/mir-gen.c
+
+CFLAGS 		+= -DMIR_NO_SCAN
+
 ########################################################################################################################
 # Targets
 ########################################################################################################################
@@ -75,6 +85,12 @@ $(BIN_DIR)/pentagon.elf: $(BINS) $(OBJS)
 	@echo LD $@
 	@mkdir -p $(@D)
 	@$(LD) $(LDFLAGS) -o $@ $(OBJS)
+
+# For mir we give our dummy libc
+$(BUILD_DIR)/lib/mir/%.c.o: lib/mir/%.c
+	@echo CC $@
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -Ikernel/libc -MMD -c $< -o $@
 
 $(BUILD_DIR)/%.c.o: %.c
 	@echo CC $@

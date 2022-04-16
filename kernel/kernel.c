@@ -219,17 +219,6 @@ static void start_thread() {
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
     TRACE("Loading took %dms", (microtime() - start) / 1000);
 
-    System_Exception exception = GC_NEW(tSystem_Exception);
-    exception->Message = new_string_from_cstr("Hello World!");
-
-    TRACE("COLLECTION ONE");
-
-    TRACE("before collection - %d", heap_alive());
-    gc_wait();
-    TRACE("after collection - %d", heap_alive());
-
-    TRACE("COLLECTION TWO");
-
     TRACE("before collection - %d", heap_alive());
     gc_wait();
     TRACE("after collection - %d", heap_alive());
@@ -300,7 +289,7 @@ static void start_thread() {
 
             opcode_disasm_method(mi);
 
-            CHECK_AND_RETHROW(jit_method(mi));
+//            CHECK_AND_RETHROW(jit_method(mi));
         }
 
         TRACE("");

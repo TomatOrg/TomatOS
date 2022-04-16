@@ -133,6 +133,44 @@ void opcode_disasm_method(System_Reflection_MethodInfo method) {
             default: break;
         }
 
-        TRACE("\t\t\tIL_%04x:  %s %s", pc, opcode_info->name, param);
+        const char* pop;
+        switch (opcode_info->pop) {
+            case OPCODE_STACK_BEHAVIOUR_Pop0: pop = "Pop0"; break;
+            case OPCODE_STACK_BEHAVIOUR_Pop1: pop = "Pop1"; break;
+            case OPCODE_STACK_BEHAVIOUR_Pop1_Pop1: pop = "Pop1_Pop1"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI: pop = "PopI"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI_Pop1: pop = "PopI_Pop1"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI_PopI: pop = "PopI_PopI"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI_PopI8: pop = "PopI_PopI8"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI_PopI_PopI: pop = "PopI_PopI_PopI"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI8_Pop8: pop = "PopI8_Pop8"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI_PopR4: pop = "PopI_PopR4"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopI_PopR8: pop = "PopI_PopR8"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef: pop = "PopRef"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_Pop1: pop = "PopRef_Pop1"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI: pop = "PopRef_PopI"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_Pop1: pop = "PopRef_PopI_Pop1"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopI: pop = "PopRef_PopI_PopI"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopI8: pop = "PopRef_PopI_PopI8"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopR4: pop = "PopRef_PopI_PopR4"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopR8: pop = "PopRef_PopI_PopR8"; break;
+            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopRef: pop = "PopRef_PopI_PopRef"; break;
+            case OPCODE_STACK_BEHAVIOUR_VarPop: pop = "VarPop"; break;
+        }
+
+        const char* push;
+        switch (opcode_info->push) {
+            case OPCODE_STACK_BEHAVIOUR_Push0: push = "Push0"; break;
+            case OPCODE_STACK_BEHAVIOUR_Push1: push = "Push1"; break;
+            case OPCODE_STACK_BEHAVIOUR_Push1_Push1: push = "Push1_Push1"; break;
+            case OPCODE_STACK_BEHAVIOUR_PushI: push = "PushI"; break;
+            case OPCODE_STACK_BEHAVIOUR_PushI8: push = "PushI8"; break;
+            case OPCODE_STACK_BEHAVIOUR_PushR4: push = "PushR4"; break;
+            case OPCODE_STACK_BEHAVIOUR_PushR8: push = "PushR8"; break;
+            case OPCODE_STACK_BEHAVIOUR_PushRef: push = "PushRef"; break;
+            case OPCODE_STACK_BEHAVIOUR_VarPush: push = "VarPush"; break;
+        }
+
+        TRACE("\t\t\tIL_%04x:  %s %s // %s %s", pc, opcode_info->name, param, pop, push);
     }
 }

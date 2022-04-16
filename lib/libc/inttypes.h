@@ -14,42 +14,13 @@
 #define __CLANG_INTTYPES_H
 #endif
 
-/* MSVC headers define int32_t as int, but PRIx32 as "lx" instead of "x".
- * This triggers format warnings, so fix it up here. */
-#undef PRId32
-#undef PRIdLEAST32
-#undef PRIdFAST32
-#undef PRIi32
-#undef PRIiLEAST32
-#undef PRIiFAST32
-#undef PRIo32
-#undef PRIoLEAST32
-#undef PRIoFAST32
-#undef PRIu32
-#undef PRIuLEAST32
-#undef PRIuFAST32
-#undef PRIx32
-#undef PRIxLEAST32
-#undef PRIxFAST32
-#undef PRIX32
-#undef PRIXLEAST32
-#undef PRIXFAST32
-
-#undef SCNd32
-#undef SCNdLEAST32
-#undef SCNdFAST32
-#undef SCNi32
-#undef SCNiLEAST32
-#undef SCNiFAST32
-#undef SCNo32
-#undef SCNoLEAST32
-#undef SCNoFAST32
-#undef SCNu32
-#undef SCNuLEAST32
-#undef SCNuFAST32
-#undef SCNx32
-#undef SCNxLEAST32
-#undef SCNxFAST32
+#define PRIu64 "llu"
+#define PRId64 "lld"
+#define PRId8 "d"
+#define PRIu8 "u"
+#define PRId16 "d"
+#define PRIu16 "u"
+#define PRIxPTR "p"
 
 #define PRId32 "d"
 #define PRIdLEAST32 "d"

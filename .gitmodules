@@ -7,3 +7,6 @@
 [submodule "lib/utf8-utf16-converter"]
 	path = lib/utf8-utf16-converter
 	url = git@github.com:Davipb/utf8-utf16-converter.git
+[submodule "lib/mir"]
+	path = lib/mir
+	url = https://github.com/vnmakarov/mir.git

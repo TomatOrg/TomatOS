@@ -38,7 +38,10 @@ err_t jit_method(System_Reflection_MethodInfo method) {
         // get the actual opcode
         opcode_info_t* opcode_info = &g_dotnet_opcodes[opcode];
 
-        // inline operands
+        //--------------------------------------------------------------------------------------------------------------
+        // Inline operands
+        //--------------------------------------------------------------------------------------------------------------
+
         int32_t operand_i32;
         int64_t operand_i64;
         System_Reflection_FieldInfo operand_field;
@@ -107,6 +110,10 @@ err_t jit_method(System_Reflection_MethodInfo method) {
             default: break;
         }
 
+        //--------------------------------------------------------------------------------------------------------------
+        // Pop from the stack (in a generic way for simplicity)
+        //--------------------------------------------------------------------------------------------------------------
+
         switch (opcode_info->pop) {
             case OPCODE_STACK_BEHAVIOUR_Pop0: break;
             case OPCODE_STACK_BEHAVIOUR_Pop1: break;
@@ -131,14 +138,18 @@ err_t jit_method(System_Reflection_MethodInfo method) {
             case OPCODE_STACK_BEHAVIOUR_VarPop: break;
         }
 
-//        switch (opcode_info->push) {
-//        }
+        //--------------------------------------------------------------------------------------------------------------
+        // Handle the opcode
+        //--------------------------------------------------------------------------------------------------------------
 
         switch (opcode) {
+            case CEE_NOP: break;
+
             default: {
                 CHECK_FAIL("TODO: opcode %s", opcode_info->name);
             } break;
         }
+
     }
 
 cleanup:
