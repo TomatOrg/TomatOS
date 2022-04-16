@@ -32,7 +32,7 @@
 
 #include "semaphore.h"
 
-#include <threading/scheduler.h>
+#include <proc/scheduler.h>
 
 #include <stdatomic.h>
 

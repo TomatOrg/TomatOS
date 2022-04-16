@@ -2,7 +2,7 @@
 
 #include "gc.h"
 
-#include <threading/thread.h>
+#include <proc/thread.h>
 #include <util/string.h>
 #include <util/defs.h>
 #include <mem/mem.h>
@@ -10,7 +10,6 @@
 #include <stdatomic.h>
 
 #define UNIT 64
-STATIC_ASSERT((UNIT >> 1) < sizeof(struct System_Object));
 STATIC_ASSERT(UNIT >= sizeof(struct System_Object));
 
 typedef struct heap_rank {

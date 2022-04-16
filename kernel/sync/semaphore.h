@@ -2,7 +2,7 @@
 
 #include "spinlock.h"
 
-#include <threading/thread.h>
+#include <proc/thread.h>
 
 typedef struct semaphore {
     _Atomic(uint32_t) value;

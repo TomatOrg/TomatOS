@@ -4,8 +4,8 @@
 #include "heap.h"
 #include "time/timer.h"
 
-#include <threading/scheduler.h>
-#include <threading/thread.h>
+#include <proc/scheduler.h>
+#include <proc/thread.h>
 #include <sync/conditional.h>
 #include <util/stb_ds.h>
 
@@ -53,6 +53,12 @@ void gc_add_root(void* object) {
     mutex_unlock(&m_global_roots_mutex);
 }
 
+static void add_object(System_Object o) {
+    // add to the all objects list atomically
+    o->next = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
+    while (!atomic_compare_exchange_weak_explicit(&m_all_objects, &o->next, o, memory_order_relaxed, memory_order_relaxed));
+}
+
 void* gc_new(System_Type type, size_t size) {
     scheduler_preempt_disable();
 
@@ -61,10 +67,7 @@ void* gc_new(System_Type type, size_t size) {
     o->next = NULL;
     o->color = GCL->alloc_color;
     o->type = type;
-
-    // add to the all objects list atomically
-    o->next = atomic_load_explicit(&m_all_objects, memory_order_relaxed);
-    while (!atomic_compare_exchange_weak_explicit(&m_all_objects, &o->next, o, memory_order_relaxed, memory_order_relaxed));
+    add_object(o);
 
     scheduler_preempt_enable();
 
@@ -211,6 +214,12 @@ static System_Object* m_mark_stack = NULL;
     #define TRACE_PRINT(...)
 #endif
 
+#if 0
+    #define SWEEP_PRINT(...) TRACE(__VA_ARGS__)
+#else
+    #define SWEEP_PRINT(...)
+#endif
+
 static void trace(System_Object o) {
     TRACE_PRINT("tracing %p (%U.%U)", o, o->type->Namespace, o->type->Name);
 
@@ -293,6 +302,35 @@ static void trace_heap() {
     }
 }
 
+static void revive_object(System_Object o) {
+    // only green objects (marked for finalization) or white objects (unreachable)
+    // should be revived at this stage
+    if (o == NULL || (o->color != m_color_white && o->color != GC_COLOR_GREEN)) {
+        return;
+    }
+
+    o->color = m_color_black;
+
+    // we can safely iterate all the fields of this object since it is already dead
+    if (o->type->IsArray && !o->type->ElementType->IsValueType) {
+        // array object, check if we need to revive items
+        System_Array array = (System_Array)o;
+        for (int i = 0; i < array->Length; i++) {
+            size_t offset = sizeof(struct System_Array) + i * sizeof(void*);
+            revive_object(read_field(o, offset));
+        }
+
+        // don't forget about the Type object
+        revive_object((System_Object)array->type);
+    } else {
+        // normal object, revive its fields
+        int* managed_pointer_offsets = o->type->ManagedPointersOffsets;
+        for (int i = 0; i < arrlen(managed_pointer_offsets); i++) {
+            revive_object(read_field(o, managed_pointer_offsets[i]));
+        }
+    }
+}
+
 static void sweep() {
     // fourth handshake
     lock_all_threads();
@@ -342,11 +380,10 @@ static void sweep() {
                 last->next = iter->next;
             }
 
-            // TODO: we technically need to queue this for finalization and
-            //       only then destroy it...
-            iter->color = GC_COLOR_BLUE;
+            // queue this for finalization
             TRACE_PRINT("Sweeping object at %p of type %U.%U", iter, iter->type->Namespace, iter->type->Name);
-            heap_free(iter);
+            iter->next = swept;
+            swept = iter;
         } else {
             // the last object is this one since it is still alive
             last = iter;
@@ -355,6 +392,42 @@ static void sweep() {
         // set the iter item to be the next item
         iter = next;
     }
+
+    // revive objects that should be finalized
+    iter = swept;
+    while (iter != NULL) {
+        if (!iter->suppress_finalizer && iter->type->Finalize != NULL && iter->color == m_color_white) {
+            // this object has a finalizer and was not revived yet
+            revive_object(iter);
+
+            // this is now green
+            iter->color = GC_COLOR_GREEN;
+        }
+        iter = iter->next;
+    }
+
+    // now either free or queue for finalization
+    iter = swept;
+    while (iter != NULL) {
+        System_Object current = iter;
+        iter = iter->next;
+
+        if (current->color == m_color_white) {
+            SWEEP_PRINT("Freeing object at %p of type %U.%U", current, current->type->Namespace, current->type->Name);
+            current->color = GC_COLOR_BLUE;
+            heap_free(current);
+        } else if (current->color == m_color_black) {
+            SWEEP_PRINT("Reviving object at %p of type %U.%U", current, current->type->Namespace, current->type->Name);
+            add_object(current);
+        } else if (current->color == GC_COLOR_GREEN) {
+            SWEEP_PRINT("Finalizing object at %p of type %U.%U", current, current->type->Namespace, current->type->Name);
+            current->color = m_color_black;
+            current->suppress_finalizer = true;
+            // TODO: figure on which thread to run this
+            add_object(current);
+        }
+    }
+
 }
 
 static void prepare_next_collection() {

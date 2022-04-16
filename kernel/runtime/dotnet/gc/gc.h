@@ -15,6 +15,13 @@
 #define GC_COLOR_BLUE 2
 
 /**
+ * Green color is used to indicate
+ * an root object that should be
+ * finalized
+ */
+#define GC_COLOR_GREEN 3
+
+/**
  * Initialize the garbage collector
  */
 err_t init_gc();
@@ -89,14 +96,14 @@ void gc_update(void* o, size_t offset, void* new);
  */
 #define GC_UPDATE(o, field, new) \
     do { \
-        typeof(o) _o = o; \
-        gc_update(_o, offsetof(typeof(*(_o)), field), new); \
+        __typeof(o) _o = o; \
+        gc_update(_o, offsetof(__typeof(*(_o)), field), new); \
     } while (0)
 
 #define GC_UPDATE_ARRAY(o, idx, new) \
     do { \
-        typeof(o) _o = o; \
-        gc_update(_o, offsetof(typeof(*(_o)), Data) + (idx) * sizeof(typeof(_o->Data[0])), new); \
+        __typeof(o) _o = o; \
+        gc_update(_o, offsetof(__typeof(*(_o)), Data) + (idx) * sizeof(__typeof(_o->Data[0])), new); \
     } while (0)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

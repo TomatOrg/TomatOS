@@ -33,7 +33,7 @@
 #include <stdatomic.h>
 #include "mutex.h"
 #include "util/except.h"
-#include "threading/scheduler.h"
+#include "proc/scheduler.h"
 #include "time/timer.h"
 
 typedef enum mutex_state {

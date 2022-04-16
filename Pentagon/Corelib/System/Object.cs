@@ -2,7 +2,6 @@ namespace System
 {
     public class Object
     {
-        private unsafe void* _nativeVtable;
         private Type _type;
         private unsafe void* _logPointer;
         private byte _color;

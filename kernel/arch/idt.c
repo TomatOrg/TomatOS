@@ -12,9 +12,9 @@
 #include "sync/spinlock.h"
 #include "debug/debug.h"
 #include "msr.h"
-#include "threading/thread.h"
+#include "proc/thread.h"
 #include "apic.h"
-#include "threading/scheduler.h"
+#include "proc/scheduler.h"
 
 #define IDT_TYPE_TASK           0x5
 #define IDT_TYPE_INTERRUPT_16   0x6

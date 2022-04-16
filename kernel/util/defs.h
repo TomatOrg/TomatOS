@@ -13,40 +13,40 @@
     ({ \
         size_t _x = (size_t)(x); \
         size_t _align = (size_t)(align); \
-        (typeof(x))((_x + (_align - 1)) & ~(_align - 1)); \
+        (__typeof(x))((_x + (_align - 1)) & ~(_align - 1)); \
     })
 
 #define ALIGN_DOWN(x, align) \
     ({ \
         size_t _x = (size_t)(x); \
         size_t _align = (size_t)(align); \
-        (typeof(x))(_x - (_x & (_align - 1))); \
+        (__typeof(x))(_x - (_x & (_align - 1))); \
     })
 
 #define MIN(a, b) \
     ({ \
-        typeof(a) _a = (a); \
-        typeof(b) _b = (b); \
+        __typeof(a) _a = (a); \
+        __typeof(b) _b = (b); \
         _a < _b ? _a : _b; \
     })
 
 #define MAX(a, b) \
     ({ \
-        typeof(a) _a = (a); \
-        typeof(b) _b = (b); \
+        __typeof(a) _a = (a); \
+        __typeof(b) _b = (b); \
         _a > _b ? _a : _b; \
     })
 
 #define SAFE_INC(var) \
     ({ \
-        typeof(var) __old = var; \
+        __typeof(var) __old = var; \
         CHECK (!__builtin_add_overflow(var, 1, &var)); \
         __old; \
     })
 
 #define SAFE_ADD(var, value) \
     ({ \
-        typeof(var) __result;\
+        __typeof(var) __result;\
         CHECK (!__builtin_add_overflow((var), (value), &__result)); \
         __result; \
     })
@@ -67,7 +67,7 @@
 
 #define arrend(arr) \
     ({ \
-        typeof(arr) __arr = arr; \
+        __typeof(arr) __arr = arr; \
         (__arr + arrlen(__arr)); \
     })
 

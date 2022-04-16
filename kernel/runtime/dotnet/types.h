@@ -58,9 +58,6 @@ struct System_Object {
     union {
         // while the object is alive
         struct {
-            // the vtable of the object
-            void* native_vtable;
-
             // the type of the object, must be first
             System_Type type;
 
@@ -75,11 +72,12 @@ struct System_Object {
             uint8_t rank;
 
             // if true the finalizer should not run
-            uint8_t supress_finalizer;
+            uint8_t suppress_finalizer;
+
+            // the app domain this object was created under
+            uint16_t app_domain_id;
 
             // reserved for the future
-            uint8_t _reserved0;
-            uint8_t _reserved1;
             uint8_t _reserved2;
             uint8_t _reserved3;
             uint8_t _reserved4;
@@ -371,6 +369,7 @@ System_Type get_array_type(System_Type Type);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+extern System_Type tSystem_AppDomain;
 extern System_Type tSystem_Exception;
 extern System_Type tSystem_ValueType;
 extern System_Type tSystem_Object;

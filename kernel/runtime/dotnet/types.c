@@ -7,6 +7,7 @@
 
 #include <mem/mem.h>
 
+System_Type tSystem_AppDomain = NULL;
 System_Type tSystem_Exception = NULL;
 System_Type tSystem_ValueType = NULL;
 System_Type tSystem_Object = NULL;
