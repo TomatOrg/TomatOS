@@ -5,6 +5,9 @@
 CC 			:= ccache clang
 LD			:= ld.lld
 
+# Build in debug or release mode
+DEBUG		:= 0
+
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
 BUILD_DIR	:= $(OUT_DIR)/build
@@ -14,13 +17,22 @@ BUILD_DIR	:= $(OUT_DIR)/build
 #-----------------------------------------------------------------------------------------------------------------------
 
 CFLAGS 		:= -target x86_64-pc-none-elf
-CFLAGS		+= -Werror -std=gnu11 -DNDEBUG
+CFLAGS		+= -Werror -std=gnu11
 CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
-#CFLAGS 		+= -Os -flto
-CFLAGS 		+= -g3 -mtune=nehalem -march=nehalem -flto
+ifeq ($(DEBUG),1)
+	CFLAGS	+= -O0 -g
+	CFLAGS	+= -fsanitize=undefined
+	CFLAGS 	+= -fno-sanitize=alignment
+else
+	CFLAGS	+= -O3 -g0 -flto
+	CFLAGS 	+= -DNDEBUG
+endif
+
+CFLAGS 		+= -mtune=skylake -march=skylake
+CFLAGS 		+= -mno-avx -mno-avx2
 CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mcmodel=kernel -mno-red-zone
 CFLAGS 		+= -nostdlib -nostdinc
@@ -49,16 +61,15 @@ SRCS		+= lib/utf8-utf16-converter/converter/src/converter.c
 # Zydis
 #-----------------------------------------------------------------------------------------------------------------------
 
-#SRCS 		+= $(shell find lib/zydis/dependencies/zycore/src -name '*.c')
-#CFLAGS		+= -Ilib/zydis/dependencies/zycore/include
-#
-#SRCS 		+= $(shell find lib/zydis/src -name '*.c')
-#CFLAGS		+= -Ilib/zydis/include
-#CFLAGS		+= -Ilib/zydis/src
-#
-#CFLAGS 		+= -DZYAN_NO_LIBC
-#CFLAGS 		+= -DZYCORE_STATIC_BUILD
-#CFLAGS 		+= -DZYDIS_STATIC_BUILD
+SRCS 		+= $(shell find lib/zydis/dependencies/zycore/src -name '*.c')
+CFLAGS		+= -Ilib/zydis/dependencies/zycore/include
+
+SRCS 		+= $(shell find lib/zydis/src -name '*.c')
+CFLAGS		+= -Ilib/zydis/include
+
+CFLAGS 		+= -DZYAN_NO_LIBC
+CFLAGS 		+= -DZYCORE_STATIC_BUILD
+CFLAGS 		+= -DZYDIS_STATIC_BUILD
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Mir library
@@ -81,16 +92,23 @@ DEPS := $(OBJS:%.o=%.d)
 BINS ?=
 -include $(DEPS)
 
-$(BIN_DIR)/pentagon.elf: $(BINS) $(OBJS)
+$(BIN_DIR)/pentagon.elf: $(OBJS) | Makefile
 	@echo LD $@
 	@mkdir -p $(@D)
-	@$(LD) $(LDFLAGS) -o $@ $(OBJS)
+	@$(LD) $(LDFLAGS) -o $@ $^
 
 # For mir we give our dummy libc
 $(BUILD_DIR)/lib/mir/%.c.o: lib/mir/%.c
 	@echo CC $@
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) -Ikernel/libc -MMD -c $< -o $@
+
+# For zyndis we tell it we are posix just so it will be happy
+$(BUILD_DIR)/lib/zydis/%.c.o: lib/zydis/%.c
+	@echo CC $@
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -D__posix -Ilib/zydis/src -Ikernel/libc -MMD -c $< -o $@
+
 
 $(BUILD_DIR)/%.c.o: %.c
 	@echo CC $@
