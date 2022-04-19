@@ -32,7 +32,6 @@
 
 #include "printf.h"
 #include "except.h"
-#include "buffer.h"
 #include "stb_ds.h"
 #include "runtime/dotnet/types.h"
 
