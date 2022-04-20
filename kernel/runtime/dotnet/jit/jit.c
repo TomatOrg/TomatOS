@@ -1,5 +1,117 @@
 #include "jit.h"
+
 #include "runtime/dotnet/opcodes.h"
+#include "util/stb_ds.h"
+#include "mir/mir.h"
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Type helpers
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static bool is_type_integer(System_Type type) {
+    return type == tSystem_Byte || type == tSystem_Int16 || type == tSystem_Int32 || type == tSystem_Int64 ||
+           type == tSystem_SByte || type == tSystem_UInt16 || type == tSystem_UInt32 || type == tSystem_UInt64 ||
+           type == tSystem_UIntPtr || type == tSystem_IntPtr || type == tSystem_Char || type == tSystem_Boolean;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// The context of the jit
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct stack_entry {
+    // the type of the stack entry
+    System_Type type;
+
+    // the location where this value
+    // is stored on the stack
+    MIR_op_t op;
+} stack_entry_t;
+
+typedef struct stack {
+    // the stack entries
+    stack_entry_t* entries;
+} stack_t;
+
+typedef struct jit_context {
+    // stores all the different possible stack states
+    stack_t* stack_splits;
+    struct {
+        int key; // the pc of the stack
+        int value; // the index to the stack splits to get the correct stack
+        int depth; // the depth of the stack split at this point
+    }* pc_to_stack_split;
+
+    // the index to the current stack
+    int current_stack;
+
+    // the mir context relating to this stack
+    MIR_context_t context;
+
+    // the function that this stack is for
+
+    MIR_item_t func;
+
+    // the current method being compiled
+    System_Reflection_MethodInfo method_info;
+
+    int name_gen;
+} jit_context_t;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Stack helpers
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static err_t stack_push(jit_context_t* ctx, System_Type type, MIR_op_t* op) {
+    err_t err = NO_ERROR;
+
+    stack_entry_t entry = {
+        .type = type
+    };
+
+    // create the name
+    char name[64];
+    snprintf(name, sizeof(name), "stack_%d", ++ctx->name_gen);
+
+    // Make sure we don't exceed the stack depth
+    CHECK (ctx->name_gen <= ctx->method_info->MethodBody->MaxStackSize);
+
+    // create the reg
+    MIR_reg_t reg;
+    if (is_type_integer(type) || !type->IsValueType) {
+        // This is an integer or a reference type
+        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
+    } else if (type == tSystem_Single) {
+        ASSERT(FALSE);
+        // This is a float
+        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_F, name);
+    } else if (type == tSystem_Double) {
+        ASSERT(FALSE);
+        // This is a double
+        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_D, name);
+    } else {
+        ASSERT(FALSE);
+        // This is a value type, allocate a big enough space for it at the start
+        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
+        MIR_prepend_insn(ctx->context, ctx->func,
+                         MIR_new_insn(ctx->context, MIR_ALLOCA,
+                                      MIR_new_reg_op(ctx->context, reg),
+                                      MIR_new_int_op(ctx->context, type->StackSize)));
+    }
+
+    // set the actual op
+    entry.op = MIR_new_reg_op(ctx->context, reg);
+
+    // give out if needed
+    if (op != NULL) {
+        *op = entry.op;
+    }
+
+    // append to the stack
+    arrpush(ctx->stack_splits[ctx->current_stack].entries, entry);
+
+cleanup:
+    return err;
+}
 
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "UnreachableCode"
@@ -8,6 +120,17 @@ err_t jit_method(System_Reflection_MethodInfo method) {
 
     System_Reflection_MethodBody body = method->MethodBody;
     System_Reflection_Assembly assembly = method->Module->Assembly;
+
+    jit_context_t ctx = {
+        .method_info = method
+    };
+
+    // we need at least one entry
+    arrsetlen(ctx.stack_splits, 1);
+
+    ctx.context = MIR_init();
+    MIR_new_module(ctx.context, "temp");
+    ctx.func = MIR_new_func(ctx.context, "temp", 0, NULL, 0);
 
     int il_offset = 0;
     while (il_offset < body->Il->Length) {
@@ -145,6 +268,27 @@ err_t jit_method(System_Reflection_MethodInfo method) {
         switch (opcode) {
             case CEE_NOP: break;
 
+            case CEE_LDC_I4_M1:
+            case CEE_LDC_I4_0:
+            case CEE_LDC_I4_1:
+            case CEE_LDC_I4_2:
+            case CEE_LDC_I4_3:
+            case CEE_LDC_I4_4:
+            case CEE_LDC_I4_5:
+            case CEE_LDC_I4_6:
+            case CEE_LDC_I4_7:
+            case CEE_LDC_I4_8:
+                operand_i32 = (int32_t)opcode - CEE_LDC_I4_0;
+            case CEE_LDC_I4_S:
+            case CEE_LDC_I4: {
+                MIR_op_t op;
+                CHECK_AND_RETHROW(stack_push(&ctx, tSystem_Int32, &op));
+//                MIR_append_insn(ctx.context, ctx.func,
+//                                MIR_new_insn(ctx.context, MIR_MOV,
+//                                             op,
+//                                             MIR_new_int_op(ctx.context, operand_i32)));
+            } break;
+
             default: {
                 CHECK_FAIL("TODO: opcode %s", opcode_info->name);
             } break;
@@ -153,7 +297,14 @@ err_t jit_method(System_Reflection_MethodInfo method) {
     }
 
 cleanup:
-    return err;
+    MIR_finish_func(ctx.context);
+    MIR_finish_module(ctx.context);
+
+    MIR_output(ctx.context, stdout);
+
+    MIR_finish(ctx.context);
+
+    return NO_ERROR;
 }
 
 #pragma clang diagnostic pop

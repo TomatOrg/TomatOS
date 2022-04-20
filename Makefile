@@ -6,7 +6,7 @@ CC 			:= ccache clang
 LD			:= ld.lld
 
 # Build in debug or release mode
-DEBUG		:= 0
+DEBUG		:= 1
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
@@ -37,7 +37,7 @@ CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mcmodel=kernel -mno-red-zone
 CFLAGS 		+= -nostdlib -nostdinc
 CFLAGS 		+= -Ikernel -Ilib
-CFLAGS 		+= -isystem lib/libc
+CFLAGS 		+= -isystem lib/libc -Ikernel/libc
 CFLAGS 		+= -fms-extensions -Wno-microsoft-anon-tag
 
 SRCS 		:= $(shell find kernel -name '*.c')
@@ -97,18 +97,11 @@ $(BIN_DIR)/pentagon.elf: $(OBJS) | Makefile
 	@mkdir -p $(@D)
 	@$(LD) $(LDFLAGS) -o $@ $^
 
-# For mir we give our dummy libc
-$(BUILD_DIR)/lib/mir/%.c.o: lib/mir/%.c
-	@echo CC $@
-	@mkdir -p $(@D)
-	@$(CC) $(CFLAGS) -Ikernel/libc -MMD -c $< -o $@
-
 # For zyndis we tell it we are posix just so it will be happy
 $(BUILD_DIR)/lib/zydis/%.c.o: lib/zydis/%.c
 	@echo CC $@
 	@mkdir -p $(@D)
-	@$(CC) $(CFLAGS) -D__posix -Ilib/zydis/src -Ikernel/libc -MMD -c $< -o $@
-
+	@$(CC) $(CFLAGS) -D__posix -Ilib/zydis/src -MMD -c $< -o $@
 
 $(BUILD_DIR)/%.c.o: %.c
 	@echo CC $@

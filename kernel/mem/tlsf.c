@@ -1217,7 +1217,7 @@ void* tlsf_realloc(tlsf_t tlsf, void* ptr, size_t size)
 	/* Requests with NULL pointers are treated as malloc. */
 	else if (!ptr)
 	{
-		p = tlsf_malloc(tlsf, size);
+        p = tlsf_memalign(tlsf, 16, size);
 	}
 	else
 	{
@@ -1236,7 +1236,7 @@ void* tlsf_realloc(tlsf_t tlsf, void* ptr, size_t size)
 		*/
 		if (adjust > cursize && (!block_is_free(next) || adjust > combined))
 		{
-			p = tlsf_malloc(tlsf, size);
+			p = tlsf_memalign(tlsf, 16, size);
 			if (p)
 			{
 				const size_t minsize = tlsf_min(cursize, size);

@@ -345,7 +345,7 @@ cleanup:
 static thread_t* alloc_thread() {
     err_t err = NO_ERROR;
 
-    thread_t* thread = malloc_aligned(sizeof(thread_t), alignof(thread_t));
+    thread_t* thread = malloc(sizeof(thread_t));
     CHECK(thread != NULL);
 
     // allocate the tcb

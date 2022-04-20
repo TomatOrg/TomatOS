@@ -289,7 +289,7 @@ static void start_thread() {
 
             opcode_disasm_method(mi);
 
-//            CHECK_AND_RETHROW(jit_method(mi));
+            CHECK_AND_RETHROW(jit_method(mi));
         }
 
         TRACE("");
