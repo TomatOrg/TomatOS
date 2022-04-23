@@ -34,6 +34,10 @@ typedef struct System_ValueType {
     // empty...
 } System_ValueType;
 
+typedef struct System_Enum {
+    // empty...
+} System_Enum;
+
 typedef bool System_Boolean;
 typedef wchar_t System_Char;
 typedef int8_t System_SByte;
@@ -368,7 +372,7 @@ System_Type get_array_type(System_Type Type);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-extern System_Type tSystem_AppDomain;
+extern System_Type tSystem_Enum;
 extern System_Type tSystem_Exception;
 extern System_Type tSystem_ValueType;
 extern System_Type tSystem_Object;
@@ -396,3 +400,13 @@ extern System_Type tSystem_Reflection_ParameterInfo;
 extern System_Type tSystem_Reflection_MethodBase;
 extern System_Type tSystem_Reflection_MethodBody;
 extern System_Type tSystem_Reflection_MethodInfo;
+
+static inline bool type_is_enum(System_Type type) { return type != NULL && type->BaseType == tSystem_Enum; }
+bool type_is_integer(System_Type type);
+
+System_Type type_get_underlying_type(System_Type T);
+System_Type type_get_verification_type(System_Type T);
+System_Type type_get_intermediate_type(System_Type T);
+bool type_is_array_element_compatible_with(System_Type T, System_Type U);
+bool type_is_compatible_with(System_Type T, System_Type U);
+bool type_is_verifier_assignable_to(System_Type Q, System_Type R);

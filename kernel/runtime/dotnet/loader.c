@@ -312,6 +312,14 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
     int managedSizePrev = 0;
     int managedAlignment = 1;
     if (type->BaseType != NULL) {
+        // validate that we don't inherit from a sealed type
+        CHECK(!type_is_sealed(type->BaseType));
+
+        if (type->BaseType->IsValueType) {
+            // Can not inherit from value types, except for enum which is allowed
+            CHECK(type->BaseType == tSystem_ValueType || type->BaseType == tSystem_Enum);
+        }
+
         // fill the type information of the parent
         CHECK_AND_RETHROW(loader_fill_type(type->BaseType, genericTypeArguments, genericMethodArguments));
 
@@ -449,6 +457,14 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                 // set new type alignment
                 managedAlignment = MAX(managedAlignment, fieldInfo->FieldType->StackAlignment);
             }
+
+            if (type_is_enum(type)) {
+                if (string_equals_cstr(fieldInfo->Name, "value__")) {
+                    // must be an integer type
+                    CHECK(type_is_integer(fieldInfo->FieldType));
+                    type->ElementType = fieldInfo->FieldType;
+                }
+            }
         }
 
         // lastly align the whole size to the struct alignment
@@ -571,6 +587,7 @@ typedef struct type_init {
 
 static type_init_t m_type_init[] = {
     TYPE_INIT("System", "Exception", System_Exception),
+    VALUE_TYPE_INIT("System", "Enum", System_Enum),
     VALUE_TYPE_INIT("System", "ValueType", System_ValueType),
     TYPE_INIT("System", "Object", System_Object),
     TYPE_INIT("System", "Type", System_Type),

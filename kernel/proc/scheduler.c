@@ -833,13 +833,6 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
         // TODO: how the fuck do I trigger a collection lmao, is it safe
         //       to call signal from here?!
 
-        // mark this cpu as idle
-        // TODO: make this nicer, I don't like the way it is currently
-        lock_scheduler();
-        m_idle_cpus |= 1 << get_cpu_id();
-        m_idle_cpus_count++;
-        unlock_scheduler();
-
         //
         // Steal work from other cpus.
         //
@@ -857,8 +850,34 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
             thread = steal_work();
             if (thread != NULL) {
                 *inherit_time = false;
-                m_spinning = false;
                 return thread;
+            }
+        }
+
+        // prepare to enter idle
+        lock_scheduler();
+
+        // try to get global work one last time
+        if (m_global_run_queue_size != 0) {
+            thread = global_run_queue_get(0);
+            unlock_scheduler();
+            *inherit_time = false;
+            return thread;
+        }
+
+        // we are now idle
+        m_idle_cpus |= 1 << get_cpu_id();
+        m_idle_cpus_count++;
+
+        unlock_scheduler();
+
+        // restore the spinning since we are no longer spinning
+        bool was_spinning = m_spinning;
+        if (m_spinning) {
+            m_spinning = false;
+
+            if (atomic_fetch_add(&m_number_spinning, -1) == 0) {
+                ASSERT(!"negative spinning");
             }
         }
 
@@ -867,7 +886,7 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
 
         // wait for next interrupt, we are already running from interrupt
         // context so we need to re-enable interrupts first
-        asm ("cli; hlt; sti");
+        asm ("sti; hlt; cli");
 
         // remove from idle cpus since we might have work to do
         lock_scheduler();

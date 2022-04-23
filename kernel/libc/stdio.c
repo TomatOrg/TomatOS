@@ -10,10 +10,10 @@ FILE* fcreate() {
     return malloc(sizeof(FILE));
 }
 
-void fclose(FILE* steam) {
-    if (steam != NULL) {
-        arrfree(steam->buffer);
-        free(steam);
+void fclose(FILE* stream) {
+    if (stream != NULL) {
+        arrfree(stream->buffer);
+        free(stream);
     }
 }
 

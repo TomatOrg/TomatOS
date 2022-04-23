@@ -31,9 +31,9 @@ static inline FILE *popen(const char *command, const char *type) { return NULL; 
 static inline int pclose(FILE *stream) { return 0; }
 
 /**
- * Destroy the steam
+ * Destroy the stream
  */
-void fclose(FILE* steam);
+void fclose(FILE* stream);
 
 /**
  * Represents the buffer got no more chars in it

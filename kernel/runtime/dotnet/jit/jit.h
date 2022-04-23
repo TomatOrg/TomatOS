@@ -3,4 +3,4 @@
 #include <runtime/dotnet/types.h>
 #include <util/except.h>
 
-err_t jit_method(System_Reflection_MethodInfo method);
+err_t jit_assembly(System_Reflection_Assembly assembly);

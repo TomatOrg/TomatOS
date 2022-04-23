@@ -7,7 +7,7 @@
 
 #include <mem/mem.h>
 
-System_Type tSystem_AppDomain = NULL;
+System_Type tSystem_Enum = NULL;
 System_Type tSystem_Exception = NULL;
 System_Type tSystem_ValueType = NULL;
 System_Type tSystem_Object = NULL;
@@ -220,4 +220,154 @@ const char* type_visibility_str(type_visibility_t visibility) {
         [TYPE_NESTED_FAMILY_OR_ASSEMBLY] = "protected internal",
     };
     return strs[visibility];
+}
+
+
+static bool type_is_integer(System_Type type) {
+    return type == tSystem_Byte || type == tSystem_Int16 || type == tSystem_Int32 || type == tSystem_Int64 ||
+           type == tSystem_SByte || type == tSystem_UInt16 || type == tSystem_UInt32 || type == tSystem_UInt64 ||
+           type == tSystem_UIntPtr || type == tSystem_IntPtr || type == tSystem_Char || type == tSystem_Boolean;
+}
+
+System_Type type_get_underlying_type(System_Type T) {
+    if (type_is_enum(T)) {
+        return T->ElementType;
+    } else {
+        return T;
+    }
+}
+
+static System_Type type_get_reduced_type(System_Type T) {
+    T = type_get_underlying_type(T);
+    if (T == tSystem_Byte) {
+        return tSystem_SByte;
+    } else if (T == tSystem_UInt16) {
+        return tSystem_Int16;
+    } else if (T == tSystem_UInt32) {
+        return tSystem_Int32;
+    } else if (T == tSystem_UInt64) {
+        return tSystem_Int64;
+    } else if (T == tSystem_UIntPtr) {
+        return tSystem_IntPtr;
+    } else {
+        return T;
+    }
+}
+
+System_Type type_get_verification_type(System_Type T) {
+    T = type_get_reduced_type(T);
+    if (T == tSystem_Boolean) {
+        return tSystem_SByte;
+    } else if (T == tSystem_Char) {
+        return tSystem_Int16;
+    }
+    // TODO: managed pointer
+    else {
+        return T;
+    }
+}
+
+System_Type type_get_intermediate_type(System_Type T) {
+    T = type_get_verification_type(T);
+    if (T == tSystem_SByte || T == tSystem_Int16) {
+        return tSystem_Int32;
+    } else {
+        return T;
+    }
+}
+
+bool type_is_array_element_compatible_with(System_Type T, System_Type U) {
+    System_Type V = type_get_underlying_type(T);
+    System_Type W = type_get_underlying_type(U);
+
+    if (type_is_compatible_with(V, W)) {
+        return true;
+    } else if (type_get_reduced_type(V) == type_get_reduced_type(W)) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool type_is_compatible_with(System_Type T, System_Type U) {
+    // T is identical to U.
+    if (T == U) {
+        return true;
+    }
+
+    if (!T->IsValueType) {
+        System_Type Base = T->BaseType;
+        while (Base != NULL) {
+            if (Base == U) {
+                return true;
+            }
+            Base = Base->BaseType;
+        }
+    }
+
+    if (T->IsArray && U->IsArray && type_is_array_element_compatible_with(T->ElementType, U->ElementType)) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool type_is_pointer_element_compatible_with(System_Type T, System_Type U) {
+    System_Type V = type_get_verification_type(T);
+    System_Type W = type_get_verification_type(U);
+    return V == W;
+}
+
+static bool type_is_location_compatible_with(System_Type T, System_Type U) {
+    if (T->IsValueType && U->IsValueType && type_is_compatible_with(T, U)) {
+        return true;
+    }
+
+    if (!T->IsValueType && !U->IsValueType && type_is_pointer_element_compatible_with(T, U)) {
+        return true;
+    }
+
+    return false;
+}
+
+static bool type_is_assignable_to(System_Type T, System_Type U) {
+    if (T == U) {
+        return true;
+    }
+
+    System_Type V = type_get_intermediate_type(T);
+    System_Type W = type_get_intermediate_type(U);
+
+    if (V == W) {
+        return true;
+    }
+
+    // TODO: This rule seems really wtf
+//    if (
+//        (V == tSystem_IntPtr && W == tSystem_Int32) ||
+//        (V == tSystem_Int32 && W == tSystem_IntPtr)
+//    ) {
+//        return true;
+//    }
+
+    if (type_is_compatible_with(T, U)) {
+        return true;
+    }
+
+    return false;
+}
+
+bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
+    System_Type T = type_get_verification_type(Q);
+    System_Type U = type_get_verification_type(R);
+
+    if (T == U) {
+        return true;
+    }
+
+    if (type_is_assignable_to(T, U)) {
+        return true;
+    }
+
+    return false;
 }
