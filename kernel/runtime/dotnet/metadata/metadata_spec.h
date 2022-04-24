@@ -266,5 +266,15 @@ typedef struct method_fat_format {
     uint16_t size : 4;
     uint16_t max_stack;
     uint32_t code_size;
-    uint32_t local_var_sig_tok;
+    token_t local_var_sig_tok;
 } PACKED method_fat_format_t;
+
+typedef struct method_section_tiny {
+    uint8_t flags;
+    uint8_t size;
+} PACKED method_section_tiny_t;
+
+typedef struct method_section_fat {
+    uint32_t flags : 8;
+    uint32_t size : 24;
+} PACKED method_section_fat_t;

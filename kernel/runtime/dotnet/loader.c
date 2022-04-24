@@ -31,10 +31,17 @@ cleanup:
 // All the basic type setup
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static err_t parse_method_cil(System_Reflection_MethodInfo methodBase, blob_entry_t sig) {
+static err_t parse_method_cil(metadata_t* metadata, System_Reflection_MethodInfo method, blob_entry_t sig) {
     err_t err = NO_ERROR;
 
     System_Reflection_MethodBody body = GC_NEW(tSystem_Reflection_MethodBody);
+
+    // set it
+    GC_UPDATE(method, MethodBody, body);
+
+    // get the signature table
+    metadata_stand_alone_sig_t* standalone_sigs = metadata->tables[METADATA_STAND_ALONE_SIG].table;
+    int standalone_sigs_count = metadata->tables[METADATA_STAND_ALONE_SIG].rows;
 
     // get the header type
     CHECK(sig.size > 0);
@@ -50,13 +57,63 @@ static err_t parse_method_cil(System_Reflection_MethodInfo methodBase, blob_entr
         CHECK(sizeof(method_fat_format_t) <= sig.size);
         CHECK(header->size * 4 <= sig.size);
 
-        // TODO: variables
+        // set the init locals flag
+        body->InitLocals = header->flags & CorILMethod_InitLocals;
 
-        // TODO: exceptions
+        // variables
+        if (header->local_var_sig_tok.token != 0) {
+            CHECK(header->local_var_sig_tok.table == METADATA_STAND_ALONE_SIG);
+            CHECK(header->local_var_sig_tok.index > 0);
+            CHECK(header->local_var_sig_tok.index <= standalone_sigs_count);
+            blob_entry_t signature = standalone_sigs[header->local_var_sig_tok.index - 1].signature;
+            CHECK_AND_RETHROW(parse_stand_alone_local_var_sig(signature, method));
+        } else {
+            // empty array for ease of use
+            GC_UPDATE(body, LocalVariables, GC_NEW_ARRAY(tSystem_Reflection_LocalVariableInfo, 0));
+        }
 
         // skip the rest of the header
         sig.size -= header->size * 4;
         sig.data += header->size * 4;
+
+        // process method sections
+        bool more_sect = header->flags & CorILMethod_MoreSects;
+        while (more_sect) {
+            // get the flags of the section
+            CHECK(2 <= sig.size);
+            uint8_t flags = sig.data[0];
+
+            // get the section header
+            size_t section_size = 0;
+            if (flags & CorILMethod_Sect_FatFormat) {
+                CHECK(4 <= sig.size);
+                method_section_fat_t* section = (method_section_fat_t*) sig.data;
+                sig.data += sizeof(method_section_fat_t);
+                sig.size -= sizeof(method_section_fat_t);
+                section_size = section->size;
+            } else {
+                method_section_tiny_t* section = (method_section_tiny_t*)sig.data;
+                sig.data += sizeof(method_section_tiny_t);
+                sig.size -= sizeof(method_section_tiny_t);
+                section_size = section->size;
+            }
+
+            // verify we have enough space in the section
+            CHECK(section_size <= sig.size);
+
+            if (flags & CorILMethod_Sect_EHTable) {
+                CHECK_FAIL("TODO: exception handling");
+            } else {
+                CHECK_FAIL("Invalid section flags: %x", flags);
+            }
+
+            // skip
+            sig.data += sizeof(method_section_tiny_t);
+            sig.size -= sizeof(method_section_tiny_t);
+
+            // check for more sections
+            more_sect = flags & CorILMethod_Sect_MoreSects;
+        }
 
         // copy some info
         body->MaxStackSize = header->max_stack;
@@ -78,6 +135,9 @@ static err_t parse_method_cil(System_Reflection_MethodInfo methodBase, blob_entr
         sig.size--;
         sig.data++;
 
+        // no local variables
+        GC_UPDATE(body, LocalVariables, GC_NEW_ARRAY(tSystem_Reflection_LocalVariableInfo, 0));
+
         // set the default options
         body->MaxStackSize = 8;
 
@@ -88,9 +148,6 @@ static err_t parse_method_cil(System_Reflection_MethodInfo methodBase, blob_entr
     } else {
         CHECK_FAIL("Invalid method format");
     }
-
-    // set it
-    GC_UPDATE(methodBase, MethodBody, body);
 
 cleanup:
     return err;
@@ -179,7 +236,7 @@ static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Refle
                 CHECK(rva_base != NULL);
 
                 // parse the method info
-                CHECK_AND_RETHROW(parse_method_cil(methodInfo, (blob_entry_t){
+                CHECK_AND_RETHROW(parse_method_cil(metadata, methodInfo, (blob_entry_t){
                     .size = directory.size,
                     .data= rva_base
                 }));
@@ -611,6 +668,7 @@ static type_init_t m_type_init[] = {
     TYPE_INIT("System.Reflection", "Assembly", System_Reflection_Assembly),
     TYPE_INIT("System.Reflection", "FieldInfo", System_Reflection_FieldInfo),
     TYPE_INIT("System.Reflection", "ParameterInfo", System_Reflection_ParameterInfo),
+    TYPE_INIT("System.Reflection", "LocalVariableInfo", System_Reflection_LocalVariableInfo),
     TYPE_INIT("System.Reflection", "MethodBase", System_Reflection_MethodBase),
     TYPE_INIT("System.Reflection", "MethodBody", System_Reflection_MethodBody),
     TYPE_INIT("System.Reflection", "MethodInfo", System_Reflection_MethodInfo),

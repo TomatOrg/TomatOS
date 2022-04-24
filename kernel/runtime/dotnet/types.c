@@ -32,6 +32,7 @@ System_Type tSystem_Reflection_Module = NULL;
 System_Type tSystem_Reflection_Assembly = NULL;
 System_Type tSystem_Reflection_FieldInfo = NULL;
 System_Type tSystem_Reflection_ParameterInfo = NULL;
+System_Type tSystem_Reflection_LocalVariableInfo = NULL;
 System_Type tSystem_Reflection_MethodBase = NULL;
 System_Type tSystem_Reflection_MethodBody = NULL;
 System_Type tSystem_Reflection_MethodInfo = NULL;
@@ -295,6 +296,11 @@ bool type_is_compatible_with(System_Type T, System_Type U) {
         return true;
     }
 
+    // doesn't make sense to have a null type in here
+    if (T == NULL || U == NULL) {
+        return false;
+    }
+
     if (!T->IsValueType) {
         System_Type Base = T->BaseType;
         while (Base != NULL) {
@@ -351,6 +357,10 @@ static bool type_is_assignable_to(System_Type T, System_Type U) {
 //    }
 
     if (type_is_compatible_with(T, U)) {
+        return true;
+    }
+
+    if (T == NULL && type_is_object_ref(U)) {
         return true;
     }
 

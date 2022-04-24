@@ -63,6 +63,8 @@ void* gc_new(System_Type type, size_t size);
 
 /**
  * Helper to allocate a new array
+ *
+ * TODO: empty array optimization
  */
 #define GC_NEW_ARRAY(elementType, count) \
     ({ \

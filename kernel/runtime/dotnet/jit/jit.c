@@ -128,7 +128,7 @@ static MIR_reg_t new_reg(jit_context_t* ctx, System_Type type) {
 
     // create the reg
     MIR_reg_t reg;
-    if (type_is_integer(type) || !type->IsValueType) {
+    if (type_is_integer(type) || type_is_object_ref(type)) {
         // This is an integer or a reference type
         reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
     } else if (type == tSystem_Single) {
@@ -318,7 +318,12 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
 
     // create the proto def
     MIR_item_t proto = MIR_new_proto_arr(ctx->context, proto_name->buffer, nres, &res_type, arrlen(vars), vars);
-    MIR_item_t forward = MIR_new_forward(ctx->context, func_name->buffer);
+
+    // create a forward (only if this is a real method)
+    MIR_item_t forward = NULL;
+    if (!method_is_abstract(method)) {
+        forward = MIR_new_forward(ctx->context, func_name->buffer);
+    }
 
     function_entry_t entry = (function_entry_t){
         .key = method,
@@ -429,8 +434,8 @@ static err_t jit_compare(jit_context_t* ctx, MIR_insn_code_t code) {
         } else {
             CHECK_FAIL();
         }
-    } else if (!value1_type->IsValueType) {
-        CHECK(!value2_type->IsValueType);
+    } else if (type_is_object_ref(value1_type)) {
+        CHECK(type_is_object_ref(value2_type));
         MIR_append_insn(ctx->context, ctx->func,
                         MIR_new_insn(ctx->context, code,
                                      MIR_new_reg_op(ctx->context, result_reg),
@@ -572,8 +577,8 @@ static err_t jit_compare_branch(jit_context_t* ctx, MIR_insn_code_t code, int il
         } else {
             CHECK_FAIL();
         }
-    } else if (!value1_type->IsValueType) {
-        CHECK(!value2_type->IsValueType);
+    } else if (type_is_object_ref(value1_type)) {
+        CHECK(type_is_object_ref(value2_type));
         MIR_append_insn(ctx->context, ctx->func,
                         MIR_new_insn(ctx->context, code,
                                      MIR_new_label_op(ctx->context, label),
@@ -588,8 +593,6 @@ cleanup:
     return err;
 }
 
-#pragma clang diagnostic push
-#pragma ide diagnostic ignored "UnreachableCode"
 static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method) {
     err_t err = NO_ERROR;
 
@@ -604,11 +607,16 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     print_full_method_name(method, method_name);
     fputc('\0', method_name);
 
+    // results
     size_t nres = 0;
     MIR_type_t res_type = 0;
 
+    // arguments
     MIR_var_t* vars = NULL;
     FILE** var_names = NULL;
+
+    // variables
+    MIR_reg_t* locals = NULL;
 
     if (method->ReturnType != NULL) {
         res_type = get_mir_type(method->ReturnType);
@@ -649,6 +657,44 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     }
 
     ctx->func = MIR_new_func_arr(ctx->context, method_name->buffer, nres, &res_type, arrlen(vars), vars);
+
+    // actually create locals
+    for (int i = 0; i < body->LocalVariables->Length; i++) {
+        System_Reflection_LocalVariableInfo variable = body->LocalVariables->Data[i];
+        CHECK(variable->LocalIndex == i);
+
+        if (body->InitLocals) {
+            // we are going to initialize all of the variables
+            MIR_reg_t reg = new_reg(ctx, variable->LocalType);
+            arrpush(locals, reg);
+            if (
+                type_is_object_ref(variable->LocalType) ||
+                variable->LocalType == tSystem_Int32 ||
+                variable->LocalType == tSystem_Int64 ||
+                variable->LocalType == tSystem_IntPtr
+            ) {
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, reg),
+                                             MIR_new_int_op(ctx->context, 0)));
+            } else if (variable->LocalType == tSystem_Single ) {
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_FMOV,
+                                             MIR_new_reg_op(ctx->context, reg),
+                                             MIR_new_float_op(ctx->context, 0.0)));
+            } else if (variable->LocalType == tSystem_Double) {
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_DMOV,
+                                             MIR_new_reg_op(ctx->context, reg),
+                                             MIR_new_double_op(ctx->context, 0.0)));
+            } else {
+                CHECK_FAIL("TODO: memset variable to zero");
+            }
+        } else {
+            // we can leave these as zero
+            CHECK_FAIL("TODO: we must always init locals i think");
+        }
+    }
 
     int il_offset = 0;
     while (il_offset < body->Il->Length) {
@@ -782,7 +828,117 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         //--------------------------------------------------------------------------------------------------------------
 
         switch (opcode) {
+            // nothing
             case CEE_NOP: break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Variables
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            case CEE_STLOC_0:
+            case CEE_STLOC_1:
+            case CEE_STLOC_2:
+            case CEE_STLOC_3: operand_i32 = opcode - CEE_STLOC_0;
+            case CEE_STLOC_S:
+            case CEE_STLOC: {
+                // get the top value
+                MIR_reg_t value_reg;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+
+                // get the variable
+                CHECK(operand_i32 < body->LocalVariables->Length);
+                System_Reflection_LocalVariableInfo variable = body->LocalVariables->Data[operand_i32];
+                System_Type type = type_get_intermediate_type(variable->LocalType);
+
+                // handle implicit float casts
+                MIR_insn_code_t code = MIR_MOV;
+                if (value_type == tSystem_Single) {
+                    if (type == tSystem_Double) {
+                        // float->double
+                        code = MIR_F2D;
+                        value_type = type;
+                    }
+
+                } else if (value_type == tSystem_Double) {
+                    if (type == tSystem_Single) {
+                        // double->float
+                        code = MIR_D2F;
+                        value_type = type;
+                    }
+                }
+
+                // check the type is valid
+                CHECK(type_is_verifier_assignable_to(value_type, type));
+
+                // emit a move
+                if (
+                    type_is_object_ref(value_type) ||
+                    value_type == tSystem_Int32 ||
+                    value_type == tSystem_Int64 ||
+                    value_type == tSystem_IntPtr ||
+                    value_type == tSystem_Single ||
+                    value_type == tSystem_Double
+                ) {
+                    // simple move
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, code,
+                                                 MIR_new_reg_op(ctx->context, locals[operand_i32]),
+                                                 MIR_new_reg_op(ctx->context, value_reg)));
+                } else {
+                    CHECK_FAIL("TODO: memcpy to a local");
+                }
+            } break;
+
+            case CEE_LDLOC_0:
+            case CEE_LDLOC_1:
+            case CEE_LDLOC_2:
+            case CEE_LDLOC_3: operand_i32 = opcode - CEE_LDLOC_0;
+            case CEE_LDLOC_S:
+            case CEE_LDLOC: {
+                // get the variable
+                CHECK(operand_i32 < body->LocalVariables->Length);
+                System_Reflection_LocalVariableInfo variable = body->LocalVariables->Data[operand_i32];
+                System_Type value_type = type_get_intermediate_type(variable->LocalType);
+
+                // choose the mov operation
+                MIR_insn_code_t code = MIR_MOV;
+                if (value_type == tSystem_Single) {
+                    code = MIR_FMOV;
+                } else if (value_type == tSystem_Double) {
+                    code = MIR_DMOV;
+                }
+
+                // make sure we have a valid register in here
+                CHECK(locals[operand_i32] > 0);
+
+                // push it
+                MIR_reg_t value_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, value_type, &value_reg));
+
+                // emit the move
+                if (
+                    type_is_object_ref(value_type) ||
+                    value_type == tSystem_Int32 ||
+                    value_type == tSystem_Int64 ||
+                    value_type == tSystem_IntPtr ||
+                    value_type == tSystem_Single ||
+                    value_type == tSystem_Double
+                ) {
+                    // simple move
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, code,
+                                                 MIR_new_reg_op(ctx->context, value_reg),
+                                                 MIR_new_reg_op(ctx->context, locals[operand_i32])));
+                } else {
+                    // needs a copy
+                    CHECK_FAIL("TODO: copy from local");
+                }
+            } break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Arguments
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             case CEE_LDARG_0:
             case CEE_LDARG_1:
@@ -800,7 +956,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     if (operand_i32 == 0) {
                         arg_type = method->DeclaringType;
                         if (arg_type->IsValueType) {
-                            CHECK_FAIL("TODO: value type this");
+                            CHECK_FAIL();
                         }
                     }
                     operand_i32--;
@@ -823,7 +979,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // for register and reference types we can just copy it
                 if (
-                    !arg_stack_type->IsValueType ||
+                    type_is_object_ref(arg_stack_type) ||
                     arg_stack_type == tSystem_Int32 ||
                     arg_stack_type == tSystem_Int64 ||
                     arg_stack_type == tSystem_IntPtr
@@ -847,6 +1003,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Basic stack manipulation
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
             case CEE_LDC_I4_M1:
             case CEE_LDC_I4_0:
             case CEE_LDC_I4_1:
@@ -867,9 +1027,62 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_int_op(ctx->context, operand_i32)));
             } break;
 
-            //----------------------------------------------------------------------------------------------------------
-            // ldfld - load field of an object
-            //----------------------------------------------------------------------------------------------------------
+            case CEE_DUP: {
+                // get the top value
+                MIR_reg_t top_reg;
+                System_Type top_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &top_type, &top_reg));
+
+                // create new two values
+                MIR_reg_t value_1;
+                MIR_reg_t value_2;
+                CHECK_AND_RETHROW(stack_push(ctx, top_type, &value_1));
+                CHECK_AND_RETHROW(stack_push(ctx, top_type, &value_2));
+
+                if (
+                    type_is_object_ref(top_type) ||
+                    type_is_integer(top_type) ||
+                    top_type == tSystem_Single ||
+                    top_type == tSystem_Double
+                ) {
+                    // normal value, copy the two regs
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, value_1),
+                                                 MIR_new_reg_op(ctx->context, top_reg)));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, value_2),
+                                                 MIR_new_reg_op(ctx->context, top_reg)));
+                } else {
+                    // only copy the second value, we can move the pointer
+                    // to the second one because we are essentially SSA
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, value_1),
+                                                 MIR_new_reg_op(ctx->context, top_reg)));
+
+                    CHECK_FAIL("TODO: copy the stack value");
+                }
+
+            } break;
+
+            case CEE_LDNULL: {
+                // push a null type
+                MIR_reg_t null_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, NULL, &null_reg));
+
+                // load a null value
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, null_reg),
+                                             MIR_new_int_op(ctx->context, 0)));
+            } break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Field access
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
             case CEE_LDFLD: {
                 // get the object instance
                 System_Type obj_type;
@@ -900,7 +1113,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
 
                 if (
-                    !field_stack_type->IsValueType ||
+                    type_is_object_ref(field_stack_type) ||
                     field_stack_type == tSystem_Int32 ||
                     field_stack_type == tSystem_Int64 ||
                     field_stack_type == tSystem_IntPtr
@@ -952,9 +1165,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
-            //----------------------------------------------------------------------------------------------------------
-            // stfld - store into a field of an object
-            //----------------------------------------------------------------------------------------------------------
             case CEE_STFLD: {
                 // get the values
                 MIR_reg_t obj_reg;
@@ -982,7 +1192,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
 
                 if (
-                    !value_type->IsValueType ||
+                    type_is_object_ref(value_type) ||
                     value_type == tSystem_Int32 ||
                     value_type == tSystem_Int64 ||
                     value_type == tSystem_IntPtr
@@ -1016,52 +1226,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
-            //----------------------------------------------------------------------------------------------------------
-            // dup - duplicate the top value of the stack
-            //----------------------------------------------------------------------------------------------------------
-            case CEE_DUP: {
-                // get the top value
-                MIR_reg_t top_reg;
-                System_Type top_type;
-                CHECK_AND_RETHROW(stack_pop(ctx, &top_type, &top_reg));
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Calls and Returns
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                // create new two values
-                MIR_reg_t value_1;
-                MIR_reg_t value_2;
-                CHECK_AND_RETHROW(stack_push(ctx, top_type, &value_1));
-                CHECK_AND_RETHROW(stack_push(ctx, top_type, &value_2));
-
-                if (
-                    !top_type->IsValueType ||
-                    type_is_integer(top_type) ||
-                    top_type == tSystem_Single ||
-                    top_type == tSystem_Double
-                ) {
-                    // normal value, copy the two regs
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_1),
-                                                 MIR_new_reg_op(ctx->context, top_reg)));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_2),
-                                                 MIR_new_reg_op(ctx->context, top_reg)));
-                } else {
-                    // only copy the second value, we can move the pointer
-                    // to the second one because we are essentially SSA
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_1),
-                                                 MIR_new_reg_op(ctx->context, top_reg)));
-
-                    CHECK_FAIL("TODO: copy the stack value");
-                }
-
-            } break;
-
-            //----------------------------------------------------------------------------------------------------------
-            // call - call a method
-            //----------------------------------------------------------------------------------------------------------
+            case CEE_CALLVIRT:
             case CEE_CALL: {
                 System_Type ret_type = type_get_underlying_type(operand_method->ReturnType);
 
@@ -1070,8 +1239,13 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // TODO: the method must be accessible from the call size.
 
-                // validate the method is not abstract
-                CHECK(!method_is_abstract(operand_method));
+                if (opcode == CEE_CALLVIRT) {
+                    // callvirt must call an instance methods
+                    CHECK(!method_is_static(operand_method));
+                } else {
+                    // call must call a method with a body
+                    CHECK(!method_is_abstract(operand_method));
+                }
 
                 // prepare array of all the operands
                 // 1st is the prototype
@@ -1087,17 +1261,76 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // pop all the arguments from the stack
                 int i;
                 for (i = arg_count + other_args - 1; i >= other_args; i--) {
+                    System_Type signature_type = operand_method->Parameters->Data[i - other_args]->ParameterType;
+
+                    // get the argument value
                     MIR_reg_t arg_reg;
                     System_Type arg_type;
                     CHECK_AND_RETHROW(stack_pop(ctx, &arg_type, &arg_reg));
+
+                    // do implicit conversion as needed
+                    if (arg_type == tSystem_Int32) {
+                        if (
+                            signature_type == tSystem_SByte ||
+                            signature_type == tSystem_Byte ||
+                            signature_type == tSystem_Boolean ||
+                            signature_type == tSystem_Int16 ||
+                            signature_type == tSystem_UInt16
+                        ) {
+                            // truncate, going to be done implicitly by mir
+                            arg_type = signature_type;
+                        } else if (signature_type == tSystem_IntPtr) {
+                            // sign extend
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_EXT32,
+                                                         MIR_new_reg_op(ctx->context, arg_reg),
+                                                         MIR_new_reg_op(ctx->context, arg_reg)));
+                            arg_type = signature_type;
+                        } else if (signature_type == tSystem_UIntPtr) {
+                            // zero extend
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_UEXT32,
+                                                         MIR_new_reg_op(ctx->context, arg_reg),
+                                                         MIR_new_reg_op(ctx->context, arg_reg)));
+                            arg_type = signature_type;
+                        }
+                    } else if (arg_type == tSystem_IntPtr) {
+                        if (type_is_integer(signature_type)) {
+                            // truncate or nop, we don't really care
+                            arg_type = signature_type;
+                        }
+                    } else if (arg_type == tSystem_Single) {
+                        if (signature_type == tSystem_Double) {
+                            // float->double conversion
+                            MIR_reg_t real_arg_reg = new_reg(ctx, tSystem_Double);
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_F2D,
+                                                         MIR_new_reg_op(ctx->context, real_arg_reg),
+                                                         MIR_new_reg_op(ctx->context, arg_reg)));
+                            arg_reg = real_arg_reg;
+                            arg_type = signature_type;
+                        }
+                    } else if (arg_type == tSystem_Double) {
+                        if (signature_type == tSystem_Single) {
+                            // double->float conversion
+                            MIR_reg_t real_arg_reg = new_reg(ctx, tSystem_Single);
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_D2F,
+                                                         MIR_new_reg_op(ctx->context, real_arg_reg),
+                                                         MIR_new_reg_op(ctx->context, arg_reg)));
+                            arg_reg = real_arg_reg;
+                            arg_type = signature_type;
+                        }
+                    }
+
+                    // set the op reg
                     arg_ops[i] = MIR_new_reg_op(ctx->context, arg_reg);
 
                     // verify a normal argument
-                    CHECK(type_is_verifier_assignable_to(
-                            type_get_verification_type(arg_type), operand_method->Parameters->Data[i - other_args]->ParameterType));
+                    CHECK(type_is_verifier_assignable_to(type_get_verification_type(arg_type), signature_type));
                 }
 
-                // handle the this argument
+                // handle the `this` argument
                 if (!method_is_static(operand_method)) {
                     MIR_reg_t arg_reg;
                     System_Type arg_type;
@@ -1113,7 +1346,15 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 int funci = hmgeti(ctx->functions, operand_method);
                 CHECK(i != -1);
                 arg_ops[0] = MIR_new_ref_op(ctx->context, ctx->functions[funci].proto);
-                arg_ops[1] = MIR_new_ref_op(ctx->context, ctx->functions[funci].forward);
+
+                if (opcode == CEE_CALLVIRT && method_is_virtual(operand_method)) {
+                    // we are using callvirt and this is a virtual method, so we have to
+                    // use a dynamic dispatch
+                    arg_ops[1] = MIR_new_ref_op(ctx->context, ctx->functions[funci].forward);
+                } else {
+                    // static dispatch
+                    arg_ops[1] = MIR_new_ref_op(ctx->context, ctx->functions[funci].forward);
+                }
 
                 // emit the IR
                 if (operand_method->ReturnType != NULL) {
@@ -1122,7 +1363,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                     // Has return argument, handle it
                     if (
-                        !ret_type->IsValueType ||
+                        type_is_object_ref(ret_type) ||
                         type_is_integer(ret_type) ||
                         ret_type == tSystem_Single ||
                         ret_type == tSystem_Double
@@ -1145,9 +1386,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
-            //----------------------------------------------------------------------------------------------------------
-            // ret - return from method
-            //----------------------------------------------------------------------------------------------------------
             case CEE_RET: {
                 // TODO: check
                 System_Type method_ret_type = type_get_underlying_type(method->ReturnType);
@@ -1173,7 +1411,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                     // handle it at the IR level
                     if (
-                        !ret_type->IsValueType ||
+                        type_is_object_ref(ret_type) ||
                         ret_type == tSystem_Int32 ||
                         ret_type == tSystem_Int64 ||
                         ret_type == tSystem_IntPtr ||
@@ -1191,85 +1429,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
-            //----------------------------------------------------------------------------------------------------------
-            // brfalse - branch on false, null, or zero
-            //----------------------------------------------------------------------------------------------------------
-            case CEE_BRFALSE:
-            case CEE_BRFALSE_S: {
-                // get the value
-                MIR_reg_t value_reg;
-                System_Type value_type;
-                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Array handling
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-                // get the label
-                MIR_label_t label;
-                CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, operand_i32, &label));
-
-                // emit it properly
-                if (value_type == tSystem_Int32) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BFS,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr ||
-                    !value_type->IsValueType
-                ) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BF,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else {
-                    CHECK_FAIL();
-                }
-            } break;
-
-            //----------------------------------------------------------------------------------------------------------
-            // brtrue - branch on false, null, or zero
-            //----------------------------------------------------------------------------------------------------------
-            case CEE_BRTRUE:
-            case CEE_BRTRUE_S: {
-                // get the value
-                MIR_reg_t value_reg;
-                System_Type value_type;
-                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
-
-                // get the label
-                MIR_label_t label;
-                CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, operand_i32, &label));
-
-                // emit it properly
-                if (value_type == tSystem_Int32) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BTS,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr ||
-                    !value_type->IsValueType
-                ) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BT,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else {
-                    CHECK_FAIL();
-                }
-            } break;
-
-                //----------------------------------------------------------------------------------------------------------
-            // bne.un - branch on not equal or unordered
-            //----------------------------------------------------------------------------------------------------------
-            case CEE_BNE_UN:
-            case CEE_BNE_UN_S: {
-                CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BNE, il_offset, operand_i32));
-            } break;
-
-            //----------------------------------------------------------------------------------------------------------
-            // newarr - create a zero-based, one-dimensional array
-            //----------------------------------------------------------------------------------------------------------
             case CEE_NEWARR: {
                 // get the number of elements
                 MIR_reg_t num_elems_reg;
@@ -1332,9 +1495,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, num_elems_reg)));
             } break;
 
-            //----------------------------------------------------------------------------------------------------------
-            // stelem - store an element of an array
-            //----------------------------------------------------------------------------------------------------------
             case CEE_STELEM_I1: operand_type = tSystem_SByte; goto cee_stelem;
             case CEE_STELEM_I2: operand_type = tSystem_Int16; goto cee_stelem;
             case CEE_STELEM_I4: operand_type = tSystem_Int32; goto cee_stelem;
@@ -1374,7 +1534,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // TODO: insert range check for the array
 
-                if (!T->IsValueType) {
+                if (type_is_object_ref(T)) {
                     // we need to use gc_update routine because this
                     // is a managed pointer
                     CHECK_FAIL("TODO: gc_update for stelem");
@@ -1407,12 +1567,94 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
-            //----------------------------------------------------------------------------------------------------------
-            // ceq - compare equal
-            //----------------------------------------------------------------------------------------------------------
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Compares and Branches
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
             case CEE_CEQ: {
                 CHECK_AND_RETHROW(jit_compare(ctx, MIR_EQ));
             } break;
+
+            case CEE_BR:
+            case CEE_BR_S: {
+                // get the label
+                MIR_label_t label;
+                CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, operand_i32, &label));
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_JMP,
+                                             MIR_new_label_op(ctx->context, label)));
+            } break;
+
+            case CEE_BRFALSE:
+            case CEE_BRFALSE_S: {
+                // get the value
+                MIR_reg_t value_reg;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+
+                // get the label
+                MIR_label_t label;
+                CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, operand_i32, &label));
+
+                // emit it properly
+                if (value_type == tSystem_Int32) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_BFS,
+                                                 MIR_new_label_op(ctx->context, label),
+                                                 MIR_new_reg_op(ctx->context, value_reg)));
+                } else if (
+                    value_type == tSystem_Int64 ||
+                    value_type == tSystem_IntPtr ||
+                    type_is_object_ref(value_type)
+                ) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_BF,
+                                                 MIR_new_label_op(ctx->context, label),
+                                                 MIR_new_reg_op(ctx->context, value_reg)));
+                } else {
+                    CHECK_FAIL();
+                }
+            } break;
+
+            case CEE_BRTRUE:
+            case CEE_BRTRUE_S: {
+                // get the value
+                MIR_reg_t value_reg;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+
+                // get the label
+                MIR_label_t label;
+                CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, operand_i32, &label));
+
+                // emit it properly
+                if (value_type == tSystem_Int32) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_BTS,
+                                                 MIR_new_label_op(ctx->context, label),
+                                                 MIR_new_reg_op(ctx->context, value_reg)));
+                } else if (
+                    value_type == tSystem_Int64 ||
+                    value_type == tSystem_IntPtr ||
+                    type_is_object_ref(value_type)
+                ) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_BT,
+                                                 MIR_new_label_op(ctx->context, label),
+                                                 MIR_new_reg_op(ctx->context, value_reg)));
+                } else {
+                    CHECK_FAIL();
+                }
+            } break;
+
+            case CEE_BNE_UN:
+            case CEE_BNE_UN_S: {
+                CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BNE, il_offset, operand_i32));
+            } break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Default case
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             default: {
                 CHECK_FAIL("TODO: opcode %s", opcode_info->name);
@@ -1443,6 +1685,9 @@ cleanup:
     // free the vars
     arrfree(vars);
 
+    // free the locals
+    arrfree(locals);
+
     // free all the memory for this context
     for (int i = 0; i < hmlen(ctx->pc_to_stack_snapshot); i++) {
         arrfree(ctx->pc_to_stack_snapshot[i].stack.entries);
@@ -1452,8 +1697,6 @@ cleanup:
 
     return NO_ERROR;
 }
-
-#pragma clang diagnostic pop
 
 err_t jit_assembly(System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
@@ -1503,10 +1746,13 @@ cleanup:
     if (ctx.context != NULL) {
         MIR_finish_module(ctx.context);
 
-        uint64_t finish = microtime();
-        MIR_output(ctx.context, stdout);
+        // save everything to a module that we can load later
+        FILE* file = fcreate();
+        MIR_write(ctx.context, file);
 
+        uint64_t finish = microtime();
         TRACE("Took %dms to jit the binary", (finish - start) / 1000);
+
         MIR_finish(ctx.context);
     }
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #define FIELD 0x6
+#define LOCAL_SIG 0x7
+
 #define HASTHIS 0x20
 #define EXPLICITTHIS 0x40
 #define DEFAULT 0x0

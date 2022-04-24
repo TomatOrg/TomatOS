@@ -203,7 +203,10 @@ static err_t parse_param(System_Reflection_Assembly assembly, blob_entry_t* sig,
             is_by_ref = true;
 
         default: {
-            CHECK_AND_RETHROW(parse_type(assembly, sig, &parameter->ParameterType, false));
+            CHECK(!is_by_ref, "TODO: byref support");
+            System_Type type;
+            CHECK_AND_RETHROW(parse_type(assembly, sig, &type, false));
+            GC_UPDATE(parameter, ParameterType, type);
         } break;
     }
 
@@ -268,6 +271,60 @@ err_t parse_stand_alone_method_sig(blob_entry_t _sig, System_Reflection_MethodIn
 
     if (header & SENTINEL) {
         CHECK_FAIL("I HAVE NO IDEA WHATS GOING ON");
+    }
+
+
+cleanup:
+    return err;
+}
+
+err_t parse_stand_alone_local_var_sig(blob_entry_t _sig, System_Reflection_MethodInfo method) {
+    err_t err = NO_ERROR;
+    blob_entry_t* sig = &_sig;
+
+    // we expect this to be a local sig
+    EXPECT_BYTE(LOCAL_SIG);
+
+    // get the count
+    uint32_t count = 0;
+    CHECK_AND_RETHROW(parse_compressed_integer(sig, &count));
+
+    // create the array of local variables and set all their types
+    GC_UPDATE(method->MethodBody, LocalVariables, GC_NEW_ARRAY(tSystem_Reflection_LocalVariableInfo, count));
+    for (int i = 0; i < count; i++) {
+        System_Reflection_LocalVariableInfo variable = GC_NEW(tSystem_Reflection_LocalVariableInfo);
+        GC_UPDATE_ARRAY(method->MethodBody->LocalVariables, i, variable);
+        variable->LocalIndex = i;
+
+        CHECK(sig->size > 0);
+        if (sig->data[0] == ELEMENT_TYPE_TYPEDBYREF) {
+            NEXT_BYTE;
+            CHECK_FAIL("TODO: wtf is this");
+            continue;
+        }
+
+        // handle custom mod
+        bool found = false;
+        CHECK_AND_RETHROW(parse_custom_mod(sig, &found));
+
+        // handle constraint
+        // TODO:
+
+        // actually get the type
+        bool is_by_ref = false;
+        CHECK(sig->size > 0);
+        switch (sig->data[0]) {
+            case ELEMENT_TYPE_BYREF:
+                NEXT_BYTE;
+                is_by_ref = true;
+
+            default: {
+                CHECK(!is_by_ref, "TODO: byref support");
+                System_Type type;
+                CHECK_AND_RETHROW(parse_type(method->Module->Assembly, sig, &type, false));
+                GC_UPDATE(variable, LocalType, type);
+            } break;
+        }
     }
 
 

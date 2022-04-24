@@ -227,8 +227,20 @@ DEFINE_ARRAY(System_Reflection_ParameterInfo);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef struct System_Reflection_LocalVariableInfo {
+    struct System_Object;
+    int LocalIndex;
+    System_Type LocalType;
+} *System_Reflection_LocalVariableInfo;
+
+DEFINE_ARRAY(System_Reflection_LocalVariableInfo);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 typedef struct System_Reflection_MethodBody {
     struct System_Object;
+    System_Reflection_LocalVariableInfo_Array LocalVariables;
+    bool InitLocals;
     int32_t MaxStackSize;
     System_Byte_Array Il;
 } *System_Reflection_MethodBody;
@@ -397,11 +409,13 @@ extern System_Type tSystem_Reflection_Module;
 extern System_Type tSystem_Reflection_Assembly;
 extern System_Type tSystem_Reflection_FieldInfo;
 extern System_Type tSystem_Reflection_ParameterInfo;
+extern System_Type tSystem_Reflection_LocalVariableInfo;
 extern System_Type tSystem_Reflection_MethodBase;
 extern System_Type tSystem_Reflection_MethodBody;
 extern System_Type tSystem_Reflection_MethodInfo;
 
 static inline bool type_is_enum(System_Type type) { return type != NULL && type->BaseType == tSystem_Enum; }
+static inline bool type_is_object_ref(System_Type type) { return type == NULL || !type->IsValueType; }
 bool type_is_integer(System_Type type);
 
 System_Type type_get_underlying_type(System_Type T);
