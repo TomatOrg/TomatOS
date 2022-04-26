@@ -1,4 +1,5 @@
 #include "opcodes.h"
+#include "util/stb_ds.h"
 
 opcode_info_t g_dotnet_opcodes[] = {
     [CEE_INVALID] = { .name = "illegal" },
@@ -39,7 +40,6 @@ void opcode_disasm_method(System_Reflection_MethodInfo method) {
         int pc = i;
 
         // handle exception handling
-        bool had_try_this_turn = false;
         for (int i = 0; i < body->ExceptionHandlingClauses->Length; i++) {
             System_Reflection_ExceptionHandlingClause clause = body->ExceptionHandlingClauses->Data[i];
 

@@ -59,6 +59,7 @@ typedef enum opcode_operand {
 } opcode_operand_t;
 
 typedef enum opcode_control_flow {
+    OPCODE_CONTROL_FLOW_INVALID,
     OPCODE_CONTROL_FLOW_BRANCH,
     OPCODE_CONTROL_FLOW_CALL,
     OPCODE_CONTROL_FLOW_COND_BRANCH,

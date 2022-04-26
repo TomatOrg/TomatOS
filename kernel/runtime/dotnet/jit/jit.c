@@ -77,11 +77,21 @@ typedef struct stack_snapshot {
     MIR_label_t label;
 } stack_snapshot_t;
 
+typedef struct exception_handling {
+    System_Reflection_ExceptionHandlingClause key;
+    MIR_label_t value;
+    MIR_label_t endfinally;
+    bool last_in_chain;
+} exception_handling_t;
+
 typedef struct jit_context {
     stack_snapshot_t* pc_to_stack_snapshot;
 
     // the index to the current stack
     stack_t stack;
+
+    // choose the table to use
+    exception_handling_t* clause_to_label;
 
     // the function that this stack is for
     MIR_item_t func;
@@ -91,6 +101,8 @@ typedef struct jit_context {
 
     // used for name generation
     int name_gen;
+
+    MIR_reg_t exception_reg;
 
     //////////////////////////////////////////////////////////////////////////////////
 
@@ -108,6 +120,9 @@ typedef struct jit_context {
     //////////////////////////////////////////////////////////////////////////////////
 
     // runtime functions
+    MIR_item_t is_instance_proto;
+    MIR_item_t is_instance_func;
+
     MIR_item_t gc_new_proto;
     MIR_item_t gc_new_func;
 
@@ -159,8 +174,8 @@ static err_t stack_pop(jit_context_t* ctx, System_Type* type, MIR_reg_t* reg) {
     // pop the entry
     CHECK(arrlen(ctx->stack.entries) > 0);
     stack_entry_t entry = arrpop(ctx->stack.entries);
-    *reg = entry.reg;
-    *type = entry.type;
+    if (reg != NULL) *reg = entry.reg;
+    if (type != NULL) *type = entry.type;
 
 cleanup:
     return err;
@@ -199,6 +214,11 @@ static stack_t stack_snapshot(jit_context_t* ctx) {
     arrsetlen(snapshot.entries, arrlen(ctx->stack.entries));
     memcpy(snapshot.entries, ctx->stack.entries, arrlen(ctx->stack.entries) * sizeof(stack_entry_t));
     return snapshot;
+}
+
+static void stack_copy(jit_context_t* ctx, stack_t* stack) {
+    arrsetlen(ctx->stack.entries, arrlen(stack->entries));
+    memcpy(ctx->stack.entries, stack->entries, arrlen(stack->entries) * sizeof(stack_entry_t));
 }
 
 static err_t stack_merge(jit_context_t* ctx, stack_t* stack, bool allow_change) {
@@ -466,7 +486,7 @@ cleanup:
     return err;
 }
 
-static err_t jit_branch_point(jit_context_t* ctx, int il_offset, int il_target, MIR_label_t* label) {
+static err_t jit_resolve_branch(jit_context_t* ctx, int il_offset, int il_target, MIR_label_t* label) {
     err_t err = NO_ERROR;
 
     // resolve the label
@@ -499,6 +519,50 @@ static err_t jit_branch_point(jit_context_t* ctx, int il_offset, int il_target, 
         CHECK_AND_RETHROW(stack_merge(ctx, &snapshot, false));
         *label = ctx->pc_to_stack_snapshot[i].label;
     }
+
+cleanup:
+    return err;
+}
+
+static err_t jit_branch_point(jit_context_t* ctx, int il_offset, int il_target, MIR_label_t* label) {
+    err_t err = NO_ERROR;
+
+    // validate we are not actually exiting a protected block with this branch
+    System_Reflection_ExceptionHandlingClause_Array exceptions = ctx->method_info->MethodBody->ExceptionHandlingClauses;
+    for (int i = 0; i < exceptions->Length; i++) {
+        System_Reflection_ExceptionHandlingClause clause = exceptions->Data[i];
+
+        bool is_offset_in_try = clause->TryOffset <= il_offset && il_offset < clause->TryOffset + clause->TryLength;
+        bool is_target_in_try = clause->TryOffset <= il_target && il_target < clause->TryOffset + clause->TryLength;
+
+        if (is_offset_in_try) {
+            // we are in the handler, make sure we only jump within it
+            CHECK(is_target_in_try);
+
+            // we know source and target, we are clear
+            break;
+        } else {
+            // we are outside the handler, make sure we don't jump into it
+            CHECK(!is_target_in_try);
+        }
+
+        bool is_offset_in_handler = clause->HandlerOffset <= il_offset && il_offset < clause->HandlerOffset + clause->HandlerLength;
+        bool is_target_in_handler = clause->HandlerOffset <= il_target && il_target < clause->HandlerOffset + clause->HandlerLength;
+
+        if (is_offset_in_handler) {
+            // we are in the handler, make sure we only jump within it
+            CHECK(is_target_in_handler);
+
+            // we know source and target, we are clear
+            break;
+        } else {
+            // we are outside the handler, make sure we don't jump into it
+            CHECK(!is_target_in_handler);
+        }
+    }
+
+    // now we can do the actual branch resolving
+    CHECK_AND_RETHROW(jit_resolve_branch(ctx, il_offset, il_target, label));
 
 cleanup:
     return err;
@@ -609,6 +673,154 @@ cleanup:
     return err;
 }
 
+static err_t jit_jump_to_exception_clause(jit_context_t* ctx, System_Reflection_ExceptionHandlingClause clause) {
+    err_t err = NO_ERROR;
+
+    // we have found an exact handler to jump to, jump to it
+    int i = hmgeti(ctx->clause_to_label, clause);
+    CHECK(i != -1);
+    MIR_label_t label = ctx->clause_to_label[i].value;
+
+    if (clause->Flags == COR_ILEXCEPTION_CLAUSE_EXCEPTION) {
+        // get the stack snapshot so we know which reg stores the stack slot
+        // of the pushed exception
+        i = hmgeti(ctx->pc_to_stack_snapshot, clause->HandlerOffset);
+        CHECK(i != -1);
+        stack_t stack = ctx->pc_to_stack_snapshot[i].stack;
+
+        // validate it is the correct one
+        CHECK(arrlen(stack.entries) == 1);
+        CHECK(stack.entries[0].type == clause->CatchType);
+
+        // move the exception to it
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_insn(ctx->context, MIR_MOV,
+                                     MIR_new_reg_op(ctx->context, stack.entries[0].reg),
+                                     MIR_new_reg_op(ctx->context, ctx->exception_reg)));
+    }
+
+    // jump to the correct handler
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_JMP,
+                                 MIR_new_label_op(ctx->context, label)));
+
+cleanup:
+    return err;
+}
+
+static err_t jit_throw(jit_context_t* ctx, int il_offset, System_Type type) {
+    err_t err = NO_ERROR;
+
+    // verify it is a valid object
+    CHECK(type_is_object_ref(type));
+
+    MIR_reg_t temp_reg = 0;
+
+    // find the exception handler to use
+    System_Reflection_ExceptionHandlingClause_Array exceptions = ctx->method_info->MethodBody->ExceptionHandlingClauses;
+    System_Reflection_ExceptionHandlingClause my_clause = NULL;
+    for (int i = 0; i < exceptions->Length; i++) {
+        System_Reflection_ExceptionHandlingClause clause = exceptions->Data[i];
+
+        // check that this instruction is in the try range
+        if (clause->TryOffset > il_offset || il_offset >= clause->TryOffset + clause->TryLength)
+            continue;
+
+        // if this is a finally or fault block, then we can jump to it directly
+        if (clause->Flags == COR_ILEXCEPTION_CLAUSE_FAULT || clause->Flags == COR_ILEXCEPTION_CLAUSE_FINALLY) {
+            my_clause = clause;
+            break;
+        }
+
+        if (clause->Flags == COR_ILEXCEPTION_CLAUSE_EXCEPTION) {
+            if (type != NULL) {
+                // check if the exception matches anything in here
+                System_Type thrown = type;
+                while (thrown != NULL) {
+                    if (thrown == clause->CatchType) {
+                        // found the correct one!
+                        break;
+                    }
+
+                    TRACE("%U != %U", thrown->Name, clause->CatchType->Name);
+
+                    // try next
+                    thrown = thrown->BaseType;
+                }
+
+                if (thrown != NULL) {
+                    // we found the correct one!
+                    my_clause = clause;
+                    break;
+                }
+            } else {
+                // we don't know the exact exception type that
+                // is thrown, so we need to handle it dynamically
+
+                // if needed create a temp register to hold the
+                // result of the check
+                if (temp_reg == 0) {
+                    temp_reg = new_reg(ctx, tSystem_Boolean);
+                }
+
+                // get the type handler
+                int typei = hmgeti(ctx->types, clause->CatchType);
+                CHECK(typei != -1);
+                MIR_item_t type_ref = ctx->types[typei].value;
+
+                MIR_label_t skip = MIR_new_label(ctx->context);
+
+                // check if the current instance is dervied
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_call_insn(ctx->context, 5,
+                                                  MIR_new_ref_op(ctx->context, ctx->is_instance_proto),
+                                                  MIR_new_ref_op(ctx->context, ctx->is_instance_func),
+                                                  MIR_new_reg_op(ctx->context, temp_reg),
+                                                  MIR_new_reg_op(ctx->context, ctx->exception_reg),
+                                                  MIR_new_ref_op(ctx->context, type_ref)));
+
+                // check the result, if it was false then skip the jump to the exception handler
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_BF,
+                                             MIR_new_label_op(ctx->context, skip),
+                                             MIR_new_reg_op(ctx->context, temp_reg)));
+
+                // emit the jump the to exception handler
+                CHECK_AND_RETHROW(jit_jump_to_exception_clause(ctx, clause));
+
+                // insert the skip label
+                MIR_append_insn(ctx->context, ctx->func, skip);
+            }
+        } else {
+            CHECK_FAIL("TODO: filter exception handler");
+        }
+    }
+
+    if (my_clause == NULL) {
+        // check if we need the extra argument or not
+        size_t nres = 1;
+        if (ctx->method_info->ReturnType != NULL) {
+            MIR_type_t mtype = get_mir_type(ctx->method_info->ReturnType);
+            if (mtype != MIR_T_BLK) {
+                nres = 2;
+            }
+        }
+
+        // we did not have a handler in the current function, just
+        // return our own instruction
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_ret_insn(ctx->context, nres,
+                                         MIR_new_reg_op(ctx->context, ctx->exception_reg),
+                                         MIR_new_int_op(ctx->context, 0)));
+    } else {
+        // we found an exact clause to jump to
+        CHECK_AND_RETHROW(jit_jump_to_exception_clause(ctx, my_clause));
+    }
+
+cleanup:
+    return err;
+}
+
 static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method) {
     err_t err = NO_ERROR;
 
@@ -687,7 +899,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     ctx->func = MIR_new_func_arr(ctx->context, method_name->buffer, nres, res_type, arrlen(vars), vars);
 
     // Create the exception handling reg
-    MIR_reg_t exception_reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, "exception");
+    ctx->exception_reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, "exception");
 
     // get the return block register, if any
     MIR_reg_t return_block_reg = 0;
@@ -734,13 +946,63 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         }
     }
 
-    int il_offset = 0;
-    while (il_offset < body->Il->Length) {
+    // TODO: we need to validate that all branch targets and that all the
+    //       try and handler offsets are actually in valid instructions and
+    //       not in the middle of instructions
+
+    // prepare the stacks at certain points for exception handling
+    for (int i = 0; i < body->ExceptionHandlingClauses->Length; i++) {
+        System_Reflection_ExceptionHandlingClause clause = body->ExceptionHandlingClauses->Data[i];
+
+        // create the stack location
+        MIR_label_t label = MIR_new_label(ctx->context);
+        stack_snapshot_t snapshot = {
+            .key = clause->HandlerOffset,
+            .label = label,
+            .stack = { .entries = NULL }
+        };
+
+        if (clause->Flags == COR_ILEXCEPTION_CLAUSE_EXCEPTION) {
+            stack_entry_t entry = {
+                .type = clause->CatchType,
+                .reg = new_reg(ctx, clause->CatchType),
+            };
+            arrpush(snapshot.stack.entries, entry);
+        }
+
+        // now put it in
+        hmputs(ctx->pc_to_stack_snapshot, snapshot);
+
+        // add to label lookup
+        hmput(ctx->clause_to_label, clause, label);
+    }
+
+    opcode_control_flow_t last_cf = OPCODE_CONTROL_FLOW_INVALID;
+    int il_ptr = 0;
+    while (il_ptr < body->Il->Length) {
+        int il_offset = il_ptr;
+
         // create a snapshot of the stack, if we already have a snapshot
         // of this verify it is the same (we will get a snapshot if we have
         // a forward jump)
         MIR_insn_t cur_label;
         int stacki = hmgeti(ctx->pc_to_stack_snapshot, il_offset);
+
+        if (
+            last_cf == OPCODE_CONTROL_FLOW_BRANCH ||
+            last_cf == OPCODE_CONTROL_FLOW_THROW
+        ) {
+            // control changed by a jump or an exception, this stack can not be full, but rather must
+            // be empty or be whatever the stack is already set to be at this point
+            if (stacki == -1) {
+                // create a new empty stack
+                arrfree(ctx->stack.entries);
+            } else {
+                // copy the stack to the current stack
+                stack_copy(ctx, &ctx->pc_to_stack_snapshot[stacki].stack);
+            }
+        }
+
         if (stacki != -1) {
             // verify it is the same
             stack_t snapshot = ctx->pc_to_stack_snapshot[stacki].stack;
@@ -758,8 +1020,29 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         }
         MIR_append_insn(ctx->context, ctx->func, cur_label);
 
+        // validate the control flow from the previous instruction, we can not have anything that
+        // continues to enter a handler block
+        for (int i = 0; i < body->ExceptionHandlingClauses->Length; i++) {
+            System_Reflection_ExceptionHandlingClause clause = body->ExceptionHandlingClauses->Data[i];
+
+            if (
+                clause->HandlerOffset == il_offset ||
+                clause->HandlerOffset + clause->HandlerLength == il_offset ||
+                clause->TryOffset + clause->TryLength == il_offset
+            ) {
+                // entry to handler can only happen from exception, so
+                // we can't have any instruction that goes next, that is
+                // the same for exiting from handler or protected block
+                CHECK(
+                    last_cf == OPCODE_CONTROL_FLOW_BRANCH ||
+                    last_cf == OPCODE_CONTROL_FLOW_THROW ||
+                    last_cf == OPCODE_CONTROL_FLOW_RETURN
+                );
+            }
+        }
+
         // get the opcode value
-        uint16_t opcode_value = (REFPRE << 8) | body->Il->Data[il_offset++];
+        uint16_t opcode_value = (REFPRE << 8) | body->Il->Data[il_ptr++];
 
         // get the actual opcode
         opcode_t opcode = g_dotnet_opcode_lookup[opcode_value];
@@ -779,13 +1062,16 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
             // setup the new prefix
             opcode_value <<= 8;
-            opcode_value |= body->Il->Data[il_offset++];
+            opcode_value |= body->Il->Data[il_ptr++];
             opcode = g_dotnet_opcode_lookup[opcode_value];
             CHECK_ERROR(opcode != CEE_INVALID, ERROR_INVALID_OPCODE);
         }
 
         // get the opcode info
         opcode_info_t* opcode_info = &g_dotnet_opcodes[opcode];
+
+        // set the last control flow to this one
+        last_cf = opcode_info->control_flow;
 
         //--------------------------------------------------------------------------------------------------------------
         // Inline operands
@@ -802,61 +1088,61 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         char param[128] = { 0 };
         switch (opcode_info->operand) {
             case OPCODE_OPERAND_InlineBrTarget: {
-                operand_i32 = *(int32_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(int32_t);
-                operand_i32 += il_offset;
+                operand_i32 = *(int32_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(int32_t);
+                operand_i32 += il_ptr;
             } break;
             case OPCODE_OPERAND_InlineField: {
-                token_t value = *(token_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(token_t);
+                token_t value = *(token_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(token_t);
                 operand_field = assembly_get_field_by_token(assembly, value);
             } break;
             case OPCODE_OPERAND_InlineI: {
-                operand_i32 = *(int32_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(int32_t);
+                operand_i32 = *(int32_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(int32_t);
             } break;
             case OPCODE_OPERAND_InlineI8: {
-                operand_i64 = *(int64_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(int64_t);
+                operand_i64 = *(int64_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(int64_t);
             } break;
             case OPCODE_OPERAND_InlineMethod: {
-                token_t value = *(token_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(token_t);
+                token_t value = *(token_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(token_t);
                 operand_method = assembly_get_method_by_token(assembly, value);
             } break;
             case OPCODE_OPERAND_InlineR: {
-                operand_f64 = *(double*)&body->Il->Data[il_offset];
-                il_offset += sizeof(double);
+                operand_f64 = *(double*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(double);
             } break;
             case OPCODE_OPERAND_InlineSig: CHECK_FAIL("TODO: sig support");; break;
             case OPCODE_OPERAND_InlineString: CHECK_FAIL("TODO: string support"); break;
             case OPCODE_OPERAND_InlineSwitch: CHECK_FAIL("TODO: switch support");
             case OPCODE_OPERAND_InlineTok: CHECK_FAIL("TODO: tok support");; break;
             case OPCODE_OPERAND_InlineType: {
-                token_t value = *(token_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(token_t);
+                token_t value = *(token_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(token_t);
                 operand_type = assembly_get_type_by_token(assembly, value);
             } break;
             case OPCODE_OPERAND_InlineVar: {
-                operand_i32 = *(uint16_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(uint16_t);
+                operand_i32 = *(uint16_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(uint16_t);
             } break;
             case OPCODE_OPERAND_ShortInlineBrTarget: {
-                operand_i32 = *(int8_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(int8_t);
-                operand_i32 += il_offset;
+                operand_i32 = *(int8_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(int8_t);
+                operand_i32 += il_ptr;
             } break;
             case OPCODE_OPERAND_ShortInlineI: {
-                operand_i32 = *(int8_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(int8_t);
+                operand_i32 = *(int8_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(int8_t);
             } break;
             case OPCODE_OPERAND_ShortInlineR: {
-                operand_f32 = *(float*)&body->Il->Data[il_offset];
-                il_offset += sizeof(float);
+                operand_f32 = *(float*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(float);
             } break;
             case OPCODE_OPERAND_ShortInlineVar: {
-                operand_i32 = *(uint8_t*)&body->Il->Data[il_offset];
-                il_offset += sizeof(uint8_t);
+                operand_i32 = *(uint8_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(uint8_t);
             } break;
             default: break;
         }
@@ -1105,6 +1391,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
             } break;
 
+            case CEE_POP: {
+                CHECK_AND_RETHROW(stack_pop(ctx, NULL, NULL));
+            } break;
+
             case CEE_LDNULL: {
                 // push a null type
                 MIR_reg_t null_reg;
@@ -1268,6 +1558,13 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             // Calls and Returns
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+            //
+            // we are going to do NEWOBJ in here as well, because it is essentially like a call
+            // but we create the object right now instead of getting it from the stack, so I
+            // think this will remove alot of duplicate code if we just handle it in here
+            //
+
+            case CEE_NEWOBJ:
             case CEE_CALLVIRT:
             case CEE_CALL: {
                 System_Type ret_type = type_get_underlying_type(operand_method->ReturnType);
@@ -1277,7 +1574,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // TODO: the method must be accessible from the call size.
 
-                if (opcode == CEE_CALLVIRT) {
+                if (opcode == CEE_CALLVIRT || opcode == CEE_NEWOBJ) {
                     // callvirt must call an instance methods
                     CHECK(!method_is_static(operand_method));
                 } else {
@@ -1372,13 +1669,42 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // handle the `this` argument
                 if (!method_is_static(operand_method)) {
                     MIR_reg_t arg_reg;
-                    System_Type arg_type;
-                    CHECK_AND_RETHROW(stack_pop(ctx, &arg_type, &arg_reg));
-                    arg_ops[i] = MIR_new_reg_op(ctx->context, arg_reg);
+                    if (opcode == CEE_NEWOBJ) {
+                        // TODO: do we want to support value type creation with NEWOBJ?
+                        //       will see if we ever get the official compiler to emit this
+                        CHECK(!operand_method->DeclaringType->IsValueType);
 
-                    // verify a normal argument
-                    CHECK(type_is_verifier_assignable_to(
-                            type_get_verification_type(arg_type), operand_method->DeclaringType));
+                        // we have to create the object right now
+                        CHECK_AND_RETHROW(stack_push(ctx, operand_method->DeclaringType, &arg_reg));
+
+                        // get the item for the allocation
+                        int i = hmgeti(ctx->types, operand_method->DeclaringType);
+                        CHECK(i != -1);
+                        MIR_item_t type_item = ctx->types[i].value;
+
+                        // allocate the new object
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_call_insn(ctx->context, 5,
+                                                          MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
+                                                          MIR_new_ref_op(ctx->context, ctx->gc_new_func),
+                                                          MIR_new_reg_op(ctx->context, arg_reg),
+                                                          MIR_new_ref_op(ctx->context, type_item),
+                                                          MIR_new_int_op(ctx->context, operand_method->DeclaringType->ManagedSize)));
+
+                        // TODO: how am I going to do the exception abi for exceptions x-x, I guess it is
+                        //       going to be the best to just return null when we are out of memory and just
+                        //       go from there...
+                    } else {
+                        // this is a call, get it from the stack
+                        System_Type arg_type;
+                        CHECK_AND_RETHROW(stack_pop(ctx, &arg_type, &arg_reg));
+
+                        // verify a normal argument
+                        CHECK(type_is_verifier_assignable_to(
+                                type_get_verification_type(arg_type), operand_method->DeclaringType));
+                    }
+
+                    arg_ops[i] = MIR_new_reg_op(ctx->context, arg_reg);
                 }
 
                 // get the MIR signature and address
@@ -1396,7 +1722,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
 
                 // get it to the exception register
-                arg_ops[2] = MIR_new_reg_op(ctx->context, exception_reg);
+                arg_ops[2] = MIR_new_reg_op(ctx->context, ctx->exception_reg);
 
                 // emit the IR
                 if (operand_method->ReturnType != NULL) {
@@ -1419,22 +1745,17 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                      arg_ops));
                 }
 
-                // handle exceptions
-                // TODO: if we have a try/catch block we can have a single branch afterwards to go
-                //       to the actual catch/finally block instead of returning
+                // handle any exception which might have been thrown
                 MIR_insn_t label = MIR_new_label(ctx->context);
 
                 // if we have a zero value skip the return
                 MIR_append_insn(ctx->context, ctx->func,
                                 MIR_new_insn(ctx->context, MIR_BF,
                                              MIR_new_label_op(ctx->context, label),
-                                             MIR_new_reg_op(ctx->context, exception_reg)));
+                                             MIR_new_reg_op(ctx->context, ctx->exception_reg)));
 
-                // return properly, with dummy value if we have an error
-                MIR_append_insn(ctx->context, ctx->func,
-                                MIR_new_ret_insn(ctx->context, nres,
-                                             MIR_new_reg_op(ctx->context, exception_reg),
-                                             MIR_new_int_op(ctx->context, 0)));
+                // throw the error, it has an unknown type
+                CHECK_AND_RETHROW(jit_throw(ctx, il_offset, NULL));
 
                 // insert the skip label
                 MIR_append_insn(ctx->context, ctx->func, label);
@@ -1709,6 +2030,159 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Exception control flow
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            case CEE_THROW: {
+                // get the return argument
+                MIR_reg_t obj_reg;
+                System_Type obj_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
+
+                // free this entirely
+                arrfree(ctx->stack.entries);
+
+                // append the instruction itself
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, ctx->exception_reg),
+                                             MIR_new_reg_op(ctx->context, obj_reg)));
+
+                // throw it
+                CHECK_AND_RETHROW(jit_throw(ctx, il_offset, obj_type));
+            } break;
+
+            case CEE_LEAVE:
+            case CEE_LEAVE_S: {
+                // resolve the label
+                MIR_label_t target_label;
+                CHECK_AND_RETHROW(jit_resolve_branch(ctx, il_offset, operand_i32, &target_label));
+
+                int last_clausi = -1;
+
+                // we found a leave, we are going to find every finally clause that we are in, and build
+                // up a chain of where to go next, if we already have a clause with an entry to go to, we
+                // are going to make sure it goes to the same place
+                bool in_a_protected_block = false;
+                System_Reflection_ExceptionHandlingClause_Array exceptions = ctx->method_info->MethodBody->ExceptionHandlingClauses;
+                for (int i = 0; i < exceptions->Length; i++) {
+                    System_Reflection_ExceptionHandlingClause clause = exceptions->Data[i];
+
+                    if (clause->HandlerOffset <= il_offset && il_offset < clause->HandlerOffset + clause->HandlerLength) {
+                        // we are in a handler region, this means that the exception has been dealt with and
+                        // we should clear it out so the finally nodes won't think that it might need to do
+                        // something with it
+                        in_a_protected_block = true;
+
+                        // reset the exception value
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_MOV,
+                                                     MIR_new_reg_op(ctx->context, ctx->exception_reg),
+                                                     MIR_new_int_op(ctx->context, 0)));
+                    }
+
+                    // make sure we are in this try
+                    if (clause->TryOffset > il_offset || il_offset >= clause->TryOffset + clause->TryLength)
+                        continue;
+
+                    // we are in a try block
+                    in_a_protected_block = true;
+
+                    // make sure we are getting a final block
+                    if (clause->Flags != COR_ILEXCEPTION_CLAUSE_FINALLY)
+                        continue;
+
+                    // lets get the clause label and offset
+                    int clausei = hmgeti(ctx->clause_to_label, clause);
+                    CHECK(clausei != -1);
+                    MIR_label_t finally_label = ctx->clause_to_label[clausei].value;
+
+                    // the current finally clause is going to jump into the target label
+                    // (unless it is nested in someone else)
+                    ctx->clause_to_label[clausei].endfinally = target_label;
+                    ctx->clause_to_label[clausei].last_in_chain = true;
+
+                    if (last_clausi == -1) {
+                        // jump to the first finally we see
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_JMP,
+                                                     MIR_new_label_op(ctx->context, finally_label)));
+                    } else {
+                        // the last clause is going to actually jump to us
+                        ctx->clause_to_label[last_clausi].endfinally = finally_label;
+                        ctx->clause_to_label[last_clausi].last_in_chain = false;
+                    }
+
+                    last_clausi = clausei;
+                }
+
+                // make sure we are in a try region
+                CHECK(in_a_protected_block);
+
+                if (last_clausi == -1) {
+                    // there is no finally around us, we can
+                    // safely jump to the target
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_JMP,
+                                                 MIR_new_label_op(ctx->context, target_label)));
+
+                }
+            } break;
+
+            case CEE_ENDFINALLY: {
+                // find the finally block we are in
+                bool found = false;
+                System_Reflection_ExceptionHandlingClause_Array exceptions = ctx->method_info->MethodBody->ExceptionHandlingClauses;
+                for (int i = 0; i < exceptions->Length; i++) {
+                    System_Reflection_ExceptionHandlingClause clause = exceptions->Data[i];
+
+                    // make sure we are in this try
+                    if (clause->HandlerOffset > il_offset || il_offset >= clause->HandlerOffset + clause->HandlerLength)
+                        continue;
+
+                    // make sure we are getting a final block
+                    CHECK (clause->Flags == COR_ILEXCEPTION_CLAUSE_FINALLY);
+
+                    // lets get the clause label and offset
+                    int clausei = hmgeti(ctx->clause_to_label, clause);
+                    CHECK(clausei != -1);
+                    MIR_label_t endfinally_label = ctx->clause_to_label[clausei].endfinally;
+                    CHECK(endfinally_label != NULL);
+
+                    if (ctx->clause_to_label[clausei].last_in_chain) {
+                        MIR_label_t skip = MIR_new_label(ctx->context);
+
+                        // add a check if we need to "rethrow" the error instead
+                        // check the result, if it was false then skip the jump to the exception handler
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_BF,
+                                                     MIR_new_label_op(ctx->context, skip),
+                                                     MIR_new_reg_op(ctx->context, ctx->exception_reg)));
+
+                        // we did not have a handler in the current function, just
+                        // return our own instruction
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_ret_insn(ctx->context, nres,
+                                                         MIR_new_reg_op(ctx->context, ctx->exception_reg),
+                                                         MIR_new_int_op(ctx->context, 0)));
+
+                        // insert the skip label
+                        MIR_append_insn(ctx->context, ctx->func, skip);
+                    }
+
+                    // jump to the first finally we see
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_JMP,
+                                                 MIR_new_label_op(ctx->context, endfinally_label)));
+
+                    found = true;
+                    break;
+                }
+
+                CHECK(found);
+            } break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Default case
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1718,6 +2192,14 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         }
 
     }
+
+    // make sure that the last instruction is either
+    // a return or a branch or a throw
+    CHECK(
+        last_cf == OPCODE_CONTROL_FLOW_THROW ||
+        last_cf == OPCODE_CONTROL_FLOW_BRANCH ||
+        last_cf == OPCODE_CONTROL_FLOW_RETURN
+    );
 
 cleanup:
     if (ctx->func != NULL) {
@@ -1771,6 +2253,11 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     ctx.gc_new_func = MIR_new_import(ctx.context, "gc_new");
     ctx.get_array_type_proto = MIR_new_proto(ctx.context, "get_array_type$proto", 1, &res_type, 1, MIR_T_P, "type");
     ctx.get_array_type_func = MIR_new_import(ctx.context, "get_array_type");
+
+    res_type = MIR_T_I8;
+    ctx.is_instance_proto = MIR_new_proto(ctx.context, "isinstance$proto", 1, &res_type, 2, MIR_T_P, "object", MIR_T_P, "type");
+    ctx.is_instance_func = MIR_new_import(ctx.context, "isinstance");
+
 
     // predefine all the types
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {

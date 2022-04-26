@@ -10,7 +10,7 @@ namespace Pentagon
             int a;
             try
             {
-                throw new Exception("Hello");
+                throw new Exception();
             }
             catch (Exception e)
             {
