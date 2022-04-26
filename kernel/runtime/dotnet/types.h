@@ -237,8 +237,31 @@ DEFINE_ARRAY(System_Reflection_LocalVariableInfo);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef enum System_Reflection_ExceptionHandlingClauseOptions {
+    ExceptionHandlingClauseOptions_Clause = 0,
+    ExceptionHandlingClauseOptions_Fault = 4,
+    ExceptionHandlingClauseOptions_Filter = 1,
+    ExceptionHandlingClauseOptions_Finally = 2,
+} System_Reflection_ExceptionHandlingClauseOptions;
+
+typedef struct System_Reflection_ExceptionHandlingClause {
+    struct System_Object;
+    System_Type CatchType;
+    int FilterOffset;
+    System_Reflection_ExceptionHandlingClauseOptions Flags;
+    int HandlerLength;
+    int HandlerOffset;
+    int TryLength;
+    int TryOffset;
+} *System_Reflection_ExceptionHandlingClause;
+
+DEFINE_ARRAY(System_Reflection_ExceptionHandlingClause);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 typedef struct System_Reflection_MethodBody {
     struct System_Object;
+    System_Reflection_ExceptionHandlingClause_Array ExceptionHandlingClauses;
     System_Reflection_LocalVariableInfo_Array LocalVariables;
     bool InitLocals;
     int32_t MaxStackSize;
@@ -410,6 +433,7 @@ extern System_Type tSystem_Reflection_Assembly;
 extern System_Type tSystem_Reflection_FieldInfo;
 extern System_Type tSystem_Reflection_ParameterInfo;
 extern System_Type tSystem_Reflection_LocalVariableInfo;
+extern System_Type tSystem_Reflection_ExceptionHandlingClause;
 extern System_Type tSystem_Reflection_MethodBase;
 extern System_Type tSystem_Reflection_MethodBody;
 extern System_Type tSystem_Reflection_MethodInfo;

@@ -281,22 +281,34 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
     print_full_method_name(method, func_name);
     fputc('\0', func_name);
 
-    size_t nres = 0;
-    MIR_type_t res_type = 0;
+    size_t nres = 1;
+    MIR_type_t res_type[2] = {
+        MIR_T_P, // exception
+        MIR_T_UNDEF, // return value if any
+    };
 
     MIR_var_t* vars = NULL;
 
+    // handle the return value
     if (method->ReturnType != NULL) {
-        res_type = get_mir_type(method->ReturnType);
-        if (res_type == MIR_T_BLK) {
-            CHECK_FAIL("TODO: RBLK return value");
+        res_type[1] = get_mir_type(method->ReturnType);
+        if (res_type[1] == MIR_T_BLK) {
+            // value type return
+            MIR_var_t var = {
+                .name = "",
+                .type = MIR_T_RBLK,
+                .size = method->ReturnType->StackSize
+            };
+            arrpush(vars, var);
+        } else {
+            // we can use normal return
+            nres = 2;
         }
-        nres = 1;
     }
 
     if (!method_is_static(method)) {
         MIR_var_t var = {
-        .name = "",
+        .name = "this",
         .type = get_mir_type(method->DeclaringType),
         };
         if (var.type == MIR_T_BLK) {
@@ -317,12 +329,16 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
     }
 
     // create the proto def
-    MIR_item_t proto = MIR_new_proto_arr(ctx->context, proto_name->buffer, nres, &res_type, arrlen(vars), vars);
+    MIR_item_t proto = MIR_new_proto_arr(ctx->context, proto_name->buffer, nres, res_type, arrlen(vars), vars);
 
     // create a forward (only if this is a real method)
     MIR_item_t forward = NULL;
     if (!method_is_abstract(method)) {
+        // create a forward
         forward = MIR_new_forward(ctx->context, func_name->buffer);
+
+        // export the method
+        MIR_new_export(ctx->context, func_name->buffer);
     }
 
     function_entry_t entry = (function_entry_t){
@@ -608,8 +624,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     fputc('\0', method_name);
 
     // results
-    size_t nres = 0;
-    MIR_type_t res_type = 0;
+    size_t nres = 1;
+    MIR_type_t res_type[] = {
+        MIR_T_P,    // exception
+        MIR_T_UNDEF // optional return value
+    };
 
     // arguments
     MIR_var_t* vars = NULL;
@@ -619,16 +638,24 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     MIR_reg_t* locals = NULL;
 
     if (method->ReturnType != NULL) {
-        res_type = get_mir_type(method->ReturnType);
-        if (res_type == MIR_T_BLK) {
-            CHECK_FAIL("TODO: RBLK return value");
+        res_type[1] = get_mir_type(method->ReturnType);
+        if (res_type[1] == MIR_T_BLK) {
+            // we need an RBLK
+            MIR_var_t var = {
+                .name = "r",
+                .type = MIR_T_RBLK,
+                .size = method->ReturnType->StackSize
+            };
+            arrpush(vars, var);
+        } else {
+            // use the second argument for return
+            nres = 2;
         }
-        nres = 1;
     }
 
     if (!method_is_static(method)) {
         FILE* var_name = fcreate();
-        fprintf(var_name, "a%d", arrlen(vars));
+        fprintf(var_name, "arg%d", arrlen(vars));
         fputc('\0', var_name);
         MIR_var_t var = {
             .name = var_name->buffer,
@@ -643,7 +670,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
     for (int i = 0; i < method->Parameters->Length; i++) {
         FILE* var_name = fcreate();
-        fprintf(var_name, "a%d", arrlen(vars));
+        fprintf(var_name, "arg%d", arrlen(vars));
         fputc('\0', var_name);
         MIR_var_t var = {
             .name = var_name->buffer,
@@ -656,7 +683,17 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         arrpush(vars, var);
     }
 
-    ctx->func = MIR_new_func_arr(ctx->context, method_name->buffer, nres, &res_type, arrlen(vars), vars);
+    // Create the actual mir function
+    ctx->func = MIR_new_func_arr(ctx->context, method_name->buffer, nres, res_type, arrlen(vars), vars);
+
+    // Create the exception handling reg
+    MIR_reg_t exception_reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, "exception");
+
+    // get the return block register, if any
+    MIR_reg_t return_block_reg = 0;
+    if (res_type[1] == MIR_T_BLK) {
+        return_block_reg = MIR_reg(ctx->context, "return_block", ctx->func->u.func);
+    }
 
     // actually create locals
     for (int i = 0; i < body->LocalVariables->Length; i++) {
@@ -681,7 +718,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 MIR_append_insn(ctx->context, ctx->func,
                                 MIR_new_insn(ctx->context, MIR_FMOV,
                                              MIR_new_reg_op(ctx->context, reg),
-                                             MIR_new_float_op(ctx->context, 0.0)));
+                                             MIR_new_float_op(ctx->context, 0.0f)));
             } else if (variable->LocalType == tSystem_Double) {
                 MIR_append_insn(ctx->context, ctx->func,
                                 MIR_new_insn(ctx->context, MIR_DMOV,
@@ -691,8 +728,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_FAIL("TODO: memset variable to zero");
             }
         } else {
-            // we can leave these as zero
-            CHECK_FAIL("TODO: we must always init locals i think");
+            // we can not verify non-initlocals methods, so we are not
+            // going to support them at all for now
+            CHECK_FAIL();
         }
     }
 
@@ -948,7 +986,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             case CEE_LDARG: {
                 // the method_name to resolve it
                 char arg_name[64];
-                snprintf(arg_name, sizeof(arg_name), "a%d", operand_i32);
+                snprintf(arg_name, sizeof(arg_name), "arg%d", operand_i32);
 
                 // resolve the type
                 System_Type arg_type = NULL;
@@ -1250,10 +1288,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // prepare array of all the operands
                 // 1st is the prototype
                 // 2nd is the reference
-                // 3rd is return type optionally
-                // 4th is this type optionally
+                // 3rd is exception return
+                // 4rd is return type optionally
+                // 5th is this type optionally
                 // Rest are the arguments
-                size_t other_args = 2;
+                size_t other_args = 3;
                 if (ret_type != NULL) other_args++;
                 if (!method_is_static(operand_method)) other_args++;
                 MIR_op_t arg_ops[other_args + arg_count];
@@ -1356,27 +1395,22 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     arg_ops[1] = MIR_new_ref_op(ctx->context, ctx->functions[funci].forward);
                 }
 
+                // get it to the exception register
+                arg_ops[2] = MIR_new_reg_op(ctx->context, exception_reg);
+
                 // emit the IR
                 if (operand_method->ReturnType != NULL) {
                     MIR_reg_t ret_reg;
                     CHECK_AND_RETHROW(stack_push(ctx, type_get_intermediate_type(operand_method->ReturnType), &ret_reg));
 
-                    // Has return argument, handle it
-                    if (
-                        type_is_object_ref(ret_type) ||
-                        type_is_integer(ret_type) ||
-                        ret_type == tSystem_Single ||
-                        ret_type == tSystem_Double
-                    ) {
-                        // return argument is a simple register
-                        arg_ops[2] = MIR_new_reg_op(ctx->context, ret_reg);
-                        MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_insn_arr(ctx->context, MIR_CALL,
-                                                         other_args + arg_count,
-                                                         arg_ops));
-                    } else {
-                        CHECK_FAIL("TODO: pass to RBLK");
-                    }
+                    // this should just work, because if the value is a struct it is going to be allocated properly
+                    // in the stack push, and it is going to be passed by a pointer that we give, and everything will
+                    // just work out because of how we have the order of everything :)
+                    arg_ops[3] = MIR_new_reg_op(ctx->context, ret_reg);
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn_arr(ctx->context, MIR_CALL,
+                                                     other_args + arg_count,
+                                                     arg_ops));
                 } else {
                     // Does not have a return argument, no need to handle
                     MIR_append_insn(ctx->context, ctx->func,
@@ -1384,6 +1418,26 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                      other_args + arg_count,
                                                      arg_ops));
                 }
+
+                // handle exceptions
+                // TODO: if we have a try/catch block we can have a single branch afterwards to go
+                //       to the actual catch/finally block instead of returning
+                MIR_insn_t label = MIR_new_label(ctx->context);
+
+                // if we have a zero value skip the return
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_BF,
+                                             MIR_new_label_op(ctx->context, label),
+                                             MIR_new_reg_op(ctx->context, exception_reg)));
+
+                // return properly, with dummy value if we have an error
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_ret_insn(ctx->context, nres,
+                                             MIR_new_reg_op(ctx->context, exception_reg),
+                                             MIR_new_int_op(ctx->context, 0)));
+
+                // insert the skip label
+                MIR_append_insn(ctx->context, ctx->func, label);
             } break;
 
             case CEE_RET: {
@@ -1396,7 +1450,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                     // there is no return value, just add a ret
                     MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_ret_insn(ctx->context, 0));
+                                    MIR_new_ret_insn(ctx->context, 1,
+                                                     MIR_new_int_op(ctx->context, 0)));
                 } else {
                     // pop the return from the stack
                     MIR_reg_t ret_arg;
@@ -1420,7 +1475,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     ) {
                         // it is stored in a register directly, just return it
                         MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_ret_insn(ctx->context, 1,
+                                        MIR_new_ret_insn(ctx->context, 2,
+                                                         MIR_new_int_op(ctx->context, 0),
                                                          MIR_new_reg_op(ctx->context, ret_arg)));
                     } else {
                         // this is a big struct, copy it to the return block
@@ -1732,6 +1788,8 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
         CHECK_AND_RETHROW(prepare_method_signature(&ctx, method));
     }
 
+    // TODO: import all external types and methods
+
     // now ir all the methods
     for (int ti = 0; ti < assembly->DefinedTypes->Length; ti++) {
         System_Type type = assembly->DefinedTypes->Data[ti];
@@ -1749,8 +1807,10 @@ cleanup:
         // save everything to a module that we can load later
         FILE* file = fcreate();
         MIR_write(ctx.context, file);
-
         uint64_t finish = microtime();
+
+        MIR_output(ctx.context, stdout);
+
         TRACE("Took %dms to jit the binary", (finish - start) / 1000);
 
         MIR_finish(ctx.context);

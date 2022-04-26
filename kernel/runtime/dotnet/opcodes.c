@@ -32,15 +32,50 @@ void opcode_disasm_method(System_Reflection_MethodInfo method) {
     System_Reflection_MethodBody body = method->MethodBody;
     System_Reflection_Assembly assembly = method->Module->Assembly;
 
+    int indent = 0;
+
     int i = 0;
     while (i < body->Il->Length) {
         int pc = i;
+
+        // handle exception handling
+        bool had_try_this_turn = false;
+        for (int i = 0; i < body->ExceptionHandlingClauses->Length; i++) {
+            System_Reflection_ExceptionHandlingClause clause = body->ExceptionHandlingClauses->Data[i];
+
+            if (clause->TryOffset == pc) {
+                TRACE("\t\t\t%*s.try", indent, "");
+                TRACE("\t\t\t%*s{", indent, "");
+                indent += 4;
+            } else if (clause->TryOffset + clause->TryLength == pc) {
+                indent -= 4;
+                TRACE("\t\t\t%*s} // end .try", indent, "");
+            }
+
+            if (clause->HandlerOffset == pc) {
+                if (clause->Flags == COR_ILEXCEPTION_CLAUSE_EXCEPTION) {
+                    TRACE("\t\t\t%*scatch %U.%U", indent, "", clause->CatchType->Namespace, clause->CatchType->Name);
+                } else if (clause->Flags == COR_ILEXCEPTION_CLAUSE_FINALLY) {
+                    TRACE("\t\t\t%*sfinally", indent, "");
+                } else if (clause->Flags == COR_ILEXCEPTION_CLAUSE_FAULT) {
+                    TRACE("\t\t\t%*sfault", indent, "");
+                } else if (clause->Flags == COR_ILEXCEPTION_CLAUSE_FAULT) {
+                    TRACE("\t\t\t%*sfilter", indent, "");
+                }
+                TRACE("\t\t\t%*s{", indent, "");
+                indent += 4;
+            } else if (clause->HandlerOffset + clause->HandlerLength == pc) {
+                indent -= 4;
+                TRACE("\t\t\t%*s} // end handler", indent, "");
+            }
+        }
+
         uint16_t opcode_value = (REFPRE << 8) | body->Il->Data[i++];
 
         // get the actual opcode
         opcode_t opcode = g_dotnet_opcode_lookup[opcode_value];
         if (opcode == CEE_INVALID) {
-            TRACE("\t\t\tIL_%04x:   illegal (%02x)", pc, opcode_value);
+            TRACE("\t\t\t%*sIL_%04x:   illegal (%02x)", indent, "", pc, opcode_value);
             continue;
         } else if (
             opcode == CEE_PREFIX1 ||
@@ -59,7 +94,7 @@ void opcode_disasm_method(System_Reflection_MethodInfo method) {
             opcode = g_dotnet_opcode_lookup[opcode_value];
 
             if (opcode == CEE_INVALID) {
-                TRACE("\t\t\tIL_%04x:  %s.illegal (%02x)", pc, opcode_info->name, opcode_value);
+                TRACE("\t\t\t%*sIL_%04x:  %s.illegal (%02x)", indent, "", pc, opcode_info->name, opcode_value);
                 continue;
             }
         }
@@ -171,6 +206,7 @@ void opcode_disasm_method(System_Reflection_MethodInfo method) {
             case OPCODE_STACK_BEHAVIOUR_VarPush: push = "VarPush"; break;
         }
 
-        TRACE("\t\t\tIL_%04x:  %s %s // %s %s", pc, opcode_info->name, param, pop, push);
+//        TRACE("\t\t\t\tIL_%04x:  %s %s // %s %s", pc, opcode_info->name, param, pop, push);
+        TRACE("\t\t\t%*sIL_%04x:  %s %s", indent, "", pc, opcode_info->name, param);
     }
 }

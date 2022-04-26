@@ -253,8 +253,14 @@ typedef struct metadata_generic_param_constraint {
 
 #define CorILMethod_Sect_EHTable    0x1
 #define CorILMethod_Sect_OptILTable 0x2
+#define CorILMethod_Sect_KindMask   0x3F
 #define CorILMethod_Sect_FatFormat  0x40
 #define CorILMethod_Sect_MoreSects  0x80
+
+#define COR_ILEXCEPTION_CLAUSE_EXCEPTION    0x0000
+#define COR_ILEXCEPTION_CLAUSE_FILTER       0x0001
+#define COR_ILEXCEPTION_CLAUSE_FINALLY      0x0002
+#define COR_ILEXCEPTION_CLAUSE_FAULT        0x0004
 
 typedef struct method_tiny_format {
     uint8_t flags : 2;
@@ -278,3 +284,29 @@ typedef struct method_section_fat {
     uint32_t flags : 8;
     uint32_t size : 24;
 } PACKED method_section_fat_t;
+
+typedef struct method_exception_clause {
+    uint16_t flags;
+    uint16_t try_offset;
+    uint8_t try_length;
+    uint16_t handler_offset;
+    uint8_t handler_length;
+    union {
+        token_t class_token;
+        int filter_offset;
+    };
+} PACKED method_exception_clause_t;
+STATIC_ASSERT(sizeof(method_exception_clause_t) == 12);
+
+typedef struct method_fat_exception_clause {
+    int flags;
+    int try_offset;
+    int try_length;
+    int handler_offset;
+    int handler_length;
+    union {
+        token_t class_token;
+        int filter_offset;
+    };
+} PACKED method_fat_exception_clause_t;
+STATIC_ASSERT(sizeof(method_fat_exception_clause_t) == 24);

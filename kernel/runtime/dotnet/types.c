@@ -33,6 +33,7 @@ System_Type tSystem_Reflection_Assembly = NULL;
 System_Type tSystem_Reflection_FieldInfo = NULL;
 System_Type tSystem_Reflection_ParameterInfo = NULL;
 System_Type tSystem_Reflection_LocalVariableInfo = NULL;
+System_Type tSystem_Reflection_ExceptionHandlingClause = NULL;
 System_Type tSystem_Reflection_MethodBase = NULL;
 System_Type tSystem_Reflection_MethodBody = NULL;
 System_Type tSystem_Reflection_MethodInfo = NULL;
@@ -97,6 +98,14 @@ System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, toke
                 return NULL;
             }
             return assembly->DefinedTypes->Data[token.index - 1];
+        } break;
+
+        case METADATA_TYPE_REF: {
+            ASSERT(!"assembly_get_type_by_token: TODO: TypeRef");
+        } break;
+
+        case METADATA_TYPE_SPEC: {
+            ASSERT(!"assembly_get_type_by_token: TODO: TypeSpec");
         } break;
 
         default:

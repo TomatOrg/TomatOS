@@ -57,6 +57,10 @@ static err_t parse_method_cil(metadata_t* metadata, System_Reflection_MethodInfo
         CHECK(sizeof(method_fat_format_t) <= sig.size);
         CHECK(header->size * 4 <= sig.size);
 
+        // skip the rest of the header
+        sig.data += header->size * 4;
+        sig.size -= header->size * 4;
+
         // set the init locals flag
         body->InitLocals = header->flags & CorILMethod_InitLocals;
 
@@ -72,13 +76,25 @@ static err_t parse_method_cil(metadata_t* metadata, System_Reflection_MethodInfo
             GC_UPDATE(body, LocalVariables, GC_NEW_ARRAY(tSystem_Reflection_LocalVariableInfo, 0));
         }
 
-        // skip the rest of the header
-        sig.size -= header->size * 4;
-        sig.data += header->size * 4;
+        // copy some info
+        body->MaxStackSize = header->max_stack;
+
+        // copy the il
+        CHECK(header->code_size <= sig.size);
+        GC_UPDATE(body, Il, GC_NEW_ARRAY(tSystem_Byte, header->code_size));
+        memcpy(body->Il->Data, sig.data, body->Il->Length);
+        sig.size -= header->code_size;
+        sig.data += header->code_size;
 
         // process method sections
         bool more_sect = header->flags & CorILMethod_MoreSects;
         while (more_sect) {
+            // align the data so we can handle the next section
+            size_t diff = sig.size - ALIGN_DOWN(sig.size, 4);
+            CHECK(diff <= sig.size);
+            sig.size -= diff;
+            sig.data += diff;
+
             // get the flags of the section
             CHECK(2 <= sig.size);
             uint8_t flags = sig.data[0];
@@ -98,31 +114,97 @@ static err_t parse_method_cil(metadata_t* metadata, System_Reflection_MethodInfo
                 section_size = section->size;
             }
 
-            // verify we have enough space in the section
+            // verify we have the whole section, so we don't need to worry about it later on
             CHECK(section_size <= sig.size);
 
-            if (flags & CorILMethod_Sect_EHTable) {
-                CHECK_FAIL("TODO: exception handling");
-            } else {
-                CHECK_FAIL("Invalid section flags: %x", flags);
-            }
+            // check the type
+            uint8_t kind = flags & CorILMethod_Sect_KindMask;
+            switch (kind) {
+                case CorILMethod_Sect_EHTable: {
+                    CHECK(body->ExceptionHandlingClauses == NULL);
+                    size_t count = 0;
+                    if (flags & CorILMethod_Sect_FatFormat) {
+                        // fat exception table
+                        count = (section_size - 4) / 24;
+                    } else {
+                        // non-fat exception table
+                        // skip 2 reserved bytes
+                        CHECK(2 <= sig.size);
+                        sig.size -= 2;
+                        sig.data += 2;
+                        count = (section_size - 4) / 12;
+                    }
 
-            // skip
-            sig.data += sizeof(method_section_tiny_t);
-            sig.size -= sizeof(method_section_tiny_t);
+                    // allocate it
+                    GC_UPDATE(body, ExceptionHandlingClauses, GC_NEW_ARRAY(tSystem_Reflection_ExceptionHandlingClause, count));
+
+                    // parse it
+                    for (int i = 0; i < count; i++) {
+                        System_Reflection_ExceptionHandlingClause clause = GC_NEW(tSystem_Reflection_ExceptionHandlingClause);
+                        GC_UPDATE_ARRAY(body->ExceptionHandlingClauses, i, clause);
+
+                        if (flags & CorILMethod_Sect_FatFormat) {
+                            // fat clause
+                            method_fat_exception_clause_t* ec = (method_fat_exception_clause_t*)sig.data;
+                            sig.size -= sizeof(method_section_fat_t);
+                            sig.data += sizeof(method_section_fat_t);
+                            if (ec->flags == COR_ILEXCEPTION_CLAUSE_EXCEPTION) {
+                                clause->CatchType = assembly_get_type_by_token(method->Module->Assembly, ec->class_token);
+                            } else if (ec->flags == COR_ILEXCEPTION_CLAUSE_FILTER) {
+                                clause->FilterOffset = ec->filter_offset;
+                            }
+                            clause->Flags = ec->flags;
+                            clause->HandlerLength = ec->handler_length;
+                            clause->HandlerOffset = ec->handler_offset;
+                            clause->TryLength = ec->try_length;
+                            clause->TryOffset = ec->try_offset;
+                        } else {
+                            // small clause
+                            method_exception_clause_t* ec = (method_exception_clause_t*)sig.data;
+                            sig.size -= sizeof(method_exception_clause_t);
+                            sig.data += sizeof(method_exception_clause_t);
+                            if (ec->flags == COR_ILEXCEPTION_CLAUSE_EXCEPTION) {
+                                clause->CatchType = assembly_get_type_by_token(method->Module->Assembly, ec->class_token);
+                            } else if (ec->flags == COR_ILEXCEPTION_CLAUSE_FILTER) {
+                                clause->FilterOffset = ec->filter_offset;
+                            }
+                            clause->Flags = ec->flags;
+                            clause->HandlerLength = ec->handler_length;
+                            clause->HandlerOffset = ec->handler_offset;
+                            clause->TryLength = ec->try_length;
+                            clause->TryOffset = ec->try_offset;
+                        }
+
+                        // check the type
+                        // TODO: is this a bit field or not? I can't figure out
+                        CHECK(
+                            clause->Flags == COR_ILEXCEPTION_CLAUSE_EXCEPTION ||
+                            clause->Flags == COR_ILEXCEPTION_CLAUSE_FILTER ||
+                            clause->Flags == COR_ILEXCEPTION_CLAUSE_FINALLY ||
+                            clause->Flags == COR_ILEXCEPTION_CLAUSE_FAULT
+                        );
+
+                        // check offsets
+                        CHECK(clause->HandlerOffset < header->code_size);
+                        CHECK(clause->HandlerOffset + clause->HandlerLength < header->code_size);
+                        CHECK(clause->TryOffset < header->code_size);
+                        CHECK(clause->TryOffset + clause->TryLength < header->code_size);
+                    }
+                } break;
+
+                default: {
+                    CHECK_FAIL("Invalid section kind: %x", kind);
+                } break;
+            }
 
             // check for more sections
             more_sect = flags & CorILMethod_Sect_MoreSects;
         }
 
-        // copy some info
-        body->MaxStackSize = header->max_stack;
-
-        // copy the il
-        CHECK(header->code_size <= sig.size);
-        GC_UPDATE(body, Il, GC_NEW_ARRAY(tSystem_Byte, header->code_size));
-        memcpy(body->Il->Data, sig.data, body->Il->Length);
-
+        // an empty arrays if there are no exceptions
+        if (body->ExceptionHandlingClauses == NULL) {
+            GC_UPDATE(body, ExceptionHandlingClauses, GC_NEW_ARRAY(tSystem_Reflection_ExceptionHandlingClause, 0));
+        }
     } else if ((header_type & 0b11) == CorILMethod_TinyFormat) {
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // tiny format header
@@ -137,6 +219,9 @@ static err_t parse_method_cil(metadata_t* metadata, System_Reflection_MethodInfo
 
         // no local variables
         GC_UPDATE(body, LocalVariables, GC_NEW_ARRAY(tSystem_Reflection_LocalVariableInfo, 0));
+
+        // no exceptions
+        GC_UPDATE(body, ExceptionHandlingClauses, GC_NEW_ARRAY(tSystem_Reflection_ExceptionHandlingClause, 0));
 
         // set the default options
         body->MaxStackSize = 8;
@@ -669,6 +754,7 @@ static type_init_t m_type_init[] = {
     TYPE_INIT("System.Reflection", "FieldInfo", System_Reflection_FieldInfo),
     TYPE_INIT("System.Reflection", "ParameterInfo", System_Reflection_ParameterInfo),
     TYPE_INIT("System.Reflection", "LocalVariableInfo", System_Reflection_LocalVariableInfo),
+    TYPE_INIT("System.Reflection", "ExceptionHandlingClause", System_Reflection_ExceptionHandlingClause),
     TYPE_INIT("System.Reflection", "MethodBase", System_Reflection_MethodBase),
     TYPE_INIT("System.Reflection", "MethodBody", System_Reflection_MethodBody),
     TYPE_INIT("System.Reflection", "MethodInfo", System_Reflection_MethodInfo),
@@ -692,6 +778,22 @@ static void init_type(metadata_type_def_t* type_def, System_Type type) {
     }
 }
 
+static err_t validate_have_init_types() {
+    err_t err = NO_ERROR;
+
+    bool missing = false;
+    for (int i = 0; i < ARRAY_LEN(m_type_init); i++) {
+        type_init_t* bt = &m_type_init[i];
+        if (*bt->global == NULL) {
+            TRACE("Missing `%s.%s`!", bt->namespace, bt->name);
+            missing = true;
+        }
+    }
+    CHECK(!missing);
+
+cleanup:
+    return err;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // corelib is a bit different so load it as needed
@@ -732,6 +834,9 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
         CHECK(assembly->DefinedTypes->Data[i] != NULL);
         init_type(type_def, assembly->DefinedTypes->Data[i]);
     }
+
+    // validate we got all the base types we need for a proper runtime
+    CHECK_AND_RETHROW(validate_have_init_types());
 
     // create the module
     assembly->Module = GC_NEW(tSystem_Reflection_Module);

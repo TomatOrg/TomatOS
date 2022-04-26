@@ -293,7 +293,7 @@ static void start_thread() {
         TRACE("");
     }
 
-    CHECK_AND_RETHROW(jit_assembly(g_corelib));
+//    CHECK_AND_RETHROW(jit_assembly(g_corelib));
 
 cleanup:
     ASSERT(!IS_ERROR(err));
