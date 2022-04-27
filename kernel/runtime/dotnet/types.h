@@ -352,7 +352,6 @@ struct System_Type {
     uint32_t Attributes;
     bool IsArray;
     bool IsByRef;
-    bool IsPointer;
     System_Type_Array GenericTypeArguments;
     System_Type_Array GenericTypeParameters;
     System_Type GenericTypeDefinition;
@@ -368,7 +367,8 @@ struct System_Type {
     int StackAlignment;
 
     System_Type ArrayType;
-    mutex_t ArrayTypeMutex;
+    System_Type ByRefType;
+    mutex_t TypeMutex;
 };
 
 static inline bool type_is_generic_definition(System_Type type) { return type->GenericTypeParameters != NULL; }
@@ -404,6 +404,8 @@ const char* type_visibility_str(type_visibility_t visibility);
  * @param Type  [IN] The system type
  */
 System_Type get_array_type(System_Type Type);
+
+System_Type get_by_ref_type(System_Type Type);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

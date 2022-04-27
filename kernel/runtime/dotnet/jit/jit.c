@@ -328,8 +328,8 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
 
     if (!method_is_static(method)) {
         MIR_var_t var = {
-        .name = "this",
-        .type = get_mir_type(method->DeclaringType),
+            .name = "this",
+            .type = get_mir_type(method->DeclaringType),
         };
         if (var.type == MIR_T_BLK) {
             var.type = MIR_T_P;
@@ -1156,6 +1156,118 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             case CEE_NOP: break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Arithmetic
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            case CEE_CONV_I1:
+            case CEE_CONV_I2:
+            case CEE_CONV_I4:
+            case CEE_CONV_I8:
+            case CEE_CONV_R4:
+            case CEE_CONV_R8:
+            case CEE_CONV_U1:
+            case CEE_CONV_U2:
+            case CEE_CONV_U4:
+            case CEE_CONV_U8:
+            case CEE_CONV_I:
+            case CEE_CONV_U:
+            case CEE_CONV_R_UN: {
+                MIR_reg_t reg;
+                System_Type type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &type, &reg));
+
+                MIR_reg_t result_reg;
+                System_Type result_type;
+                switch (opcode) {
+                    case CEE_CONV_I1: result_type = tSystem_Int32; break;
+                    case CEE_CONV_U1: result_type = tSystem_Int32; break;
+                    case CEE_CONV_I2: result_type = tSystem_Int32; break;
+                    case CEE_CONV_U2: result_type = tSystem_Int32; break;
+                    case CEE_CONV_I4: result_type = tSystem_Int32; break;
+                    case CEE_CONV_U4: result_type = tSystem_Int32; break;
+                    case CEE_CONV_I8: result_type = tSystem_Int64; break;
+                    case CEE_CONV_U8: result_type = tSystem_Int64; break;
+                    case CEE_CONV_I: result_type = tSystem_IntPtr; break;
+                    case CEE_CONV_U: result_type = tSystem_IntPtr; break;
+                    case CEE_CONV_R4: result_type = tSystem_Single; break;
+                    case CEE_CONV_R8: result_type = tSystem_Double; break;
+                    default: CHECK_FAIL();
+                }
+                CHECK_AND_RETHROW(stack_push(ctx, result_type, &result_reg));
+
+                MIR_insn_code_t code = MIR_INVALID_INSN;
+                if (type == tSystem_Int32) {
+                    switch (opcode) {
+                        case CEE_CONV_I1: code = MIR_EXT8; break;
+                        case CEE_CONV_U1: code = MIR_UEXT8; break;
+                        case CEE_CONV_I2: code = MIR_EXT16; break;
+                        case CEE_CONV_U2: code = MIR_UEXT16; break;
+                        case CEE_CONV_I4: code = MIR_MOV; break;
+                        case CEE_CONV_U4: code = MIR_MOV; break;
+                        case CEE_CONV_I8: code = MIR_EXT32; break;
+                        case CEE_CONV_U8: code = MIR_UEXT32; break;
+                        case CEE_CONV_I: code = MIR_EXT32; break;
+                        case CEE_CONV_U: code = MIR_UEXT32; break;
+                        case CEE_CONV_R4: code = MIR_I2F; break;
+                        case CEE_CONV_R8: code = MIR_I2D; break;
+                        default: CHECK_FAIL();
+                    }
+                } else if (type == tSystem_Int64 || type == tSystem_IntPtr) {
+                    switch (opcode) {
+                        case CEE_CONV_I1: code = MIR_EXT8; break;
+                        case CEE_CONV_U1: code = MIR_UEXT8; break;
+                        case CEE_CONV_I2: code = MIR_EXT16; break;
+                        case CEE_CONV_U2: code = MIR_UEXT16; break;
+                        case CEE_CONV_I4: code = MIR_EXT32; break;
+                        case CEE_CONV_U4: code = MIR_UEXT32; break;
+                        case CEE_CONV_I8: code = MIR_MOV; break;
+                        case CEE_CONV_U8: code = MIR_MOV; break;
+                        case CEE_CONV_I: code = MIR_MOV; break;
+                        case CEE_CONV_U: code = MIR_MOV; break;
+                        case CEE_CONV_R4: code = MIR_I2F; break;
+                        case CEE_CONV_R8: code = MIR_I2D; break;
+                        default: CHECK_FAIL();
+                    }
+                } else if (type == tSystem_Single || type == tSystem_Double) {
+                    if (result_type == tSystem_Int32) {
+                        // we are converting from float to small
+                        // type, first convert to native int and
+                        // only then do a truncation
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, type == tSystem_Single ? MIR_F2I : MIR_D2I,
+                                                     MIR_new_reg_op(ctx->context, result_reg),
+                                                     MIR_new_reg_op(ctx->context, reg)));
+
+                        // now our input is the result reg as well
+                        reg = result_reg;
+                    }
+
+                    switch (opcode) {
+                        case CEE_CONV_I1: code = MIR_EXT8; break;
+                        case CEE_CONV_U1: code = MIR_UEXT8; break;
+                        case CEE_CONV_I2: code = MIR_EXT16; break;
+                        case CEE_CONV_U2: code = MIR_UEXT16; break;
+                        case CEE_CONV_I4: code = MIR_EXT32; break;
+                        case CEE_CONV_U4: code = MIR_UEXT32; break;
+                        case CEE_CONV_I8: code = MIR_F2I; break;
+                        case CEE_CONV_U8: code = MIR_F2I; break;
+                        case CEE_CONV_I: code = MIR_F2I; break;
+                        case CEE_CONV_U: code = MIR_F2I; break;
+                        case CEE_CONV_R4: code = type == tSystem_Single ? MIR_FMOV : MIR_D2F; break;
+                        case CEE_CONV_R8: code = type == tSystem_Single ? MIR_F2D : MIR_DMOV; break;
+                        default: CHECK_FAIL();
+                    }
+                } else {
+                    CHECK_FAIL();
+                }
+
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, code,
+                                             MIR_new_reg_op(ctx->context, result_reg),
+                                             MIR_new_reg_op(ctx->context, reg)));
+            } break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Variables
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1280,7 +1392,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     if (operand_i32 == 0) {
                         arg_type = method->DeclaringType;
                         if (arg_type->IsValueType) {
-                            CHECK_FAIL();
+                            // value types turn into a by-ref when using this
+                            arg_type = get_by_ref_type(arg_type);
                         }
                     }
                     operand_i32--;
@@ -1411,6 +1524,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             // Field access
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+            // TODO: NullReferenceException
             case CEE_LDFLD: {
                 // get the object instance
                 System_Type obj_type;
@@ -1458,10 +1572,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         insn = MIR_EXT16;
                     } else if (field_type == tSystem_UInt16 || field_type == tSystem_Char) {
                         insn = MIR_UEXT16;
-                    } else if (field_type == tSystem_Int32) {
-                        insn = MIR_EXT32;
-                    } else if (field_type == tSystem_UInt32) {
-                        insn = MIR_UEXT32;
                     }
 
                     // integer type
@@ -1699,9 +1809,15 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         System_Type arg_type;
                         CHECK_AND_RETHROW(stack_pop(ctx, &arg_type, &arg_reg));
 
+                        // Value types have their this as a by-ref
+                        System_Type thisType = operand_method->DeclaringType;
+                        if (thisType->IsValueType) {
+                            thisType = get_by_ref_type(thisType);
+                        }
+
                         // verify a normal argument
                         CHECK(type_is_verifier_assignable_to(
-                                type_get_verification_type(arg_type), operand_method->DeclaringType));
+                                type_get_verification_type(arg_type), thisType));
                     }
 
                     arg_ops[i] = MIR_new_reg_op(ctx->context, arg_reg);
@@ -2230,10 +2346,12 @@ cleanup:
     for (int i = 0; i < hmlen(ctx->pc_to_stack_snapshot); i++) {
         arrfree(ctx->pc_to_stack_snapshot[i].stack.entries);
     }
-    hmfree(ctx->pc_to_stack_snapshot);
     arrfree(ctx->stack.entries);
 
-    return NO_ERROR;
+    hmfree(ctx->pc_to_stack_snapshot);
+    hmfree(ctx->clause_to_label);
+
+    return err;
 }
 
 err_t jit_assembly(System_Reflection_Assembly assembly) {

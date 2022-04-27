@@ -15,7 +15,6 @@ namespace System
         private uint _attributes;
         private bool _isArray;
         private bool _isByRef;
-        private bool _isPointer;
         private Type[] _genericTypeArguments;
         private Type[] _genericTypeParameters;
         private Type[] _genericTypeDefinition;
@@ -31,6 +30,7 @@ namespace System
         private int _stackAlignment;
         
         private Type _arrayType;
-        private Mutex _arrayTypeMutex;
+        private Type _byRefType;
+        private Mutex _typeMutex;
     }
 }

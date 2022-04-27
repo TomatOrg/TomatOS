@@ -161,10 +161,10 @@ System_Type get_array_type(System_Type Type) {
         return Type->ArrayType;
     }
 
-    mutex_lock(&Type->ArrayTypeMutex);
+    mutex_lock(&Type->TypeMutex);
 
     if (Type->ArrayType != NULL) {
-        mutex_unlock(&Type->ArrayTypeMutex);
+        mutex_unlock(&Type->TypeMutex);
         return Type->ArrayType;
     }
 
@@ -200,9 +200,47 @@ System_Type get_array_type(System_Type Type) {
 
     // Set the array type
     GC_UPDATE(Type, ArrayType, ArrayType);
-    mutex_unlock(&Type->ArrayTypeMutex);
+    mutex_unlock(&Type->TypeMutex);
 
     return Type->ArrayType;
+}
+
+System_Type get_by_ref_type(System_Type Type) {
+    if (Type->ByRefType != NULL) {
+        return Type->ByRefType;
+    }
+
+    mutex_lock(&Type->TypeMutex);
+
+    if (Type->ByRefType != NULL) {
+        mutex_unlock(&Type->TypeMutex);
+        return Type->ByRefType;
+    }
+
+    // must not be a byref
+    ASSERT(!Type->IsByRef);
+
+    // allocate the new ref type
+    System_Type ByRefType = GC_NEW(tSystem_Type);
+
+    // set the type information to look as ref Type
+    GC_UPDATE(ByRefType, Module, Type->Module);
+    GC_UPDATE(ByRefType, Name, string_append_cstr(Type->Name, "&"));
+    GC_UPDATE(ByRefType, Assembly, Type->Assembly);
+    GC_UPDATE(ByRefType, Namespace, Type->Namespace);
+    GC_UPDATE(ByRefType, BaseType, Type);
+
+    // set the sizes properly
+    ByRefType->StackSize = sizeof(void*);
+    ByRefType->ManagedSize = Type->StackSize;
+    ByRefType->StackAlignment = alignof(void*);
+    ByRefType->ManagedAlignment = Type->StackAlignment;
+
+    // Set the array type
+    GC_UPDATE(Type, ByRefType, ByRefType);
+    mutex_unlock(&Type->TypeMutex);
+
+    return Type->ByRefType;
 }
 
 const char* field_access_str(field_access_t access) {
@@ -270,9 +308,9 @@ System_Type type_get_verification_type(System_Type T) {
         return tSystem_SByte;
     } else if (T == tSystem_Char) {
         return tSystem_Int16;
-    }
-    // TODO: managed pointer
-    else {
+    } else if (T != NULL && T->IsByRef) {
+        return get_by_ref_type(type_get_verification_type(T->BaseType));
+    } else {
         return T;
     }
 }
@@ -321,24 +359,6 @@ bool type_is_compatible_with(System_Type T, System_Type U) {
     }
 
     if (T->IsArray && U->IsArray && type_is_array_element_compatible_with(T->ElementType, U->ElementType)) {
-        return true;
-    }
-
-    return false;
-}
-
-static bool type_is_pointer_element_compatible_with(System_Type T, System_Type U) {
-    System_Type V = type_get_verification_type(T);
-    System_Type W = type_get_verification_type(U);
-    return V == W;
-}
-
-static bool type_is_location_compatible_with(System_Type T, System_Type U) {
-    if (T->IsValueType && U->IsValueType && type_is_compatible_with(T, U)) {
-        return true;
-    }
-
-    if (!T->IsValueType && !U->IsValueType && type_is_pointer_element_compatible_with(T, U)) {
         return true;
     }
 
