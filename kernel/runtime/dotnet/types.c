@@ -37,6 +37,13 @@ System_Type tSystem_Reflection_ExceptionHandlingClause = NULL;
 System_Type tSystem_Reflection_MethodBase = NULL;
 System_Type tSystem_Reflection_MethodBody = NULL;
 System_Type tSystem_Reflection_MethodInfo = NULL;
+System_Type tSystem_ArithmeticException = NULL;
+System_Type tSystem_DivideByZeroException = NULL;
+System_Type tSystem_ExecutionEngineException = NULL;
+System_Type tSystem_IndexOutOfRangeException = NULL;
+System_Type tSystem_NullReferenceException = NULL;
+System_Type tSystem_OutOfMemoryException = NULL;
+System_Type tSystem_OverflowException = NULL;
 
 bool string_equals_cstr(System_String a, const char* b) {
     if (a->Length != strlen(b)) {

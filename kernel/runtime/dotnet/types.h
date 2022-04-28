@@ -339,6 +339,14 @@ struct System_Exception {
     System_Exception InnerException;
 };
 
+typedef System_Exception System_ArithmeticException;
+typedef System_Exception System_DivideByZeroException;
+typedef System_Exception System_ExecutionEngineException;
+typedef System_Exception System_IndexOutOfRangeException;
+typedef System_Exception System_NullReferenceException;
+typedef System_Exception System_OutOfMemoryException;
+typedef System_Exception System_OverflowException;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct System_Type {
@@ -439,6 +447,13 @@ extern System_Type tSystem_Reflection_ExceptionHandlingClause;
 extern System_Type tSystem_Reflection_MethodBase;
 extern System_Type tSystem_Reflection_MethodBody;
 extern System_Type tSystem_Reflection_MethodInfo;
+extern System_Type tSystem_ArithmeticException;
+extern System_Type tSystem_DivideByZeroException;
+extern System_Type tSystem_ExecutionEngineException;
+extern System_Type tSystem_IndexOutOfRangeException;
+extern System_Type tSystem_NullReferenceException;
+extern System_Type tSystem_OutOfMemoryException;
+extern System_Type tSystem_OverflowException;
 
 static inline bool type_is_enum(System_Type type) { return type != NULL && type->BaseType == tSystem_Enum; }
 static inline bool type_is_object_ref(System_Type type) { return type == NULL || !type->IsValueType; }

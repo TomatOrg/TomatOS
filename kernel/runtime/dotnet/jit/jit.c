@@ -117,6 +117,9 @@ typedef struct jit_context {
     // the mir context relating to this stack
     MIR_context_t context;
 
+    // the current metadata, needed for some stuff
+    pe_file_t* metadata;
+
     //////////////////////////////////////////////////////////////////////////////////
 
     // runtime functions
@@ -816,6 +819,112 @@ static err_t jit_throw(jit_context_t* ctx, int il_offset, System_Type type) {
         // we found an exact clause to jump to
         CHECK_AND_RETHROW(jit_jump_to_exception_clause(ctx, my_clause));
     }
+
+cleanup:
+    return err;
+}
+
+static err_t jit_throw_new(jit_context_t* ctx, int il_offset, System_Type type) {
+    err_t err = NO_ERROR;
+
+    // get the type item
+    int itemi = hmgeti(ctx->types, type);
+    CHECK(itemi != -1);
+    MIR_item_t type_item = ctx->types[itemi].value;
+
+    // call the default ctor
+    System_Reflection_MethodInfo ctor = NULL;
+    for (int i = 0; i < type->Methods->Length; i++) {
+        System_Reflection_MethodInfo mi = type->Methods->Data[i];
+        if (method_is_static(mi)) continue;
+        if (!method_is_special_name(mi) || !method_is_rt_special_name(mi)) continue;
+        if (!string_equals_cstr(mi->Name, ".ctor")) continue;
+        if (mi->Parameters->Length != 0) continue;
+        if (mi->ReturnType != NULL) continue;
+        ctor = mi;
+        break;
+    }
+    CHECK(ctor != NULL);
+
+    // get the type item
+    int methodi = hmgeti(ctx->functions, ctor);
+    CHECK(methodi != -1);
+
+    // the temp reg for the new obejct
+    MIR_reg_t exception_obj = new_reg(ctx, type);
+
+    // allocate the new object
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_call_insn(ctx->context, 5,
+                                      MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
+                                      MIR_new_ref_op(ctx->context, ctx->gc_new_func),
+                                      MIR_new_reg_op(ctx->context, exception_obj),
+                                      MIR_new_ref_op(ctx->context, type_item),
+                                      MIR_new_int_op(ctx->context, type->ManagedSize)));
+
+    // call it, we are going to store
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_call_insn(ctx->context, 4,
+                                      MIR_new_ref_op(ctx->context, ctx->functions[methodi].proto),
+                                      MIR_new_ref_op(ctx->context, ctx->functions[methodi].forward),
+                                      MIR_new_reg_op(ctx->context, ctx->exception_reg),
+                                      MIR_new_reg_op(ctx->context, exception_obj)));
+
+    MIR_label_t no_exception = MIR_new_label(ctx->context);
+
+    // check if we need to throw an exception coming from creating this exception
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_BF,
+                                      MIR_new_label_op(ctx->context, no_exception),
+                                      MIR_new_reg_op(ctx->context, ctx->exception_reg)));
+
+    // throw an unknown exception
+    CHECK_AND_RETHROW(jit_throw(ctx, il_offset, NULL));
+
+    // put the label to skip the ctor exception handling
+    MIR_append_insn(ctx->context, ctx->func, no_exception);
+
+    // mov the newly created exception to the exception register
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_MOV,
+                                 MIR_new_reg_op(ctx->context, ctx->exception_reg),
+                                 MIR_new_reg_op(ctx->context, exception_obj)));
+
+    // throw it nicely
+    CHECK_AND_RETHROW(jit_throw(ctx, il_offset, type));
+
+cleanup:
+    return err;
+}
+
+static err_t jit_null_check(jit_context_t* ctx, int il_offset, MIR_reg_t reg) {
+    err_t err = NO_ERROR;
+
+    MIR_label_t not_null = MIR_new_label(ctx->context);
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_BT,
+                                 MIR_new_label_op(ctx->context, not_null),
+                                 MIR_new_reg_op(ctx->context, reg)));
+    CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_NullReferenceException));
+    MIR_append_insn(ctx->context, ctx->func, not_null);
+
+cleanup:
+    return err;
+}
+
+static err_t jit_oob_check(jit_context_t* ctx, int il_offset, MIR_reg_t array_reg, MIR_reg_t index_reg) {
+    err_t err = NO_ERROR;
+
+    MIR_label_t not_oob = MIR_new_label(ctx->context);
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_BLT,
+                                 MIR_new_label_op(ctx->context, not_oob),
+                                 MIR_new_reg_op(ctx->context, index_reg),
+                                 MIR_new_mem_op(ctx->context, MIR_T_I32,
+                                                offsetof(struct System_Array, Length),
+                                                array_reg, 0, 1)));
+    CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_IndexOutOfRangeException));
+    MIR_append_insn(ctx->context, ctx->func, not_oob);
 
 cleanup:
     return err;
@@ -1554,6 +1663,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 MIR_reg_t value_reg;
                 CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
 
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg));
+
                 if (
                     type_is_object_ref(field_stack_type) ||
                     field_stack_type == tSystem_Int32 ||
@@ -1626,6 +1738,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // TODO: does the runtime actually use ldfld for static fields?
                 CHECK(!field_is_static(operand_field));
 
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg));
+
                 // validate the assignability
                 CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
 
@@ -1683,6 +1798,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 int arg_count = operand_method->Parameters->Length;
 
                 // TODO: the method must be accessible from the call size.
+                // TODO: throw unconditional System.MethodAccessException
 
                 if (opcode == CEE_CALLVIRT || opcode == CEE_NEWOBJ) {
                     // callvirt must call an instance methods
@@ -1818,6 +1934,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         // verify a normal argument
                         CHECK(type_is_verifier_assignable_to(
                                 type_get_verification_type(arg_type), thisType));
+
+                        // make sure that the object is not null
+                        CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, arg_reg));
                     }
 
                     arg_ops[i] = MIR_new_reg_op(ctx->context, arg_reg);
@@ -2021,11 +2140,16 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // TODO: handle double->float and float->double implicit conversion
 
                 // validate all the type stuff
+                // TODO: throw unconditional System.ArrayTypeMismatchException
                 CHECK(type_is_array_element_compatible_with(value_type, operand_type));
                 CHECK(type_is_array_element_compatible_with(operand_type, type_get_verification_type(T)));
                 CHECK(index_type == tSystem_Int32);
 
-                // TODO: insert range check for the array
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg));
+
+                // check the array indexes
+                CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
 
                 if (type_is_object_ref(T)) {
                     // we need to use gc_update routine because this
@@ -2157,6 +2281,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // free this entirely
                 arrfree(ctx->stack.entries);
+
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg));
 
                 // append the instruction itself
                 MIR_append_insn(ctx->context, ctx->func,
@@ -2354,9 +2481,11 @@ cleanup:
     return err;
 }
 
-err_t jit_assembly(System_Reflection_Assembly assembly) {
+err_t jit_assembly(System_Reflection_Assembly assembly, pe_file_t* metadata) {
     err_t err = NO_ERROR;
-    jit_context_t ctx = {};
+    jit_context_t ctx = {
+        .metadata = metadata
+    };
 
     uint64_t start = microtime();
 

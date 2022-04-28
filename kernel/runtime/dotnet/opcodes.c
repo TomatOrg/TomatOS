@@ -1,5 +1,6 @@
 #include "opcodes.h"
 #include "util/stb_ds.h"
+#include "runtime/dotnet/metadata/sig.h"
 
 opcode_info_t g_dotnet_opcodes[] = {
     [CEE_INVALID] = { .name = "illegal" },
@@ -29,9 +30,12 @@ uint16_t g_dotnet_opcode_lookup[] = {
 #undef OPDEF_REAL_OPCODES_ONLY
 };
 
-void opcode_disasm_method(System_Reflection_MethodInfo method) {
+void opcode_disasm_method(System_Reflection_MethodInfo method, pe_file_t* metadata) {
     System_Reflection_MethodBody body = method->MethodBody;
     System_Reflection_Assembly assembly = method->Module->Assembly;
+
+    size_t param_size = 256;
+    char* param = malloc(param_size);
 
     int indent = 0;
 
@@ -102,68 +106,86 @@ void opcode_disasm_method(System_Reflection_MethodInfo method) {
         // get the actual opcode
         opcode_info_t* opcode_info = &g_dotnet_opcodes[opcode];
 
-        char param[128] = { 0 };
         switch (opcode_info->operand) {
             case OPCODE_OPERAND_InlineBrTarget: {
                 int32_t value = *(int32_t*)&body->Il->Data[i];
                 i += sizeof(int32_t);
-                snprintf(param, sizeof(param), "IL_%04x", i + value);
+                snprintf(param, param_size, "IL_%04x", i + value);
             } break;
             case OPCODE_OPERAND_InlineField: {
                 token_t value = *(token_t*)&body->Il->Data[i];
                 i += sizeof(token_t);
                 System_Reflection_FieldInfo field = assembly_get_field_by_token(assembly, value);
-                snprintf(param, sizeof(param), "%U.%U::%U",
+                snprintf(param, param_size, "%U.%U::%U",
                          field->DeclaringType->Namespace, field->DeclaringType->Name, field->Name);
             } break;
             case OPCODE_OPERAND_InlineI: {
                 int32_t value = *(int32_t*)&body->Il->Data[i];
                 i += sizeof(int32_t);
-                snprintf(param, sizeof(param), "%d", value);
+                snprintf(param, param_size, "%d", value);
             } break;
             case OPCODE_OPERAND_InlineI8: {
                 int64_t value = *(int64_t*)&body->Il->Data[i];
                 i += sizeof(int64_t);
-                snprintf(param, sizeof(param), "%lld", value);
+                snprintf(param, param_size, "%lld", value);
             } break;
             case OPCODE_OPERAND_InlineMethod: {
                 token_t value = *(token_t*)&body->Il->Data[i];
                 i += sizeof(token_t);
                 System_Reflection_MethodInfo methodOpr = assembly_get_method_by_token(assembly, value);
-                snprintf(param, sizeof(param), "%U.%U::%U",
+                snprintf(param, param_size, "%U.%U::%U",
                          methodOpr->DeclaringType->Namespace, methodOpr->DeclaringType->Name, methodOpr->Name);
             } break;
-            case OPCODE_OPERAND_InlineR: i += sizeof(double); snprintf(param, sizeof(param), "<double>"); break;
-            case OPCODE_OPERAND_InlineSig: i += sizeof(token_t); snprintf(param, sizeof(param), "<sig>"); break;
-            case OPCODE_OPERAND_InlineString: i += sizeof(token_t); snprintf(param, sizeof(param), "<string>"); break;
+            case OPCODE_OPERAND_InlineR: i += sizeof(double); snprintf(param, param_size, "<double>"); break;
+            case OPCODE_OPERAND_InlineSig: i += sizeof(token_t); snprintf(param, param_size, "<sig>"); break;
+            case OPCODE_OPERAND_InlineString: {
+                token_t token = *(token_t*)&body->Il->Data[i];
+                i += sizeof(token_t);
+                uint32_t string_size = 0;
+                blob_entry_t entry = {
+                    .data = &metadata->us[token.index],
+                    .size = metadata->us_size - token.index,
+                };
+                parse_compressed_integer(&entry, &string_size);
+                if (param_size < string_size + 3) {
+                    param = realloc(param, string_size + 3);
+                }
+                entry.size = string_size;
+                for (long idx = 0; idx < string_size / 2; idx++) {
+                    param[idx + 1] = entry.data[idx * 2];
+                }
+                param[0] = '"';
+                param[string_size / 2 + 1] = '"';
+                param[string_size / 2 + 2] = '\0';
+            } break;
             case OPCODE_OPERAND_InlineSwitch: ASSERT(!"TODO: switch support");
-            case OPCODE_OPERAND_InlineTok: i += sizeof(token_t); snprintf(param, sizeof(param), "<tok>"); break;
+            case OPCODE_OPERAND_InlineTok: i += sizeof(token_t); snprintf(param, param_size, "<tok>"); break;
             case OPCODE_OPERAND_InlineType: {
                 token_t value = *(token_t*)&body->Il->Data[i];
                 i += sizeof(token_t);
                 System_Type typeOpr = assembly_get_type_by_token(assembly, value);
-                snprintf(param, sizeof(param), "%U.%U", typeOpr->Namespace, typeOpr->Name);
+                snprintf(param, param_size, "%U.%U", typeOpr->Namespace, typeOpr->Name);
             } break;
             case OPCODE_OPERAND_InlineVar: {
                 uint16_t value = *(uint16_t*)&body->Il->Data[i];
                 i += sizeof(uint16_t);
-                snprintf(param, sizeof(param), "V_%u", value);
+                snprintf(param, param_size, "V_%u", value);
             } break;
             case OPCODE_OPERAND_ShortInlineBrTarget: {
                 int8_t value = *(int8_t*)&body->Il->Data[i];
                 i += sizeof(int8_t);
-                snprintf(param, sizeof(param), "IL_%04x", i + value);
+                snprintf(param, param_size, "IL_%04x", i + value);
             } break;
             case OPCODE_OPERAND_ShortInlineI: {
                 int8_t value = *(int8_t*)&body->Il->Data[i];
                 i += sizeof(int8_t);
-                snprintf(param, sizeof(param), "%d", value);
+                snprintf(param, param_size, "%d", value);
             } break;
-            case OPCODE_OPERAND_ShortInlineR: i += sizeof(float); snprintf(param, sizeof(param), "<float>"); break;
+            case OPCODE_OPERAND_ShortInlineR: i += sizeof(float); snprintf(param, param_size, "<float>"); break;
             case OPCODE_OPERAND_ShortInlineVar: {
                 uint8_t value = *(uint8_t*)&body->Il->Data[i];
                 i += sizeof(uint8_t);
-                snprintf(param, sizeof(param), "V_%u", value);
+                snprintf(param, param_size, "V_%u", value);
             } break;
             default: break;
         }
@@ -209,4 +231,6 @@ void opcode_disasm_method(System_Reflection_MethodInfo method) {
 //        TRACE("\t\t\t\tIL_%04x:  %s %s // %s %s", pc, opcode_info->name, param, pop, push);
         TRACE("\t\t\t%*sIL_%04x:  %s %s", indent, "", pc, opcode_info->name, param);
     }
+
+    free(param);
 }

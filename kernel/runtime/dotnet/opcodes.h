@@ -94,4 +94,4 @@ typedef enum opcode {
 
 extern uint16_t g_dotnet_opcode_lookup[];
 
-void opcode_disasm_method(System_Reflection_MethodInfo method);
+void opcode_disasm_method(System_Reflection_MethodInfo method, pe_file_t* metadata);

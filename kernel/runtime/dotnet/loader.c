@@ -4,6 +4,8 @@
 #include "encoding.h"
 #include "runtime/dotnet/metadata/sig.h"
 #include "util/stb_ds.h"
+#include "opcodes.h"
+#include "runtime/dotnet/jit/jit.h"
 
 #include <util/string.h>
 #include <mem/mem.h>
@@ -729,6 +731,9 @@ typedef struct type_init {
 #define TYPE_INIT(_namespace, _name, code) \
     { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct code), alignof(struct code) }
 
+#define EXCEPTION_INIT(_namespace, _name, code) \
+    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct System_Exception), alignof(struct System_Exception) }
+
 #define VALUE_TYPE_INIT(_namespace, _name, code) \
     { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(code), alignof(code) }
 
@@ -763,6 +768,13 @@ static type_init_t m_type_init[] = {
     TYPE_INIT("System.Reflection", "MethodBase", System_Reflection_MethodBase),
     TYPE_INIT("System.Reflection", "MethodBody", System_Reflection_MethodBody),
     TYPE_INIT("System.Reflection", "MethodInfo", System_Reflection_MethodInfo),
+    EXCEPTION_INIT("System", "ArithmeticException", System_ArithmeticException),
+    EXCEPTION_INIT("System", "DivideByZeroException", System_DivideByZeroException),
+    EXCEPTION_INIT("System", "ExecutionEngineException", System_ExecutionEngineException),
+    EXCEPTION_INIT("System", "IndexOutOfRangeException", System_IndexOutOfRangeException),
+    EXCEPTION_INIT("System", "NullReferenceException", System_NullReferenceException),
+    EXCEPTION_INIT("System", "OutOfMemoryException", System_OutOfMemoryException),
+    EXCEPTION_INIT("System", "OverflowException", System_OverflowException),
 };
 
 static void init_type(metadata_type_def_t* type_def, System_Type type) {
@@ -873,9 +885,86 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     g_corelib = assembly;
     gc_add_root(&g_corelib);
 
+    CHECK_AND_RETHROW(jit_assembly(g_corelib, &file));
+
 cleanup:
     free_metadata(&metadata);
     free_pe_file(&file);
 
     return err;
 }
+
+/**
+ *
+ *
+    TRACE("Types:");
+    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
+        System_Type type = g_corelib->DefinedTypes->Data[i];
+        if (type->BaseType != NULL) {
+            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name,
+                  type->BaseType->Namespace, type->BaseType->Name);
+        } else {
+            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
+                  type->Namespace, type->Name);
+        }
+
+        for (int j = 0; j < type->Fields->Length; j++) {
+            CHECK(type->Fields->Data[j] != NULL);
+            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
+                  field_access_str(field_access(type->Fields->Data[j])),
+                  field_is_static(type->Fields->Data[j]) ? "static " : "",
+                  type->Fields->Data[j]->FieldType->Namespace,
+                  type->Fields->Data[j]->FieldType->Name,
+                  type->Fields->Data[j]->Name,
+                  type->Fields->Data[j]->MemoryOffset);
+        }
+
+        for (int j = 0; j < type->Methods->Length; j++) {
+            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
+            CHECK(mi != NULL);
+
+#define APPEND(...) \
+                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
+
+            char mi_str[512] = { 0 };
+            int offset = 0;
+
+            if (method_is_static(mi)) {
+                APPEND("static ");
+            }
+
+            if (method_is_final(mi)) {
+                APPEND("final ");
+            }
+
+            if (method_is_virtual(mi)) {
+                APPEND("virtual[%d] ", mi->VtableOffset);
+                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
+            }
+
+            if (mi->ReturnType == NULL) {
+                APPEND("void ");
+            } else {
+                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
+            }
+            APPEND("%U", mi->Name);
+            APPEND("(");
+
+            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
+                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
+                if (pi + 1 != mi->Parameters->Length) {
+                    APPEND(", ");
+                }
+            }
+            APPEND(")");
+
+            TRACE("\t\t%s", mi_str);
+
+            opcode_disasm_method(mi, &file);
+        }
+
+        TRACE("");
+    }
+ *
+ */
