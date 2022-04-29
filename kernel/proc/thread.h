@@ -281,7 +281,5 @@ void restore_thread_context(thread_t* restrict target, interrupt_context_t* rest
 /**
  * Initialize TLS for the kernel, must be called before
  * threads are created
- *
- * @param kernel    [IN] The kernel image
  */
-err_t init_tls(void* kernel);
+err_t init_tls();

@@ -1,32 +1,21 @@
 #pragma once
 
+#include <limine.h>
+
 #include <stdint.h>
-#include <stivale2.h>
 #include <stddef.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Early initialization only services
+// All the requests the kernel does so other stuff can use it
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- * Get a stivale2 tag
- *
- * @param tag_id    [IN] The tag to find
- */
-void* get_stivale2_tag(uint64_t tag_id);
-
-/**
- * Get a stivale2 module
- *
- * @param name      [IN] The name of the module we want
- */
-struct stivale2_module* get_stivale2_module(const char* name);
-
-/**
- * Get the ELF of the kernel, only valid while initializing
- * the kernel.
- */
-void* get_kernel_file();
+extern volatile struct limine_bootloader_info_request g_limine_bootloader_info;
+extern volatile struct limine_kernel_file_request g_limine_kernel_file;
+extern volatile struct limine_module_request g_limine_module;
+extern volatile struct limine_smp_request g_limine_smp;
+extern volatile struct limine_memmap_request g_limine_memmap;
+extern volatile struct limine_rsdp_request g_limine_rsdp;
+extern volatile struct limine_kernel_address_request g_limine_kernel_address;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Normal kernel services

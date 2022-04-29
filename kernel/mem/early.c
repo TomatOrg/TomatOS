@@ -1,23 +1,20 @@
-#include <kernel.h>
-#include <util/except.h>
-#include <util/string.h>
 #include "early.h"
 #include "mem.h"
 
-static struct stivale2_struct_tag_memmap* m_early_alloc_mmap = NULL;
+#include <kernel.h>
+
+#include <util/except.h>
+#include <util/string.h>
+
+// TODO: we probably want to save aside which pages we allocated for
+//       this for better memory tracking
 
 uintptr_t early_alloc_page_phys() {
-    // get the mmap tag
-    if (m_early_alloc_mmap == NULL) {
-        m_early_alloc_mmap = get_stivale2_tag(STIVALE2_STRUCT_TAG_MEMMAP_ID);
-        ASSERT(m_early_alloc_mmap != NULL);
-    }
-
     // find an area large enough and allocate from it
-    for (int i = 0; i < m_early_alloc_mmap->entries; i++) {
-        struct stivale2_mmap_entry* entry = &m_early_alloc_mmap->memmap[i];
+    for (int i = 0; i < g_limine_memmap.response->entry_count; i++) {
+        struct limine_memmap_entry* entry = g_limine_memmap.response->entries[i];
 
-        if (entry->type == STIVALE2_MMAP_USABLE) {
+        if (entry->type == LIMINE_MEMMAP_USABLE) {
             if (entry->length >= PAGE_SIZE) {
                 uintptr_t ptr = entry->base;
                 entry->base += PAGE_SIZE;

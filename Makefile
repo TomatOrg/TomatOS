@@ -36,7 +36,7 @@ CFLAGS 		+= -mno-avx -mno-avx2
 CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mcmodel=kernel -mno-red-zone
 CFLAGS 		+= -nostdlib -nostdinc
-CFLAGS 		+= -Ikernel -Ilib
+CFLAGS 		+= -Ikernel -Ilib -Ilimine
 CFLAGS 		+= -isystem lib/libc -Ikernel/libc
 CFLAGS 		+= -fms-extensions -Wno-microsoft-anon-tag
 

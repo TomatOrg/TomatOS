@@ -1,14 +1,18 @@
 #include "vmm.h"
 
-#include <util/string.h>
-#include <arch/intrin.h>
 #include <sync/spinlock.h>
+
+#include <util/string.h>
+#include <util/elf64.h>
+
+#include <arch/intrin.h>
+#include <arch/apic.h>
 #include <arch/msr.h>
+
 #include <kernel.h>
 
 #include "mem.h"
 #include "early.h"
-#include "arch/apic.h"
 
 // The recursive page table addresses
 #define PAGE_TABLE_PML1            ((page_entry_t*)0xFFFFFF0000000000ull)
@@ -33,14 +37,14 @@ static bool m_early_alloc = true;
  */
 static const char* get_memmap_type_name(uint32_t type) {
     switch (type) {
-        case STIVALE2_MMAP_USABLE: return "usable";
-        case STIVALE2_MMAP_RESERVED: return "reserved";
-        case STIVALE2_MMAP_ACPI_RECLAIMABLE: return "ACPI reclaimable";
-        case STIVALE2_MMAP_ACPI_NVS: return "ACPI NVS";
-        case STIVALE2_MMAP_BAD_MEMORY: return "bad memory";
-        case STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE: return "bootloader reclaimable";
-        case STIVALE2_MMAP_KERNEL_AND_MODULES: return "kernel/modules";
-        case STIVALE2_MMAP_FRAMEBUFFER: return "framebuffer";
+        case LIMINE_MEMMAP_USABLE: return "usable";
+        case LIMINE_MEMMAP_RESERVED: return "reserved";
+        case LIMINE_MEMMAP_ACPI_RECLAIMABLE: return "ACPI reclaimable";
+        case LIMINE_MEMMAP_ACPI_NVS: return "ACPI NVS";
+        case LIMINE_MEMMAP_BAD_MEMORY: return "bad memory";
+        case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE: return "bootloader reclaimable";
+        case LIMINE_MEMMAP_KERNEL_AND_MODULES: return "kernel/modules";
+        case LIMINE_MEMMAP_FRAMEBUFFER: return "framebuffer";
         default: return NULL;
     }
 }
@@ -63,20 +67,12 @@ err_t init_vmm() {
     page_entry_t* current_pml4 = PHYS_TO_DIRECT(__readcr3());
     current_pml4[510] = new_pml4[510];
 
-    // we need the kernel segments and base to properly map ourselves
-    struct stivale2_struct_tag_pmrs* pmrs = get_stivale2_tag(STIVALE2_STRUCT_TAG_PMRS_ID);
-    struct stivale2_struct_tag_kernel_base_address* kbase = get_stivale2_tag(STIVALE2_STRUCT_TAG_KERNEL_BASE_ADDRESS_ID);
-    struct stivale2_struct_tag_memmap* memmap = get_stivale2_tag(STIVALE2_STRUCT_TAG_MEMMAP_ID);
-    CHECK_ERROR(pmrs != NULL, ERROR_NOT_FOUND);
-    CHECK_ERROR(kbase != NULL, ERROR_NOT_FOUND);
-    CHECK_ERROR(memmap != NULL, ERROR_NOT_FOUND);
-
     // map all the physical memory nicely, this will not include the memory used to
     // actually create the the page table (at least part of it), but that is because
     // of how the early memory allocator works...
     TRACE("Memory mapping:");
-    for (int i = 0; i < memmap->entries; i++) {
-        struct stivale2_mmap_entry* entry = &memmap->memmap[i];
+    for (int i = 0; i < g_limine_memmap.response->entry_count; i++) {
+        struct limine_memmap_entry* entry = g_limine_memmap.response->entries[i];
         uintptr_t base = entry->base;
         size_t length = entry->length;
         int type = entry->type;
@@ -84,15 +80,15 @@ err_t init_vmm() {
         const char* name = get_memmap_type_name(type);
 
         // don't map bad memory
-        if (type != STIVALE2_MMAP_BAD_MEMORY) {
+        if (type != LIMINE_MEMMAP_BAD_MEMORY) {
             // now map it to the direct map
             base = ALIGN_DOWN(base, PAGE_SIZE);
             end = ALIGN_UP(end, PAGE_SIZE);
             map_perm_t perms = 0;
             if (
-                type == STIVALE2_MMAP_USABLE ||
-                type == STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE ||
-                type == STIVALE2_MMAP_FRAMEBUFFER
+                type == LIMINE_MEMMAP_USABLE ||
+                type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE ||
+                type == LIMINE_MEMMAP_FRAMEBUFFER
             ) {
                 // these pages we are going to map as rw, the rest we are going to map
                 // as read only
@@ -122,32 +118,40 @@ err_t init_vmm() {
     // Map the kernel properly, we are going to remove it from the direct map
     // just in case
     TRACE("Kernel mapping:");
-    for (int i = 0; i < pmrs->entries; i++) {
-        struct stivale2_pmr* pmr = &pmrs->pmrs[i];
+    void* kernel = g_limine_kernel_file.response->kernel_file->address;
+    Elf64_Ehdr* ehdr = kernel;
+    CHECK(ehdr->e_phoff != 0);
 
-        // get the physical base
-        size_t offset = pmr->base - kbase->virtual_base_address;
-        uintptr_t phys = kbase->physical_base_address + offset;
+    // get the tables we need
+    Elf64_Phdr* phdrs = kernel + ehdr->e_phoff;
+    for (int i = 0; i < ehdr->e_phnum; i++) {
+        Elf64_Phdr* phdr = &phdrs[i];
+        if (phdr->p_type == PT_LOAD) {
+            // get the physical base
+            size_t offset = phdr->p_vaddr - g_limine_kernel_address.response->virtual_base;
+            uintptr_t phys = g_limine_kernel_address.response->physical_base + offset;
+            size_t aligned_size = ALIGN_UP(phdr->p_memsz, PAGE_SIZE);
 
-        // make sure it is properly aligned
-        CHECK((phys % PAGE_SIZE) == 0, "Physical base is not aligned (%p)", phys);
-        CHECK((pmr->base % PAGE_SIZE) == 0, "Base is not aligned (%p)", pmr->base);
-        CHECK((pmr->length % PAGE_SIZE) == 0, "Length is not aligned (%p)", pmr->length);
+            // make sure it is properly aligned
+            CHECK((phys % PAGE_SIZE) == 0, "Physical address is not aligned (%p)", phys);
+            CHECK((phdr->p_vaddr % PAGE_SIZE) == 0, "Virtual address is not aligned (%p)", phdr->p_vaddr);
+            CHECK((aligned_size % PAGE_SIZE) == 0, "Memory aligned_size is not aligned (%p)", aligned_size);
 
-        // Log it
-        char r = pmr->permissions & STIVALE2_PMR_READABLE ? 'r' : '-';
-        char w = pmr->permissions & STIVALE2_PMR_WRITABLE ? 'w' : '-';
-        char x = pmr->permissions & STIVALE2_PMR_EXECUTABLE ? 'x' : '-';
-        TRACE("\t%016p-%016p (%08p-%08p) [%c%c%c]",
-              pmr->base, pmr->base + pmr->length,
-              phys, phys + pmr->length,
-              r, w, x);
+            // Log it
+            char r = phdr->p_flags & PF_R ? 'r' : '-';
+            char w = phdr->p_flags & PF_W ? 'w' : '-';
+            char x = phdr->p_flags & PF_X ? 'x' : '-';
+            TRACE("\t%016p-%016p (%08p-%08p) [%c%c%c]",
+                  phdr->p_vaddr, phdr->p_vaddr + phdr->p_memsz,
+                  phys, phys + aligned_size,
+                  r, w, x);
 
-        // actually map it
-        map_perm_t perms = MAP_UNMAP_DIRECT;
-        if (pmr->permissions & STIVALE2_PMR_WRITABLE) perms |= MAP_WRITE;
-        if (pmr->permissions & STIVALE2_PMR_EXECUTABLE) perms |= MAP_EXEC;
-        CHECK_AND_RETHROW(vmm_map(phys, (void*)pmr->base, pmr->length / PAGE_SIZE, perms));
+            // actually map it
+            map_perm_t perms = MAP_UNMAP_DIRECT;
+            if (phdr->p_flags & PF_W) perms |= MAP_WRITE;
+            if (phdr->p_flags & PF_X) perms |= MAP_EXEC;
+            CHECK_AND_RETHROW(vmm_map(phys, (void*)phdr->p_vaddr, aligned_size / PAGE_SIZE, perms));
+        }
     }
 
     // map everything else that needs to be mapped at

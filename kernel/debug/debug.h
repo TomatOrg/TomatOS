@@ -21,7 +21,7 @@ void debug_disasm_at(void* ptr, int opcodes);
 /**
  * Load symbols from the kernel binary
  */
-void debug_load_symbols(void* kernel);
+void debug_load_symbols();
 
 /**
  * Lookup for a symbol, returns NULL if unknown

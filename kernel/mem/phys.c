@@ -655,13 +655,13 @@ cleanup:
 /**
  * Mark all unusable entries
  */
-static err_t mark_unusable_ranges(struct stivale2_struct_tag_memmap* memmap) {
+static err_t mark_unusable_ranges() {
     err_t err = NO_ERROR;
 
     uintptr_t last_usable_end = 0;
-    for (int i = 0; i < memmap->entries; i++) {
-        struct stivale2_mmap_entry* entry = &memmap->memmap[i];
-        if (entry->type == STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE || entry->type == STIVALE2_MMAP_USABLE) {
+    for (int i = 0; i < g_limine_memmap.response->entry_count; i++) {
+        struct limine_memmap_entry* entry = g_limine_memmap.response->entries[i];
+        if (entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE || entry->type == LIMINE_MEMMAP_USABLE) {
             // mark from the last usable range to this one
             CHECK_AND_RETHROW(mark_range(last_usable_end, entry->base - last_usable_end));
 
@@ -682,12 +682,12 @@ cleanup:
  * Mark bootloader reclaim ranges, we mark them in a different step than the
  * mark unusable so we can reclaim the memory later on
  */
-static err_t mark_bootloader_reclaim(struct stivale2_struct_tag_memmap* memmap) {
+static err_t mark_bootloader_reclaim(/*struct stivale2_struct_tag_memmap* memmap*/) {
     err_t err = NO_ERROR;
 
-    for (int i = 0; i < memmap->entries; i++) {
-        struct stivale2_mmap_entry* entry = &memmap->memmap[i];
-        if (entry->type == STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE) {
+    for (int i = 0; i < g_limine_memmap.response->entry_count; i++) {
+        struct limine_memmap_entry* entry = g_limine_memmap.response->entries[i];
+        if (entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) {
             CHECK_AND_RETHROW(mark_range(entry->base, entry->length));
         }
     }
@@ -699,19 +699,15 @@ cleanup:
 err_t init_palloc() {
     err_t err = NO_ERROR;
 
-    // figure the amount of
-    struct stivale2_struct_tag_memmap* memmap = get_stivale2_tag(STIVALE2_STRUCT_TAG_MEMMAP_ID);
-    CHECK(memmap != NULL);
-
     // find top address and align it to the buddy alignment,
     // we are only going to consider usable and reclaimable
     // addresses of course
     uintptr_t top_address = 0;
-    for (int i = 0; i < memmap->entries; i++) {
-        uintptr_t base = memmap->memmap[i].base;
-        size_t length = memmap->memmap[i].length;
-        int type = memmap->memmap[i].type;
-        if (type == STIVALE2_MMAP_USABLE || type == STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE) {
+    for (int i = 0; i < g_limine_memmap.response->entry_count; i++) {
+        uintptr_t base = g_limine_memmap.response->entries[i]->base;
+        size_t length = g_limine_memmap.response->entries[i]->length;
+        uint64_t type = g_limine_memmap.response->entries[i]->type;
+        if (type == LIMINE_MEMMAP_USABLE || type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) {
             if (base + length > top_address) {
                 top_address = base + length;
             }
@@ -740,8 +736,8 @@ err_t init_palloc() {
 
     // first we are going to mark the whole tree as used, this is
     // to make sure that nothing can be allocated
-    CHECK_AND_RETHROW(mark_unusable_ranges(memmap));
-    CHECK_AND_RETHROW(mark_bootloader_reclaim(memmap));
+    CHECK_AND_RETHROW(mark_unusable_ranges());
+    CHECK_AND_RETHROW(mark_bootloader_reclaim());
 
 cleanup:
     return err;
@@ -749,22 +745,20 @@ cleanup:
 
 err_t palloc_reclaim() {
     err_t err = NO_ERROR;
-    struct stivale2_mmap_entry* to_reclaim = NULL;
+    struct limine_memmap_entry* to_reclaim = NULL;
 
     // gather and copy entries that we need (we must copy them
     // because otherwise we are going to reclaim them)
-    struct stivale2_struct_tag_memmap* memmap = get_stivale2_tag(STIVALE2_STRUCT_TAG_MEMMAP_ID);
-    CHECK(memmap != NULL);
-    for (int i = 0; i < memmap->entries; i++) {
-        if (memmap->memmap[i].type == STIVALE2_MMAP_BOOTLOADER_RECLAIMABLE) {
-            arrpush(to_reclaim, memmap->memmap[i]);
+    for (int i = 0; i < g_limine_memmap.response->entry_count; i++) {
+        if (g_limine_memmap.response->entries[i]->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) {
+            arrpush(to_reclaim, *g_limine_memmap.response->entries[i]);
         }
     }
 
     // now actually reclaim them
     TRACE("Reclaiming memory");
     for (int i = 0; i < arrlen(to_reclaim); i++) {
-        struct stivale2_mmap_entry* entry = &to_reclaim[i];
+        struct limine_memmap_entry* entry = &to_reclaim[i];
         TRACE("\t%p-%p: %S", entry->base, entry->base + entry->length, entry->length);
 
         void* ptr = PHYS_TO_DIRECT(entry->base);

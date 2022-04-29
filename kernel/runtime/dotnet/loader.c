@@ -942,6 +942,9 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     // now get all the user strings into our pool
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
+    // now jit it (or well, prepare the ir of it)
+    CHECK_AND_RETHROW(jit_assembly(assembly));
+
     // save this
     g_corelib = assembly;
     gc_add_root(&g_corelib);

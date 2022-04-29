@@ -45,6 +45,7 @@
 #include "util/stb_ds.h"
 #include "arch/msr.h"
 #include "sync/mutex.h"
+#include "kernel.h"
 
 #include <util/elf64.h>
 
@@ -227,7 +228,9 @@ static size_t m_tls_size = 0;
  */
 static size_t m_tls_align = 0;
 
-err_t init_tls(void* kernel) {
+err_t init_tls() {
+    void* kernel = g_limine_kernel_file.response->kernel_file->address;
+
     err_t err = NO_ERROR;
     Elf64_Ehdr* ehdr = kernel;
 

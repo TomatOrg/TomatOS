@@ -18,8 +18,8 @@ SECTIONS
         *(.text*)
     }
 
-    .stivale2hdr : ALIGN(4096) {
-        KEEP(*(.stivale2hdr))
+    .limine_reqs : ALIGN(4096) {
+        KEEP(*(.limine_reqs))
     }
 
     .rodata : ALIGN(4096) {

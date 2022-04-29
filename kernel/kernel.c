@@ -1,6 +1,7 @@
 #include "kernel.h"
 
-#include "stivale2.h"
+#include <limine.h>
+
 #include "runtime/dotnet/gc/heap.h"
 #include "runtime/dotnet/loader.h"
 #include "runtime/dotnet/opcodes.h"
@@ -37,87 +38,47 @@
 #include <stdalign.h>
 #include <stddef.h>
 
-alignas(16)
-static char m_entry_stack[SIZE_2MB] = {0};
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Limine Requests
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static struct stivale2_header_tag_framebuffer m_stivale2_framebuffer = {
-    .tag = {
-        .identifier = STIVALE2_HEADER_TAG_FRAMEBUFFER_ID,
-        .next = 0
-    },
-    .framebuffer_width = 0,
-    .framebuffer_height = 0,
-    .framebuffer_bpp = 32,
+volatile struct limine_bootloader_info_request g_limine_bootloader_info = { .id = LIMINE_BOOTLOADER_INFO_REQUEST };
+volatile struct limine_kernel_file_request g_limine_kernel_file = { .id = LIMINE_KERNEL_FILE_REQUEST };
+volatile struct limine_module_request g_limine_module = { .id = LIMINE_MODULE_REQUEST };
+volatile struct limine_smp_request g_limine_smp = { .id = LIMINE_SMP_REQUEST };
+volatile struct limine_memmap_request g_limine_memmap = { .id = LIMINE_MEMMAP_REQUEST };
+volatile struct limine_rsdp_request g_limine_rsdp = { .id = LIMINE_RSDP_REQUEST };
+volatile struct limine_kernel_address_request g_limine_kernel_address = { .id = LIMINE_KERNEL_ADDRESS_REQUEST };
+
+__attribute__((section(".limine_reqs"), used))
+static void* m_limine_reqs[] = {
+    (void*)&g_limine_bootloader_info,
+    (void*)&g_limine_kernel_file,
+    (void*)&g_limine_module,
+    (void*)&g_limine_smp,
+    (void*)&g_limine_memmap,
+    (void*)&g_limine_rsdp,
+    (void*)&g_limine_kernel_address,
 };
 
-static struct stivale2_header_tag_smp m_stivale2_smp = {
-    .tag = {
-        .identifier = STIVALE2_HEADER_TAG_SMP_ID,
-        .next = (uint64_t) &m_stivale2_framebuffer
-    },
-    .flags = 0,
-};
+static err_t validate_limine_modules() {
+    err_t err = NO_ERROR;
 
-__attribute__((section(".stivale2hdr"), used))
-struct stivale2_header g_stivale2_header = {
-    .entry_point = 0,
-    .stack = (uint64_t) (m_entry_stack + sizeof(m_entry_stack)),
-    .flags =    BIT1 |  // request stivale2 struct to have higher half pointers
-                BIT2 |  // request PMRs
-                BIT3 |  // request fully virtual kernel mappings
-                BIT4,   // Should also be enabled according to spec
-    .tags = (uint64_t) &m_stivale2_smp
-};
+    // we need all of these
+    CHECK(g_limine_kernel_file.response != NULL);
+    CHECK(g_limine_module.response != NULL);
+    CHECK(g_limine_smp.response != NULL);
+    CHECK(g_limine_memmap.response != NULL);
+    CHECK(g_limine_rsdp.response != NULL);
+    CHECK(g_limine_kernel_address.response != NULL);
 
-static struct stivale2_struct* m_stivale2 = NULL;
-
-void* get_stivale2_tag(uint64_t tag_id) {
-    for (
-        struct stivale2_tag* tag = (struct stivale2_tag *) m_stivale2->tags;
-        tag != NULL;
-        tag = (struct stivale2_tag *) tag->next
-    ) {
-        if (tag->identifier == tag_id) {
-            return tag;
-        }
-    }
-    return NULL;
+cleanup:
+    return err;
 }
 
-struct stivale2_module* get_stivale2_module(const char* name) {
-    static struct stivale2_struct_tag_modules* modules = NULL;
-    if (modules == NULL) {
-        modules = get_stivale2_tag(STIVALE2_STRUCT_TAG_MODULES_ID);
-    }
-
-    if (modules != NULL) {
-        // get the corlib first
-        for (int i = 0; i < modules->module_count; i++) {
-            struct stivale2_module* module = &modules->modules[i];
-            if (strcmp(module->string, name) == 0) {
-                return module;
-            }
-        }
-    }
-
-    return NULL;
-}
-
-void* get_kernel_file() {
-    static void* kernel = NULL;
-    if (kernel == NULL) {
-        struct stivale2_struct_tag_kernel_file* f = get_stivale2_tag(STIVALE2_STRUCT_TAG_KERNEL_FILE_ID);
-        if (f == NULL) {
-            struct stivale2_struct_tag_kernel_file_v2* f2 = get_stivale2_tag(STIVALE2_STRUCT_TAG_KERNEL_FILE_V2_ID);
-            if (f2 != NULL) {
-                kernel = (void*)f2->kernel_file;
-            }
-        } else {
-            kernel = (void*)f->kernel_file;
-        }
-    }
-    return kernel;
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// CPU setup
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 /**
  * Enable CPU features we need
@@ -157,7 +118,7 @@ size_t get_cpu_count() {
     return m_cpu_count;
 }
 
-static void per_cpu_start(struct stivale2_smp_info* info) {
+static void per_cpu_start(struct limine_smp_info* info) {
     err_t err = NO_ERROR;
 
     // just like the bsp setup all the cpu stuff
@@ -193,12 +154,14 @@ cleanup:
 
     // start scheduling!
     TRACE("\tCPU #%d", info->lapic_id);
+    atomic_fetch_add(&m_startup_count, 1);
     scheduler_startup();
 
     // we should not have reached here
     ERROR("Should not have reached here?!");
     _disable();
-    while (1) asm("hlt");
+    while (1)
+        __asm__("hlt");
 }
 
 /**
@@ -210,6 +173,14 @@ static size_t m_corelib_module_size;
 static void start_thread() {
     err_t err = NO_ERROR;
 
+    // wait for all the cores to exit the preboot stuff
+    while (atomic_load_explicit(&m_startup_count, memory_order_relaxed) != g_limine_smp.response->cpu_count) {
+        __asm__ ("pause");
+    }
+
+    // reclaim bootloader memory
+    CHECK_AND_RETHROW(palloc_reclaim());
+
     TRACE("Entered kernel thread!");
 
     // Initialize the runtime
@@ -217,83 +188,77 @@ static void start_thread() {
 
     uint64_t start = microtime();
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
-    TRACE("Loading took %dms", (microtime() - start) / 1000);
+    TRACE("Loading corelib took %dms", (microtime() - start) / 1000);
 
-    TRACE("before collection - %d", heap_alive());
-    gc_wait();
-    TRACE("after collection - %d", heap_alive());
-
-    TRACE("Types:");
-    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
-        System_Type type = g_corelib->DefinedTypes->Data[i];
-        if (type->BaseType != NULL) {
-            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
-                  type->Namespace, type->Name,
-                  type->BaseType->Namespace, type->BaseType->Name);
-        } else {
-            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
-                  type->Namespace, type->Name);
-        }
-
-        for (int j = 0; j < type->Fields->Length; j++) {
-            CHECK(type->Fields->Data[j] != NULL);
-            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
-                  field_access_str(field_access(type->Fields->Data[j])),
-                  field_is_static(type->Fields->Data[j]) ? "static " : "",
-                  type->Fields->Data[j]->FieldType->Namespace,
-                  type->Fields->Data[j]->FieldType->Name,
-                  type->Fields->Data[j]->Name,
-                  type->Fields->Data[j]->MemoryOffset);
-        }
-
-        for (int j = 0; j < type->Methods->Length; j++) {
-            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
-            CHECK(mi != NULL);
-
-#define APPEND(...) \
-                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
-
-            char mi_str[512] = { 0 };
-            int offset = 0;
-
-            if (method_is_static(mi)) {
-                APPEND("static ");
-            }
-
-            if (method_is_final(mi)) {
-                APPEND("final ");
-            }
-
-            if (method_is_virtual(mi)) {
-                APPEND("virtual[%d] ", mi->VtableOffset);
-                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
-            }
-
-            if (mi->ReturnType == NULL) {
-                APPEND("void ");
-            } else {
-                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
-            }
-            APPEND("%U", mi->Name);
-            APPEND("(");
-
-            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
-                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
-                if (pi + 1 != mi->Parameters->Length) {
-                    APPEND(", ");
-                }
-            }
-            APPEND(")");
-
-            TRACE("\t\t%s", mi_str);
-
-            opcode_disasm_method(mi);
-        }
-
-        TRACE("");
-    }
-
-    CHECK_AND_RETHROW(jit_assembly(g_corelib));
+//    TRACE("Types:");
+//    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
+//        System_Type type = g_corelib->DefinedTypes->Data[i];
+//        if (type->BaseType != NULL) {
+//            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
+//                  type->Namespace, type->Name,
+//                  type->BaseType->Namespace, type->BaseType->Name);
+//        } else {
+//            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
+//                  type->Namespace, type->Name);
+//        }
+//
+//        for (int j = 0; j < type->Fields->Length; j++) {
+//            CHECK(type->Fields->Data[j] != NULL);
+//            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
+//                  field_access_str(field_access(type->Fields->Data[j])),
+//                  field_is_static(type->Fields->Data[j]) ? "static " : "",
+//                  type->Fields->Data[j]->FieldType->Namespace,
+//                  type->Fields->Data[j]->FieldType->Name,
+//                  type->Fields->Data[j]->Name,
+//                  type->Fields->Data[j]->MemoryOffset);
+//        }
+//
+//        for (int j = 0; j < type->Methods->Length; j++) {
+//            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
+//            CHECK(mi != NULL);
+//
+//#define APPEND(...) \
+//                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
+//
+//            char mi_str[512] = { 0 };
+//            int offset = 0;
+//
+//            if (method_is_static(mi)) {
+//                APPEND("static ");
+//            }
+//
+//            if (method_is_final(mi)) {
+//                APPEND("final ");
+//            }
+//
+//            if (method_is_virtual(mi)) {
+//                APPEND("virtual[%d] ", mi->VtableOffset);
+//                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
+//            }
+//
+//            if (mi->ReturnType == NULL) {
+//                APPEND("void ");
+//            } else {
+//                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
+//            }
+//            APPEND("%U", mi->Name);
+//            APPEND("(");
+//
+//            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
+//                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
+//                if (pi + 1 != mi->Parameters->Length) {
+//                    APPEND(", ");
+//                }
+//            }
+//            APPEND(")");
+//
+//            TRACE("\t\t%s", mi_str);
+//
+//            opcode_disasm_method(mi);
+//        }
+//
+//        TRACE("");
+//    }
 
 cleanup:
     ASSERT(!IS_ERROR(err));
@@ -301,7 +266,7 @@ cleanup:
     while(1);
 }
 
-void _start(struct stivale2_struct* stivale2) {
+void _start(void) {
     err_t err = NO_ERROR;
 
     // we need to setup SSE support as soon as possible because
@@ -315,11 +280,18 @@ void _start(struct stivale2_struct* stivale2) {
 
     // Quickly setup everything so we can
     // start debugging already
-    m_stivale2 = stivale2;
     trace_init();
     TRACE("Hello from pentagon!");
-    TRACE("\tBootloader: %s (%s)", stivale2->bootloader_brand, stivale2->bootloader_version);
+    if (g_limine_bootloader_info.response != NULL) {
+        TRACE("\tBootloader: %s (%s)",
+              g_limine_bootloader_info.response->name,
+              g_limine_bootloader_info.response->version);
+    }
 
+    // check the bootloader behaved as expected
+    CHECK_AND_RETHROW(validate_limine_modules());
+
+    // for debugging
     TRACE("Kernel address map:");
     TRACE("\t%p-%p (%S): Kernel direct map", DIRECT_MAP_START, DIRECT_MAP_END, DIRECT_MAP_SIZE);
     TRACE("\t%p-%p (%S): Buddy Tree", BUDDY_TREE_START, BUDDY_TREE_END, BUDDY_TREE_SIZE);
@@ -338,9 +310,7 @@ void _start(struct stivale2_struct* stivale2) {
 
     // load symbols for nicer debugging
     // NOTE: must be done after allocators are done
-    void* kernel = get_kernel_file();
-    CHECK(kernel != NULL);
-    debug_load_symbols(kernel);
+    debug_load_symbols();
 
     // initialize misc kernel utilities
     CHECK_AND_RETHROW(init_acpi());
@@ -351,62 +321,57 @@ void _start(struct stivale2_struct* stivale2) {
     // Do SMP startup
     //
 
-    // get the smp tag
-    struct stivale2_struct_tag_smp* smp = get_stivale2_tag(STIVALE2_STRUCT_TAG_SMP_ID);
-
     // if we have the smp tag then we are SMP, set the cpu count
-    if (smp != NULL) {
-        m_cpu_count = smp->cpu_count;
-    }
+    m_cpu_count = g_limine_smp.response->cpu_count;
 
     // initialize per cpu variables
     CHECK_AND_RETHROW(init_cpu_locals());
     CHECK_AND_RETHROW(init_scheduler());
-    CHECK_AND_RETHROW(init_tls(kernel));
+    CHECK_AND_RETHROW(init_tls());
 
     // now actually do smp startup
-    if (smp != NULL) {
-        TRACE("SMP Startup");
-        for (int i = 0; i < smp->cpu_count; i++) {
+    TRACE("SMP Startup");
+    for (int i = 0; i < g_limine_smp.response->cpu_count; i++) {
 
-            // right now we assume that the apic id is always less than the cpu count
-            CHECK(smp->smp_info[i].lapic_id < smp->cpu_count);
+        // right now we assume that the apic id is always less than the cpu count
+        CHECK(g_limine_smp.response->cpus[i]->lapic_id < g_limine_smp.response->cpu_count);
 
-            if (smp->smp_info[i].lapic_id == smp->bsp_lapic_id) {
-                TRACE("\tCPU #%d - BSP", smp->bsp_lapic_id);
-                CHECK(smp->bsp_lapic_id == get_apic_id());
-                continue;
-            }
-
-            // setup the entry for the given CPU
-            smp->smp_info[i].target_stack = (uintptr_t)(palloc(PAGE_SIZE) + PAGE_SIZE);
-            smp->smp_info[i].goto_address = (uintptr_t)per_cpu_start;
+        if (g_limine_smp.response->cpus[i]->lapic_id == g_limine_smp.response->bsp_lapic_id) {
+            TRACE("\tCPU #%d - BSP", g_limine_smp.response->bsp_lapic_id);
+            CHECK(g_limine_smp.response->bsp_lapic_id == get_apic_id());
+            continue;
         }
 
-        // wait for all the cores to start
-        while (atomic_load_explicit(&m_startup_count, memory_order_relaxed) != smp->cpu_count - 1) {
-            asm ("pause");
-        }
-
-        // make sure we got no SMP errors
-        CHECK(!atomic_load_explicit(&m_smp_error, memory_order_relaxed));
-
-        TRACE("Done CPU startup");
-    } else {
-        TRACE("Bootloader doesn't support SMP startup!");
-        CHECK(get_apic_id() == 0);
+        // go to it
+        g_limine_smp.response->cpus[i]->goto_address = per_cpu_start;
     }
 
-    // load the corelib module
-    struct stivale2_module* module = get_stivale2_module("Corelib.dll");
-    CHECK_ERROR(module != NULL, ERROR_NOT_FOUND);
-    m_corelib_module_size = module->end - module->begin;
-    m_corelib_module = malloc(m_corelib_module_size);
-    memcpy(m_corelib_module, (void*)module->begin, m_corelib_module_size);
-    TRACE("Corelib: %S", m_corelib_module_size);
+    // wait for all the cores to start
+    while (atomic_load_explicit(&m_startup_count, memory_order_relaxed) != g_limine_smp.response->cpu_count - 1) {
+        __asm__ ("pause");
+    }
 
-    // reclaim memory
-    CHECK_AND_RETHROW(palloc_reclaim());
+    // make sure we got no SMP errors
+    CHECK(!atomic_load_explicit(&m_smp_error, memory_order_relaxed));
+
+    TRACE("Done CPU startup");
+
+    // load the corelib module
+    TRACE("Boot modules:");
+    struct limine_file* corelib_file = NULL;
+    for (int i = 0; i < g_limine_module.response->module_count; i++) {
+        struct limine_file* file = g_limine_module.response->modules[i];
+        if (strcmp(file->path, "/boot/Corelib.dll") == 0) {
+            corelib_file = file;
+        }
+        TRACE("\t%s", file->path);
+    }
+
+    CHECK_ERROR(corelib_file != NULL, ERROR_NOT_FOUND);
+    m_corelib_module_size = corelib_file->size;
+    m_corelib_module = malloc(m_corelib_module_size);
+    memcpy(m_corelib_module, corelib_file->address, m_corelib_module_size);
+    TRACE("Corelib: %S", m_corelib_module_size);
 
     TRACE("Kernel init done");
 
@@ -419,9 +384,15 @@ void _start(struct stivale2_struct* stivale2) {
     CHECK(thread != NULL);
     scheduler_ready_thread(thread);
 
+    // we are going to use this counter again to know when all
+    // cpus exited the bootlaoder supplied stack
+    m_startup_count = 0;
+
     TRACE("Starting up the scheduler");
     atomic_store_explicit(&m_start_scheduler, true, memory_order_release);
     TRACE("\tCPU #%d - BSP", get_apic_id());
+
+    atomic_fetch_add(&m_startup_count, 1);
     scheduler_startup();
 
 cleanup:
@@ -432,5 +403,6 @@ cleanup:
     }
 
     _disable();
-    while (1) asm("hlt");
+    while (1)
+        __asm__("hlt");
 }

@@ -1,5 +1,6 @@
 #include "debug.h"
 #include "util/stb_ds.h"
+#include "kernel.h"
 
 #include <util/elf64.h>
 #include <util/trace.h>
@@ -108,7 +109,9 @@ static char* strdup(const char* str) {
     return str2;
 }
 
-void debug_load_symbols(void* kernel) {
+void debug_load_symbols() {
+    void* kernel = g_limine_kernel_file.response->kernel_file->address;
+
     Elf64_Ehdr* ehdr = kernel;
     Elf64_Shdr* symtab = NULL;
 

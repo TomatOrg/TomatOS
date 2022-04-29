@@ -2511,8 +2511,6 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
     jit_context_t ctx = {};
 
-    uint64_t start = microtime();
-
     // setup mir context
     ctx.context = MIR_init();
     MIR_module_t mod = MIR_new_module(ctx.context, "my_module");
@@ -2574,11 +2572,7 @@ cleanup:
         // save everything to a module that we can load later
         FILE* file = fcreate();
         MIR_write(ctx.context, file);
-        uint64_t finish = microtime();
-
-        MIR_output(ctx.context, stdout);
-
-        TRACE("Took %dms to jit the binary", (finish - start) / 1000);
+        // TODO: save the mir module
 
         MIR_finish(ctx.context);
     }
