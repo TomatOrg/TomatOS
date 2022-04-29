@@ -163,6 +163,14 @@ System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assemb
     }
 }
 
+System_String assembly_get_string_by_token(System_Reflection_Assembly assembly, token_t token) {
+    if (token.table != 0x70) {
+        ASSERT(!"assembly_get_string_by_token: invalid table for type");
+        return NULL;
+    }
+    return hmget(assembly->UserStringsTable, token.index);
+}
+
 System_Type get_array_type(System_Type Type) {
     if (Type->ArrayType != NULL) {
         return Type->ArrayType;

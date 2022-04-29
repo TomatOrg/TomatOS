@@ -156,6 +156,14 @@ struct System_Reflection_Assembly {
     System_Reflection_MethodInfo_Array DefinedMethods;
     System_Reflection_FieldInfo_Array DefinedFields;
     System_Reflection_Module Module;
+
+    // we have two entries, one for GC tracking (the array)
+    // and one for internally looking up the string entries
+    System_String_Array UserStrings;
+    struct {
+        int key;
+        System_String value;
+    }* UserStringsTable;
 };
 
 /**
@@ -169,6 +177,8 @@ System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, toke
 System_Reflection_MethodInfo assembly_get_method_by_token(System_Reflection_Assembly assembly, token_t token);
 
 System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assembly assembly, token_t token);
+
+System_String assembly_get_string_by_token(System_Reflection_Assembly assembly, token_t token);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

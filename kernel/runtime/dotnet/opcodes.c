@@ -30,18 +30,20 @@ uint16_t g_dotnet_opcode_lookup[] = {
 #undef OPDEF_REAL_OPCODES_ONLY
 };
 
-void opcode_disasm_method(System_Reflection_MethodInfo method, pe_file_t* metadata) {
+void opcode_disasm_method(System_Reflection_MethodInfo method) {
     System_Reflection_MethodBody body = method->MethodBody;
     System_Reflection_Assembly assembly = method->Module->Assembly;
 
     size_t param_size = 256;
-    char* param = malloc(param_size);
+    char param[256];
+    System_String string_param = NULL;
 
     int indent = 0;
 
     int i = 0;
     while (i < body->Il->Length) {
         int pc = i;
+        param[0] = '\0';
 
         // handle exception handling
         for (int i = 0; i < body->ExceptionHandlingClauses->Length; i++) {
@@ -141,22 +143,7 @@ void opcode_disasm_method(System_Reflection_MethodInfo method, pe_file_t* metada
             case OPCODE_OPERAND_InlineString: {
                 token_t token = *(token_t*)&body->Il->Data[i];
                 i += sizeof(token_t);
-                uint32_t string_size = 0;
-                blob_entry_t entry = {
-                    .data = &metadata->us[token.index],
-                    .size = metadata->us_size - token.index,
-                };
-                parse_compressed_integer(&entry, &string_size);
-                if (param_size < string_size + 3) {
-                    param = realloc(param, string_size + 3);
-                }
-                entry.size = string_size;
-                for (long idx = 0; idx < string_size / 2; idx++) {
-                    param[idx + 1] = entry.data[idx * 2];
-                }
-                param[0] = '"';
-                param[string_size / 2 + 1] = '"';
-                param[string_size / 2 + 2] = '\0';
+                string_param = assembly_get_string_by_token(assembly, token);
             } break;
             case OPCODE_OPERAND_InlineSwitch: ASSERT(!"TODO: switch support");
             case OPCODE_OPERAND_InlineTok: i += sizeof(token_t); snprintf(param, param_size, "<tok>"); break;
@@ -190,47 +177,11 @@ void opcode_disasm_method(System_Reflection_MethodInfo method, pe_file_t* metada
             default: break;
         }
 
-        const char* pop;
-        switch (opcode_info->pop) {
-            case OPCODE_STACK_BEHAVIOUR_Pop0: pop = "Pop0"; break;
-            case OPCODE_STACK_BEHAVIOUR_Pop1: pop = "Pop1"; break;
-            case OPCODE_STACK_BEHAVIOUR_Pop1_Pop1: pop = "Pop1_Pop1"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI: pop = "PopI"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI_Pop1: pop = "PopI_Pop1"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI_PopI: pop = "PopI_PopI"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI_PopI8: pop = "PopI_PopI8"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI_PopI_PopI: pop = "PopI_PopI_PopI"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI8_Pop8: pop = "PopI8_Pop8"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI_PopR4: pop = "PopI_PopR4"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopI_PopR8: pop = "PopI_PopR8"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef: pop = "PopRef"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_Pop1: pop = "PopRef_Pop1"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI: pop = "PopRef_PopI"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_Pop1: pop = "PopRef_PopI_Pop1"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopI: pop = "PopRef_PopI_PopI"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopI8: pop = "PopRef_PopI_PopI8"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopR4: pop = "PopRef_PopI_PopR4"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopR8: pop = "PopRef_PopI_PopR8"; break;
-            case OPCODE_STACK_BEHAVIOUR_PopRef_PopI_PopRef: pop = "PopRef_PopI_PopRef"; break;
-            case OPCODE_STACK_BEHAVIOUR_VarPop: pop = "VarPop"; break;
+        if (string_param == NULL) {
+            TRACE("\t\t\t%*sIL_%04x:  %s %s", indent, "", pc, opcode_info->name, param);
+        } else {
+            TRACE("\t\t\t%*sIL_%04x:  %s \"%U\"", indent, "", pc, opcode_info->name, string_param);
+            string_param = NULL;
         }
-
-        const char* push;
-        switch (opcode_info->push) {
-            case OPCODE_STACK_BEHAVIOUR_Push0: push = "Push0"; break;
-            case OPCODE_STACK_BEHAVIOUR_Push1: push = "Push1"; break;
-            case OPCODE_STACK_BEHAVIOUR_Push1_Push1: push = "Push1_Push1"; break;
-            case OPCODE_STACK_BEHAVIOUR_PushI: push = "PushI"; break;
-            case OPCODE_STACK_BEHAVIOUR_PushI8: push = "PushI8"; break;
-            case OPCODE_STACK_BEHAVIOUR_PushR4: push = "PushR4"; break;
-            case OPCODE_STACK_BEHAVIOUR_PushR8: push = "PushR8"; break;
-            case OPCODE_STACK_BEHAVIOUR_PushRef: push = "PushRef"; break;
-            case OPCODE_STACK_BEHAVIOUR_VarPush: push = "VarPush"; break;
-        }
-
-//        TRACE("\t\t\t\tIL_%04x:  %s %s // %s %s", pc, opcode_info->name, param, pop, push);
-        TRACE("\t\t\t%*sIL_%04x:  %s %s", indent, "", pc, opcode_info->name, param);
     }
-
-    free(param);
 }

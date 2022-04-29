@@ -106,19 +106,23 @@ typedef struct jit_context {
 
     //////////////////////////////////////////////////////////////////////////////////
 
-    // all the functions in the module
+    // the current mir context for the code gen
+    MIR_context_t context;
+
+    // track all the functions and methods to their forward item
     function_entry_t* functions;
 
+    // track all the values to their import item
     struct {
         System_Type key;
         MIR_item_t value;
     }* types;
 
-    // the mir context relating to this stack
-    MIR_context_t context;
-
-    // the current metadata, needed for some stuff
-    pe_file_t* metadata;
+    // track all the strings to their import item
+    struct {
+        System_String key;
+        MIR_item_t value;
+    }* strings;
 
     //////////////////////////////////////////////////////////////////////////////////
 
@@ -1193,6 +1197,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         float operand_f32;
         double operand_f64;
         System_Type operand_type;
+        System_String operand_string;
 
         char param[128] = { 0 };
         switch (opcode_info->operand) {
@@ -1224,7 +1229,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 il_ptr += sizeof(double);
             } break;
             case OPCODE_OPERAND_InlineSig: CHECK_FAIL("TODO: sig support");; break;
-            case OPCODE_OPERAND_InlineString: CHECK_FAIL("TODO: string support"); break;
+            case OPCODE_OPERAND_InlineString: {
+                token_t value = *(token_t*)&body->Il->Data[il_ptr];
+                il_ptr += sizeof(token_t);
+                operand_string = assembly_get_string_by_token(assembly, value);
+            } break;
             case OPCODE_OPERAND_InlineSwitch: CHECK_FAIL("TODO: switch support");
             case OPCODE_OPERAND_InlineTok: CHECK_FAIL("TODO: tok support");; break;
             case OPCODE_OPERAND_InlineType: {
@@ -1573,6 +1582,35 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_int_op(ctx->context, operand_i32)));
             } break;
 
+            case CEE_LDSTR: {
+                // push a string type
+                MIR_reg_t string_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_String, &string_reg));
+
+                // get the string item
+                int i = hmgeti(ctx->strings, operand_string);
+                CHECK(i != -1);
+                MIR_item_t string_item = ctx->strings[i].value;
+
+                // move it to the register
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, string_reg),
+                                             MIR_new_ref_op(ctx->context, string_item)));
+            } break;
+
+            case CEE_LDNULL: {
+                // push a null type
+                MIR_reg_t null_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, NULL, &null_reg));
+
+                // load a null value
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, null_reg),
+                                             MIR_new_int_op(ctx->context, 0)));
+            } break;
+
             case CEE_DUP: {
                 // get the top value
                 MIR_reg_t top_reg;
@@ -1615,18 +1653,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
             case CEE_POP: {
                 CHECK_AND_RETHROW(stack_pop(ctx, NULL, NULL));
-            } break;
-
-            case CEE_LDNULL: {
-                // push a null type
-                MIR_reg_t null_reg;
-                CHECK_AND_RETHROW(stack_push(ctx, NULL, &null_reg));
-
-                // load a null value
-                MIR_append_insn(ctx->context, ctx->func,
-                                MIR_new_insn(ctx->context, MIR_MOV,
-                                             MIR_new_reg_op(ctx->context, null_reg),
-                                             MIR_new_int_op(ctx->context, 0)));
             } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2481,11 +2507,9 @@ cleanup:
     return err;
 }
 
-err_t jit_assembly(System_Reflection_Assembly assembly, pe_file_t* metadata) {
+err_t jit_assembly(System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
-    jit_context_t ctx = {
-        .metadata = metadata
-    };
+    jit_context_t ctx = {};
 
     uint64_t start = microtime();
 
@@ -2513,6 +2537,15 @@ err_t jit_assembly(System_Reflection_Assembly assembly, pe_file_t* metadata) {
         print_full_type_name(type, name);
         fputc('\0', name);
         hmput(ctx.types, type, MIR_new_import(ctx.context, name->buffer));
+        fclose(name);
+    }
+
+    // predefine all strings
+    for (int i = 0; i < hmlen(assembly->UserStringsTable); i++) {
+        FILE* name = fcreate();
+        fprintf(name, "string$%d", assembly->UserStringsTable[i].key);
+        fputc('\0', name);
+        hmput(ctx.strings, assembly->UserStringsTable[i].value, MIR_new_import(ctx.context, name->buffer));
         fclose(name);
     }
 

@@ -7,6 +7,8 @@ namespace System.Reflection
         private MethodInfo[] _definedMethods;
         private FieldInfo[] _definedFields;
         private Module _module;
+        private string[] _userStrings;
+        private unsafe void* _userStringsTable;
 
     }
 }

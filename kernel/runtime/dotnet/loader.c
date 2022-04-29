@@ -713,6 +713,64 @@ cleanup:
     return err;
 }
 
+static err_t parse_user_strings(System_Reflection_Assembly assembly, pe_file_t* file) {
+    err_t err = NO_ERROR;
+
+    int string_count = 0;
+
+    // count how many strings we have
+    blob_entry_t us = {
+        .data = file->us,
+        .size = file->us_size
+    };
+    while (us.size != 0) {
+        // get the size
+        uint32_t string_size;
+        CHECK_AND_RETHROW(parse_compressed_integer(&us, &string_size));
+
+        // we got another string
+        string_count++;
+
+        // skip this string entry
+        CHECK(string_size <= us.size);
+        us.size -= string_size;
+        us.data += string_size;
+    }
+
+    assembly->UserStrings = GC_NEW_ARRAY(tSystem_String, string_count);
+
+    // now create all the strings
+    string_count = 0;
+    us.data = file->us;
+    us.size = file->us_size;
+    while (us.size != 0) {
+        int offset = file->us_size - us.size;
+
+        // get the size
+        uint32_t string_size;
+        CHECK_AND_RETHROW(parse_compressed_integer(&us, &string_size));
+        CHECK(string_size <= us.size);
+
+        // create the string and store it
+        System_String string = GC_NEW_STRING(string_size / 2);
+        memcpy(string->Chars, us.data, (string_size / 2) * 2);
+
+        // set the entries in the table and array
+        GC_UPDATE_ARRAY(assembly->UserStrings, string_count, string);
+        hmput(assembly->UserStringsTable, offset, string);
+
+        // we got another string
+        string_count++;
+
+        // skip this string entry
+        us.size -= string_size;
+        us.data += string_size;
+    }
+
+cleanup:
+    return err;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Type init
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -881,11 +939,12 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
         assembly->DefinedTypes->Data[i]->type = tSystem_Type;
     }
 
+    // now get all the user strings into our pool
+    CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
+
     // save this
     g_corelib = assembly;
     gc_add_root(&g_corelib);
-
-    CHECK_AND_RETHROW(jit_assembly(g_corelib, &file));
 
 cleanup:
     free_metadata(&metadata);
@@ -893,78 +952,3 @@ cleanup:
 
     return err;
 }
-
-/**
- *
- *
-    TRACE("Types:");
-    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
-        System_Type type = g_corelib->DefinedTypes->Data[i];
-        if (type->BaseType != NULL) {
-            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
-                  type->Namespace, type->Name,
-                  type->BaseType->Namespace, type->BaseType->Name);
-        } else {
-            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
-                  type->Namespace, type->Name);
-        }
-
-        for (int j = 0; j < type->Fields->Length; j++) {
-            CHECK(type->Fields->Data[j] != NULL);
-            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
-                  field_access_str(field_access(type->Fields->Data[j])),
-                  field_is_static(type->Fields->Data[j]) ? "static " : "",
-                  type->Fields->Data[j]->FieldType->Namespace,
-                  type->Fields->Data[j]->FieldType->Name,
-                  type->Fields->Data[j]->Name,
-                  type->Fields->Data[j]->MemoryOffset);
-        }
-
-        for (int j = 0; j < type->Methods->Length; j++) {
-            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
-            CHECK(mi != NULL);
-
-#define APPEND(...) \
-                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
-
-            char mi_str[512] = { 0 };
-            int offset = 0;
-
-            if (method_is_static(mi)) {
-                APPEND("static ");
-            }
-
-            if (method_is_final(mi)) {
-                APPEND("final ");
-            }
-
-            if (method_is_virtual(mi)) {
-                APPEND("virtual[%d] ", mi->VtableOffset);
-                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
-            }
-
-            if (mi->ReturnType == NULL) {
-                APPEND("void ");
-            } else {
-                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
-            }
-            APPEND("%U", mi->Name);
-            APPEND("(");
-
-            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
-                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
-                if (pi + 1 != mi->Parameters->Length) {
-                    APPEND(", ");
-                }
-            }
-            APPEND(")");
-
-            TRACE("\t\t%s", mi_str);
-
-            opcode_disasm_method(mi, &file);
-        }
-
-        TRACE("");
-    }
- *
- */
