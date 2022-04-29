@@ -6,8 +6,7 @@ ENTRY(_start)
 SECTIONS
 {
     . = 0x0;
-    .cpu_local (NOLOAD) :
-    {
+    .cpu_local (NOLOAD)  : {
         KEEP(*(.cpu_local*))
     }
     __cpu_local_size = .;
@@ -18,16 +17,16 @@ SECTIONS
         *(.text*)
     }
 
-    .limine_reqs : ALIGN(4096) {
-        KEEP(*(.limine_reqs))
-    }
-
     .rodata : ALIGN(4096) {
         *(.rodata*)
     }
 
     .data : ALIGN(4096) {
         *(.data*)
+    }
+
+    .limine_reqs : {
+        KEEP(*(.limine_reqs))
     }
 
     .bss : ALIGN(4096) {

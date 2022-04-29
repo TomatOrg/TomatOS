@@ -59,6 +59,7 @@ static void* m_limine_reqs[] = {
     (void*)&g_limine_memmap,
     (void*)&g_limine_rsdp,
     (void*)&g_limine_kernel_address,
+    NULL,
 };
 
 static err_t validate_limine_modules() {

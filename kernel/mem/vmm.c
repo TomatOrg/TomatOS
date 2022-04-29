@@ -127,6 +127,13 @@ err_t init_vmm() {
     for (int i = 0; i < ehdr->e_phnum; i++) {
         Elf64_Phdr* phdr = &phdrs[i];
         if (phdr->p_type == PT_LOAD) {
+
+            // Make sure this is actually in the kernel, otherwise
+            // we might try to map the cpu locals
+            if (phdr->p_vaddr < g_limine_kernel_address.response->virtual_base) {
+                continue;
+            }
+
             // get the physical base
             size_t offset = phdr->p_vaddr - g_limine_kernel_address.response->virtual_base;
             uintptr_t phys = g_limine_kernel_address.response->physical_base + offset;
