@@ -1,8 +1,9 @@
 #include "timer.h"
 #include "delay.h"
 
-#include <arch/intrin.h>
 #include <arch/cpuid.h>
+
+#include <intrin.h>
 
 /**
  * The frequency of the cpu in ticks per microsecond

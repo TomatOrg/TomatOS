@@ -1,9 +1,10 @@
 #include "trace.h"
 
+#include <kernel.h>
+
 #include <stddef.h>
 #include <stdint.h>
-#include <kernel.h>
-#include <arch/intrin.h>
+#include <intrin.h>
 
 void trace_init() {
     __outbyte(0x3f8 + 1, 0x00);

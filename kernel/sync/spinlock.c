@@ -1,9 +1,9 @@
 #include "spinlock.h"
 
-#include <arch/intrin.h>
 #include <util/defs.h>
 
 #include <stdatomic.h>
+#include <intrin.h>
 
 static bool spinlock_try_lock_weak(spinlock_t* spinlock) {
     bool _false = false;
@@ -14,15 +14,16 @@ static bool spinlock_try_lock_weak(spinlock_t* spinlock) {
 void spinlock_lock(spinlock_t* spinlock) {
     // read the interrupts status and disable interrupts
     bool status = (__readeflags() & BIT9) ? true : false;
-    _disable();
+    if (status) _disable();
+
     while (!spinlock_try_lock_weak(spinlock)) {
         // while spinning we can safely enable interrupts, just
         // need to disable interrupts before we are trying again
-        _enable();
+        if (status) _enable();
         while (spinlock_is_locked(spinlock)) {
             __builtin_ia32_pause();
         }
-        _disable();
+        if (status) _disable();
     }
 
     // success, save interrupt status
@@ -32,7 +33,7 @@ void spinlock_lock(spinlock_t* spinlock) {
 bool spinlock_try_lock(spinlock_t* spinlock) {
     // read the interrupt status and disable interrupts
     bool status = (__readeflags() & BIT9) ? true : false;
-    _disable();
+    if (status) _disable();
 
     bool _false = false;
     bool result = atomic_compare_exchange_strong_explicit(&spinlock->locked, &_false, true,
@@ -43,7 +44,7 @@ bool spinlock_try_lock(spinlock_t* spinlock) {
         spinlock->status = status;
     } else {
         // failed to take the spinlock, enable interrupts
-        _enable();
+        if (status) _enable();
     }
 
     return status;
@@ -55,8 +56,6 @@ void spinlock_unlock(spinlock_t* spinlock) {
     // restore the interrupt status
     if (spinlock->status) {
         _enable();
-    } else {
-        _disable();
     }
 }
 

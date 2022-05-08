@@ -1,9 +1,9 @@
 #include "delay.h"
 #include "acpi/acpi10.h"
 
-#include <arch/intrin.h>
 #include <acpi/acpi.h>
 
+#include <intrin.h>
 
 /**
  * The pm timer address

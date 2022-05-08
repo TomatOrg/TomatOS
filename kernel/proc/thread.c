@@ -34,22 +34,26 @@
 
 #include "cpu_local.h"
 
-#include <arch/intrin.h>
 #include <util/except.h>
 #include <util/string.h>
+#include <util/stb_ds.h>
+
+#include <sync/mutex.h>
+
+#include <time/timer.h>
+
+#include <arch/apic.h>
+#include <arch/msr.h>
+
+#include <mem/stack.h>
 
 #include "scheduler.h"
-#include "time/timer.h"
-#include "arch/apic.h"
-#include "mem/stack.h"
-#include "util/stb_ds.h"
-#include "arch/msr.h"
-#include "sync/mutex.h"
 #include "kernel.h"
 
 #include <util/elf64.h>
 
 #include <stdatomic.h>
+#include <intrin.h>
 
 
 //
@@ -386,8 +390,12 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     vsnprintf(thread->name, sizeof(thread->name), fmt, ap);
     va_end(ap);
 
+    // Reset the thread save state:
+    //  - set the rip as the thread entry
+    //  - set the rflags for ALWAYS_1 | IF | ID
+    memset(&thread->save_state, 0, sizeof(thread->save_state));
     thread->save_state.rip = (uint64_t) entry;
-    thread->save_state.rflags = BIT1 | BIT9 | BIT21; // Always 1 bit, Interrupt enable flag, Able to use CPUID instruction
+    thread->save_state.rflags = BIT1 | BIT9 | BIT21;
     thread->save_state.rsp = (uint64_t)alloc_stack();
 
     // we want the return address to be thread_exit

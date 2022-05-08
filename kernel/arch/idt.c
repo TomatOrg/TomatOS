@@ -44,7 +44,7 @@ typedef struct idt {
 // Exception handling code
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-asm(
+__asm__ (
     "common_exception_stub:\n"
     ".cfi_startproc simple\n"
     ".cfi_signal_frame\n"
@@ -153,7 +153,7 @@ asm(
 #define EXCEPTION_STUB(num) \
     __attribute__((naked)) \
     static void interrupt_handle_##num() { \
-        asm( \
+        __asm__( \
             "pushq $0\n" \
             "pushq $" #num "\n" \
             "jmp common_exception_stub"); \
@@ -162,7 +162,7 @@ asm(
 #define EXCEPTION_ERROR_STUB(num) \
     __attribute__((naked)) \
     static void interrupt_handle_##num() { \
-        asm( \
+        __asm__( \
             "pushq $" #num "\n" \
             "jmp common_exception_stub"); \
     }
@@ -352,7 +352,8 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     // stop
     ERROR("Halting :(");
     spinlock_unlock(&m_exception_lock);
-    while(1) asm("hlt");
+    while(1)
+        __halt();
 }
 
 __attribute__((used))
@@ -376,7 +377,7 @@ void common_exception_handler(exception_context_t* ctx) {
 // Interrupt handling code
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-asm(
+__asm__(
     "common_interrupt_stub:\n"
     ".cfi_startproc simple\n"
     ".cfi_signal_frame\n"
@@ -485,7 +486,7 @@ asm(
 #define INTERRUPT_HANDLER(num) \
     __attribute__((naked)) \
     static void interrupt_handle_##num() { \
-        asm( \
+        __asm__( \
             "pushq $" #num "\n" \
             "jmp common_interrupt_stub"); \
     }
@@ -748,7 +749,8 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
 
 cleanup:
     if (IS_ERROR(err)) {
-        while (1) asm("hlt");
+        while (1)
+            __halt();
     }
 }
 
@@ -1041,5 +1043,5 @@ void init_idt() {
     set_idt_entry(0xfd, interrupt_handle_0xfd, 0);
     set_idt_entry(0xfe, interrupt_handle_0xfe, 0);
     set_idt_entry(0xff, interrupt_handle_0xff, 0);
-    asm volatile ("lidt %0" : : "m" (m_idt));
+    __asm__ volatile ("lidt %0" : : "m" (m_idt));
 }

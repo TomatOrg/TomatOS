@@ -5,7 +5,6 @@
 #include <util/string.h>
 #include <util/elf64.h>
 
-#include <arch/intrin.h>
 #include <arch/apic.h>
 #include <arch/msr.h>
 
@@ -13,6 +12,8 @@
 
 #include "mem.h"
 #include "early.h"
+
+#include <intrin.h>
 
 // The recursive page table addresses
 #define PAGE_TABLE_PML1            ((page_entry_t*)0xFFFFFF0000000000ull)

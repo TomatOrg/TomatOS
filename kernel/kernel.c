@@ -2,12 +2,11 @@
 
 #include <limine.h>
 
-#include "runtime/dotnet/gc/heap.h"
-#include "runtime/dotnet/loader.h"
-#include "runtime/dotnet/opcodes.h"
-#include "runtime/dotnet/encoding.h"
-#include "runtime/dotnet/jit/jit.h"
-
+#include <runtime/dotnet/encoding.h>
+#include <runtime/dotnet/gc/heap.h>
+#include <runtime/dotnet/jit/jit.h>
+#include <runtime/dotnet/opcodes.h>
+#include <runtime/dotnet/loader.h>
 #include <runtime/dotnet/gc/gc.h>
 
 #include <proc/scheduler.h>
@@ -28,7 +27,6 @@
 #include <time/timer.h>
 #include <acpi/acpi.h>
 
-#include <arch/intrin.h>
 #include <arch/apic.h>
 #include <arch/regs.h>
 #include <arch/gdt.h>
@@ -37,6 +35,7 @@
 #include <stdatomic.h>
 #include <stdalign.h>
 #include <stddef.h>
+#include <intrin.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Limine Requests
@@ -162,7 +161,7 @@ cleanup:
     ERROR("Should not have reached here?!");
     _disable();
     while (1)
-        __asm__("hlt");
+        __halt();
 }
 
 /**
@@ -376,10 +375,6 @@ void _start(void) {
 
     TRACE("Kernel init done");
 
-    // must have preemption, this is fine because we don't actually
-    // have the timer setup yet, so it will not actually preempt
-    __writecr8(PRIORITY_NORMAL);
-
     // create the kernel start thread
     thread_t* thread = create_thread(start_thread, NULL, "kernel/start_thread");
     CHECK(thread != NULL);
@@ -405,5 +400,5 @@ cleanup:
 
     _disable();
     while (1)
-        __asm__("hlt");
+        __halt();
 }

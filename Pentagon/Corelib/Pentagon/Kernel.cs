@@ -5,9 +5,9 @@ namespace Pentagon
     public class Kernel
     {
 
-        public static void Main()
+        public static int Main()
         {
-            
+            return 5;
         }
         
     }

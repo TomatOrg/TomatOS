@@ -35,13 +35,14 @@
 #include "cpu_local.h"
 #include "kernel.h"
 #include "util/stb_ds.h"
+#include "runtime/dotnet/gc/gc.h"
 
 #include <sync/spinlock.h>
-#include <arch/intrin.h>
 #include <arch/apic.h>
 #include <arch/msr.h>
 
 #include <stdatomic.h>
+#include <intrin.h>
 
 // little helper to deal with the global run queue
 typedef struct thread_queue {
@@ -554,6 +555,10 @@ suspend_state_t scheduler_suspend_thread(thread_t* thread) {
                     break;
                 }
 
+                // Clear the preemption request.
+                thread->preempt_stop = false;
+                thread->preempt = false;
+
                 // We stopped the thread, so we have to ready it later
                 stopped = true;
 
@@ -666,6 +671,10 @@ static int32_t CPU_LOCAL m_scheduler_tick;
 // Actually running a thread
 //----------------------------------------------------------------------------------------------------------------------
 
+static void scheduler_set_deadline() {
+    lapic_set_deadline(10 * 1000);
+}
+
 /**
  * Execute the thread on the current cpu
  *
@@ -685,10 +694,10 @@ INTERRUPT static void execute(interrupt_context_t* ctx, thread_t* thread, bool i
         m_scheduler_tick++;
 
         // set a new timeslice of 10 milliseconds
-        lapic_set_deadline(10 * 1000);
+        scheduler_set_deadline();
     } else if (m_scheduler_tick == 0) {
         // this is the first tick, set an initial timeslice
-        lapic_set_deadline(10 * 1000);
+        scheduler_set_deadline();
     }
 
     // set the gprs context
@@ -829,14 +838,10 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
             }
         }
 
-        // TODO: check if we should trigger a collection
-        // TODO: how the fuck do I trigger a collection lmao, is it safe
-        //       to call signal from here?!
-
         //
         // Steal work from other cpus.
         //
-        // limit the number of spinning ms to half the number of busy cpus.
+        // limit the number of spinning cpus to half the number of busy cpus.
         // This is necessary to prevent excessive CPU consumption when
         // cpu count > 1 but the kernel parallelism is low.
         //
@@ -886,7 +891,7 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
 
         // wait for next interrupt, we are already running from interrupt
         // context so we need to re-enable interrupts first
-        asm ("sti; hlt; cli");
+        __asm__ ("sti; hlt; cli");
 
         // remove from idle cpus since we might have work to do
         lock_scheduler();
@@ -993,6 +998,13 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
 
     // unlock a spinlock if needed
     if (current_thread->wait_lock != NULL) {
+        // this is a bit of a special case, because we are unlocking the lock
+        // on behalf of the thread, we need to store its interrupt lock status
+        // aside so the thread will have interrupts again
+        current_thread->save_state.rflags |= current_thread->wait_lock->status ? BIT9 : 0;
+        current_thread->wait_lock->status = false;
+
+        // unlock it properly now
         spinlock_unlock(current_thread->wait_lock);
         current_thread->wait_lock = NULL;
     }
@@ -1019,7 +1031,7 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
 //----------------------------------------------------------------------------------------------------------------------
 
 void scheduler_schedule() {
-    asm volatile (
+    __asm__ volatile (
         "int %0"
         :
         : "i"(IRQ_SCHEDULE)
@@ -1027,7 +1039,7 @@ void scheduler_schedule() {
 }
 
 void scheduler_yield() {
-    asm volatile (
+    __asm__ volatile (
         "int %0"
         :
         : "i"(IRQ_YIELD)
@@ -1035,7 +1047,7 @@ void scheduler_yield() {
 }
 
 void scheduler_park() {
-    asm volatile (
+    __asm__ volatile (
         "int %0"
         :
         : "i"(IRQ_PARK)
@@ -1043,7 +1055,7 @@ void scheduler_park() {
 }
 
 void scheduler_drop_current() {
-    asm volatile (
+    __asm__ volatile (
         "int %0"
         :
         : "i"(IRQ_DROP)

@@ -37,7 +37,8 @@ CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mcmodel=kernel -mno-red-zone
 CFLAGS 		+= -nostdlib -nostdinc
 CFLAGS 		+= -Ikernel -Ilib -Ilimine
-CFLAGS 		+= -isystem lib/libc -Ikernel/libc
+CFLAGS		+= -Ikernel/libc
+CFLAGS 		+= -isystem lib/libc
 CFLAGS 		+= -fms-extensions -Wno-microsoft-anon-tag
 
 SRCS 		:= $(shell find kernel -name '*.c')
