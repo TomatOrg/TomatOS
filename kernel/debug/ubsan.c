@@ -268,8 +268,20 @@ void __ubsan_handle_builtin_unreachable(unreachable_data_t* data) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// TODO: VLA Bound
+// VLA Bound
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct vla_bound_data {
+    source_location_t loc;
+    const type_descriptor_t* type;
+} vla_bound_data_t;
+
+void __ubsan_handle_vla_bound_not_positive(vla_bound_data_t* data, size_t bound) {
+    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("variable length array bound evaluates to non-positive value ");
+    print_value(data->type, bound);
+    print_source_location(data->loc);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Float Cast Overflow
