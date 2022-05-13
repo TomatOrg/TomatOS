@@ -1,11 +1,13 @@
 #pragma once
 
+#include "runtime/dotnet/metadata/metadata_spec.h"
+#include "runtime/dotnet/metadata/metadata.h"
+
 #include <sync/mutex.h>
 
 #include <stdint.h>
 #include <stddef.h>
-#include "runtime/dotnet/metadata/metadata_spec.h"
-#include "runtime/dotnet/metadata/metadata.h"
+#include <stdio.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -156,6 +158,7 @@ struct System_Reflection_Assembly {
     System_Reflection_MethodInfo_Array DefinedMethods;
     System_Reflection_FieldInfo_Array DefinedFields;
     System_Reflection_Module Module;
+    FILE* MirModule;
 
     // we have two entries, one for GC tracking (the array)
     // and one for internally looking up the string entries

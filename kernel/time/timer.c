@@ -3,7 +3,7 @@
 
 #include <arch/cpuid.h>
 
-#include <intrin.h>
+#include "arch/intrin.h"
 
 /**
  * The frequency of the cpu in ticks per microsecond

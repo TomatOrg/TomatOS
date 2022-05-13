@@ -808,7 +808,17 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
       case 'S': {
           size_t i = va_arg(va, size_t);
 
-          static char* sizes[] = { "B", "KB", "MB", "GB", "TB" };
+          static char* sizes[] = {
+              "B",
+              "KB",
+              "MB",
+              "GB",
+              "TB",
+              "PB",
+              "EB",
+              "ZB",
+              "YB"
+          };
           size_t div = 0;
           size_t rem = 0;
 

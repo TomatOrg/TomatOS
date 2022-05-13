@@ -3,7 +3,7 @@
 #include <util/defs.h>
 
 #include <stdatomic.h>
-#include <intrin.h>
+#include "arch/intrin.h"
 
 static bool spinlock_try_lock_weak(spinlock_t* spinlock) {
     bool _false = false;

@@ -4,7 +4,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <intrin.h>
+#include "arch/intrin.h"
 
 void trace_init() {
     __outbyte(0x3f8 + 1, 0x00);

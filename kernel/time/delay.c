@@ -3,7 +3,7 @@
 
 #include <acpi/acpi.h>
 
-#include <intrin.h>
+#include "arch/intrin.h"
 
 /**
  * The pm timer address

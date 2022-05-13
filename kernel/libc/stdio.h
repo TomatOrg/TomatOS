@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdarg.h>
+#include <stdbool.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // MIR requires quite a bit of standard library stuff, so we are going to implement it in here
@@ -11,6 +12,7 @@
 typedef struct FILE {
     char* buffer;
     int read_index;
+    int write_index;
 } FILE;
 
 /**

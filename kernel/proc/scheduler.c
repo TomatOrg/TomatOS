@@ -42,7 +42,7 @@
 #include <arch/msr.h>
 
 #include <stdatomic.h>
-#include <intrin.h>
+#include "arch/intrin.h"
 
 // little helper to deal with the global run queue
 typedef struct thread_queue {

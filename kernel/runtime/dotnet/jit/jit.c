@@ -2570,9 +2570,9 @@ cleanup:
         MIR_finish_module(ctx.context);
 
         // save everything to a module that we can load later
-        FILE* file = fcreate();
-        MIR_write(ctx.context, file);
-        // TODO: save the mir module
+        assembly->MirModule = fcreate();
+        MIR_write(ctx.context, assembly->MirModule);
+        TRACE("module is %d bytes", arrlen(assembly->MirModule->buffer));
 
         MIR_finish(ctx.context);
     }

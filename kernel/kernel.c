@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "runtime/dotnet/app_domain.h"
 
 #include <limine.h>
 
@@ -35,7 +36,7 @@
 #include <stdatomic.h>
 #include <stdalign.h>
 #include <stddef.h>
-#include <intrin.h>
+#include "arch/intrin.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Limine Requests
@@ -189,6 +190,9 @@ static void start_thread() {
     uint64_t start = microtime();
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
     TRACE("Loading corelib took %dms", (microtime() - start) / 1000);
+
+    app_domain_t* app_domain = create_app_domain();
+    app_domain_load(app_domain, g_corelib);
 
 //    TRACE("Types:");
 //    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {

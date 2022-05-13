@@ -4,7 +4,7 @@
 #include <arch/msr.h>
 #include <kernel.h>
 
-#include <intrin.h>
+#include "arch/intrin.h"
 
 extern char __cpu_local_size[];
 

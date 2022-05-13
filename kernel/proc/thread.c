@@ -53,7 +53,7 @@
 #include <util/elf64.h>
 
 #include <stdatomic.h>
-#include <intrin.h>
+#include "arch/intrin.h"
 
 
 //
