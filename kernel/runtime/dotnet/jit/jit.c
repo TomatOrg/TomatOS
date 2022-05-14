@@ -322,7 +322,7 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
         if (res_type[1] == MIR_T_BLK) {
             // value type return
             MIR_var_t var = {
-                .name = "",
+                .name = "rblk",
                 .type = MIR_T_RBLK,
                 .size = method->ReturnType->StackSize
             };
@@ -345,8 +345,10 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
     }
 
     for (int i = 0; i < method->Parameters->Length; i++) {
+        char name[64];
+        snprintf(name, sizeof(name), "arg%d", i);
         MIR_var_t var = {
-            .name = "",
+            .name = _MIR_uniq_string(ctx->context, name),
             .type = get_mir_type(method->Parameters->Data[i]->ParameterType),
         };
         if (var.type == MIR_T_BLK) {
@@ -957,7 +959,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
     // arguments
     MIR_var_t* vars = NULL;
-    FILE** var_names = NULL;
 
     // variables
     MIR_reg_t* locals = NULL;
@@ -979,32 +980,26 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     }
 
     if (!method_is_static(method)) {
-        FILE* var_name = fcreate();
-        fprintf(var_name, "arg%d", arrlen(vars));
-        fputc('\0', var_name);
         MIR_var_t var = {
-            .name = var_name->buffer,
+            .name = "this",
             .type = get_mir_type(method->DeclaringType),
         };
         if (var.type == MIR_T_BLK) {
             var.type = MIR_T_P;
         }
-        arrpush(var_names, var_name);
         arrpush(vars, var);
     }
 
     for (int i = 0; i < method->Parameters->Length; i++) {
-        FILE* var_name = fcreate();
-        fprintf(var_name, "arg%d", arrlen(vars));
-        fputc('\0', var_name);
+        char var_name[64];
+        snprintf(var_name, sizeof(var_name), "arg%d", i);
         MIR_var_t var = {
-            .name = var_name->buffer,
+            .name = _MIR_uniq_string(ctx->context, var_name),
             .type = get_mir_type(method->Parameters->Data[i]->ParameterType),
         };
         if (var.type == MIR_T_BLK) {
             var.size = method->Parameters->Data[i]->ParameterType->StackSize;
         }
-        arrpush(var_names, var_name);
         arrpush(vars, var);
     }
 
@@ -1500,14 +1495,14 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             case CEE_LDARG_3: operand_i32 = opcode - CEE_LDARG_0;
             case CEE_LDARG_S:
             case CEE_LDARG: {
-                // the method_name to resolve it
-                char arg_name[64];
-                snprintf(arg_name, sizeof(arg_name), "arg%d", operand_i32);
+                char arg_name_buf[64];
+                const char* arg_name = NULL;
 
                 // resolve the type
                 System_Type arg_type = NULL;
                 if (!method_is_static(method)) {
                     if (operand_i32 == 0) {
+                        arg_name = "this";
                         arg_type = method->DeclaringType;
                         if (arg_type->IsValueType) {
                             // value types turn into a by-ref when using this
@@ -1515,6 +1510,12 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         }
                     }
                     operand_i32--;
+                }
+
+                // if this is not `this` then get the name
+                if (arg_name == NULL) {
+                    snprintf(arg_name_buf, sizeof(arg_name_buf), "arg%d", operand_i32);
+                    arg_name = arg_name_buf;
                 }
 
                 if (arg_type == NULL) {
@@ -2481,13 +2482,6 @@ cleanup:
 
     // free the name of the method
     fclose(method_name);
-
-    // free var names
-    for (int i = 0; i < arrlen(var_names); i++) {
-        fclose(var_names[i]);
-        var_names[i] = NULL;
-    }
-    arrfree(var_names);
 
     // free the vars
     arrfree(vars);

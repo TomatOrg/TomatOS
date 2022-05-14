@@ -13,10 +13,8 @@ void app_domain_load(app_domain_t* app, System_Reflection_Assembly assembly) {
 
     scheduler_preempt_disable();
 
-    assembly->MirModule->read_index = 0;
+    fseek(assembly->MirModule, 0, SEEK_SET);
     MIR_read(app->context, assembly->MirModule);
-
-    MIR_output(app->context, stdout);
 
     // load all the symbols for this module
 }

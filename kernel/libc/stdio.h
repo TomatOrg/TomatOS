@@ -11,8 +11,7 @@
 
 typedef struct FILE {
     char* buffer;
-    int read_index;
-    int write_index;
+    long read_index;
 } FILE;
 
 /**
@@ -54,6 +53,14 @@ int fputc(int c, FILE* steam);
  * end of file or error.
  */
 int fgetc(FILE* steam);
+
+typedef enum fseek_whence {
+    SEEK_SET,
+    SEEK_END,
+    SEEK_CUR,
+} fseek_whence_t;
+
+int fseek(FILE* stream, long offset, int whence);
 
 /**
  * Print a formatted string to the steam

@@ -29,9 +29,41 @@ int fputc(int c, FILE* stream) {
 int fgetc(FILE* steam) {
     ASSERT(steam != NULL);
     if (steam->read_index < arrlen(steam->buffer)) {
-        return steam->buffer[steam->read_index++];
+        return (int)(unsigned char)steam->buffer[steam->read_index++];
     }
     return EOF;
+}
+
+int fseek(FILE* stream, long offset, int whence) {
+    ASSERT(stream != NULL && stream != stdout && stream != stderr);
+
+    switch (whence) {
+        case SEEK_SET: {
+            if (offset >= arrlen(stream->buffer)) return -1;
+            if (offset < 0) return -1;
+            stream->read_index = offset;
+        } break;
+
+        case SEEK_CUR: {
+            long new_index = stream->read_index + offset;
+            if (new_index >= arrlen(stream->buffer)) return -1;
+            if (new_index < 0) return -1;
+            stream->read_index = new_index;
+        } break;
+
+        case SEEK_END: {
+            if (offset > arrlen(stream->buffer)) return -1;
+            if (offset < 0) return -1;
+            stream->read_index = arrlen(stream->buffer) - offset;
+        } break;
+
+        default: {
+            ASSERT("Invalid whence");
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 int fprintf(FILE* steam, const char* fmt, ...) {
