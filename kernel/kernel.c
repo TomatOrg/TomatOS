@@ -169,12 +169,18 @@ cleanup:
 }
 
 /**
- * This is the module of the corelib, will be freed once the corelib is loaded
+ * The corelib file
  */
-static void* m_corelib_module;
-static size_t m_corelib_module_size;
+static struct limine_file m_corelib_file;
 
-static void start_thread() {
+/**
+ * The kernel file
+ */
+static struct limine_file m_kernel_file;
+
+// TODO: driver files
+
+static void kernel_startup() {
     err_t err = NO_ERROR;
 
     // wait for all the cores to exit the preboot stuff
@@ -190,90 +196,31 @@ static void start_thread() {
     // Initialize the runtime
     CHECK_AND_RETHROW(init_gc());
 
+    // load the corelib
     uint64_t start = microtime();
-    CHECK_AND_RETHROW(loader_load_corelib(m_corelib_module, m_corelib_module_size));
-    TRACE("Loading corelib took %dms", (microtime() - start) / 1000);
+    CHECK_AND_RETHROW(loader_load_corelib(m_corelib_file.address, m_corelib_file.size));
+    TRACE("corelib loading took %dms", (microtime() - start) / 1000);
 
-    app_domain_t* app_domain = create_app_domain();
+    // load the kernel assembly
     start = microtime();
-    app_domain_load(app_domain, g_corelib);
-    app_domain_link(app_domain);
-    TRACE("Loading and linking corelib to app domain took %dms", (microtime() - start) / 1000);
+    System_Reflection_Assembly kernel_asm = NULL;
+//    CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
+    TRACE("kernel loading took %dms", (microtime() - start) / 1000);
 
-//    TRACE("Types:");
-//    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {
-//        System_Type type = g_corelib->DefinedTypes->Data[i];
-//        if (type->BaseType != NULL) {
-//            TRACE("\t%s %U.%U : %U.%U", type_visibility_str(type_visibility(type)),
-//                  type->Namespace, type->Name,
-//                  type->BaseType->Namespace, type->BaseType->Name);
-//        } else {
-//            TRACE("\t%s %U.%U", type_visibility_str(type_visibility(type)),
-//                  type->Namespace, type->Name);
-//        }
-//
-//        for (int j = 0; j < type->Fields->Length; j++) {
-//            CHECK(type->Fields->Data[j] != NULL);
-//            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
-//                  field_access_str(field_access(type->Fields->Data[j])),
-//                  field_is_static(type->Fields->Data[j]) ? "static " : "",
-//                  type->Fields->Data[j]->FieldType->Namespace,
-//                  type->Fields->Data[j]->FieldType->Name,
-//                  type->Fields->Data[j]->Name,
-//                  type->Fields->Data[j]->MemoryOffset);
-//        }
-//
-//        for (int j = 0; j < type->Methods->Length; j++) {
-//            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
-//            CHECK(mi != NULL);
-//
-//#define APPEND(...) \
-//                offset += snprintf(mi_str + offset, sizeof(mi_str) - offset, __VA_ARGS__);
-//
-//            char mi_str[512] = { 0 };
-//            int offset = 0;
-//
-//            if (method_is_static(mi)) {
-//                APPEND("static ");
-//            }
-//
-//            if (method_is_final(mi)) {
-//                APPEND("final ");
-//            }
-//
-//            if (method_is_virtual(mi)) {
-//                APPEND("virtual[%d] ", mi->VtableOffset);
-//                CHECK(type->VirtualMethods->Data[mi->VtableOffset] == mi);
-//            }
-//
-//            if (mi->ReturnType == NULL) {
-//                APPEND("void ");
-//            } else {
-//                APPEND("%U.%U ", mi->ReturnType->Namespace, mi->ReturnType->Name);
-//            }
-//            APPEND("%U", mi->Name);
-//            APPEND("(");
-//
-//            for (int pi = 0; pi < mi->Parameters->Length; pi++) {
-//                APPEND("%U.%U", mi->Parameters->Data[pi]->ParameterType->Namespace, mi->Parameters->Data[pi]->ParameterType->Name);
-//                if (pi + 1 != mi->Parameters->Length) {
-//                    APPEND(", ");
-//                }
-//            }
-//            APPEND(")");
-//
-//            TRACE("\t\t%s", mi_str);
-//
-//            opcode_disasm_method(mi);
-//        }
-//
-//        TRACE("");
-//    }
+    // create the app domain with both assemblies
+    start = microtime();
+    app_domain_t* kernel_domain = create_app_domain();
+    CHECK(kernel_domain != NULL);
+    app_domain_load(kernel_domain, g_corelib);
+//    app_domain_load(kernel_domain, kernel_asm);
+    app_domain_link(kernel_domain);
+    TRACE("Kernel app domain creation took %dms", (microtime() - start) / 1000);
+
+    // TODO: get the main method and call it
 
 cleanup:
     ASSERT(!IS_ERROR(err));
-    TRACE("Bai Bai!");
-    while(1);
+    TRACE("Kernel initialization finished!");
 }
 
 void _start(void) {
@@ -368,14 +315,12 @@ void _start(void) {
 
     // load the corelib module
     TRACE("Boot modules:");
-    struct limine_file* corelib_file = NULL;
-    struct limine_file* kernel_file = NULL;
     for (int i = 0; i < g_limine_module.response->module_count; i++) {
         struct limine_file* file = g_limine_module.response->modules[i];
         if (strcmp(file->path, "/boot/Corelib.dll") == 0) {
-            corelib_file = file;
-        } else if (strcmp(file->path, "/boot/Corelib.dll") == 0) {
-            kernel_file = file;
+            m_corelib_file = *file;
+        } else if (strcmp(file->path, "/boot/Pentagon.dll") == 0) {
+            m_kernel_file = *file;
         } else {
             // TODO: if in /drivers/ folder then load it
             // TODO: load a driver manifest for load order
@@ -383,16 +328,13 @@ void _start(void) {
         TRACE("\t%s", file->path);
     }
 
-    CHECK_ERROR(corelib_file != NULL, ERROR_NOT_FOUND);
-    m_corelib_module_size = corelib_file->size;
-    m_corelib_module = malloc(m_corelib_module_size);
-    memcpy(m_corelib_module, corelib_file->address, m_corelib_module_size);
-    TRACE("Corelib: %S", m_corelib_module_size);
+    TRACE("Corelib: %S", m_corelib_file.size);
+    TRACE("Kernel: %S", m_kernel_file.size);
 
     TRACE("Kernel init done");
 
     // create the kernel start thread
-    thread_t* thread = create_thread(start_thread, NULL, "kernel/start_thread");
+    thread_t* thread = create_thread(kernel_startup, NULL, "kernel/startup");
     CHECK(thread != NULL);
     scheduler_ready_thread(thread);
 
