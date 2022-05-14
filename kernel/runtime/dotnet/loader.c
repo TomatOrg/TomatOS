@@ -433,6 +433,17 @@ cleanup:
     return err;
 }
 
+/**
+ * Checks if a value type without needing to initialize the full type
+ */
+static bool unprimed_is_value_type(System_Type type) {
+    while (type != NULL) {
+        if (type == tSystem_ValueType) return true;
+        type = type->BaseType;
+    }
+    return false;
+}
+
 err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments, System_Type_Array genericMethodArguments) {
     err_t err = NO_ERROR;
     static int depth = 0;
@@ -471,6 +482,11 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
 
         // fill the type information of the parent
         CHECK_AND_RETHROW(loader_fill_type(type->BaseType, genericTypeArguments, genericMethodArguments));
+
+        // check we have a size
+        if (!type->BaseType->IsValueType) {
+            CHECK(type->BaseType->ManagedSize != 0);
+        }
 
         // now check if it has virtual methods
         if (type->BaseType->VirtualMethods != NULL) {
@@ -566,6 +582,8 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             type->StackSize = sizeof(void*);
         }
 
+        // for non-static we have two steps, first resolve all the stack sizes, for ref types
+        // we are not going to init ourselves yet
         for (int i = 0; i < type->Fields->Length; i++) {
             System_Reflection_FieldInfo fieldInfo = type->Fields->Data[i];
             if (field_is_static(fieldInfo)) continue;
@@ -576,7 +594,12 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             }
 
             // Fill it
-            CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
+            if (unprimed_is_value_type(fieldInfo->FieldType)) {
+                CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
+                CHECK(fieldInfo->FieldType->StackSize != 0);
+            } else {
+                fieldInfo->FieldType->StackSize = sizeof(void*);
+            }
 
             if (field_is_literal(fieldInfo)) {
                 CHECK_FAIL("TODO: Handle literal or rva");
@@ -624,9 +647,9 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             // This has a C type equivalent, verify the sizes match
             CHECK(type->ManagedSize == managedSize && type->ManagedAlignment == managedAlignment,
                   "Size mismatch for type %U.%U (native: %d bytes (%d), dotnet: %d bytes (%d))",
-                      type->Namespace, type->Name,
-                      type->ManagedSize, type->ManagedAlignment,
-                      managedSize, managedAlignment);
+                  type->Namespace, type->Name,
+                  type->ManagedSize, type->ManagedAlignment,
+                  managedSize, managedAlignment);
         }
         type->ManagedSize = managedSize;
         type->ManagedAlignment = managedAlignment;
@@ -636,6 +659,20 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         if (type->StackSize == 0) {
             type->StackSize = type->ManagedSize;
             type->StackAlignment = type->ManagedAlignment;
+        }
+
+        // now that we initialized the instance size of this, we can go over and initialize
+        // all the fields, both static and non-static
+        for (int i = 0; i < type->Fields->Length; i++) {
+            System_Reflection_FieldInfo fieldInfo = type->Fields->Data[i];
+
+            if (type_is_generic_type(type)) {
+                // Clone the type?
+                CHECK_FAIL("TODO: Handle generic instantiation");
+            }
+
+            // Fill it
+            CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -914,7 +951,10 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     CHECK_AND_RETHROW(validate_have_init_types());
 
     // create the module
+    CHECK(metadata.tables[METADATA_MODULE].rows == 1);
+    metadata_module_t* module = metadata.tables[METADATA_MODULE].table;
     assembly->Module = GC_NEW(tSystem_Reflection_Module);
+    assembly->Module->Name = new_string_from_cstr(module->name);
     assembly->Module->Assembly = assembly;
 
     assembly->DefinedMethods = gc_new(NULL, sizeof(struct System_Array) + method_count * sizeof(System_Reflection_MethodInfo));
@@ -944,6 +984,9 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
 
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));
+
+    // get the entry point
+    GC_UPDATE(assembly, EntryPoint, assembly_get_method_by_token(assembly, file.cli_header->entry_point_token));
 
     // save this
     g_corelib = assembly;

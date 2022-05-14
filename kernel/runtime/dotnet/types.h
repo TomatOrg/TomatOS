@@ -158,10 +158,15 @@ struct System_Reflection_Assembly {
     System_Reflection_MethodInfo_Array DefinedMethods;
     System_Reflection_FieldInfo_Array DefinedFields;
     System_Reflection_Module Module;
+    System_Reflection_MethodInfo EntryPoint;
+
+    // the loaded module
+    // TODO: turn into an array for easy management
     FILE* MirModule;
 
     // we have two entries, one for GC tracking (the array)
     // and one for internally looking up the string entries
+    // TODO: turn into a Dictionary for easy management
     System_String_Array UserStrings;
     struct {
         int key;
