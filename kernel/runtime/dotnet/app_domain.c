@@ -34,8 +34,6 @@ void app_domain_load(app_domain_t* app, System_Reflection_Assembly assembly) {
     fseek(assembly->MirModule, 0, SEEK_SET);
     MIR_read(app->context, assembly->MirModule);
 
-    MIR_output(app->context, stdout);
-
     // load all the type references
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
         System_Type type = assembly->DefinedTypes->Data[i];

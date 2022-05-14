@@ -557,7 +557,6 @@ suspend_state_t scheduler_suspend_thread(thread_t* thread) {
 
                 // Clear the preemption request.
                 thread->preempt_stop = false;
-                thread->preempt = false;
 
                 // We stopped the thread, so we have to ready it later
                 stopped = true;
@@ -577,7 +576,6 @@ suspend_state_t scheduler_suspend_thread(thread_t* thread) {
 
                 // Clear the preemption request.
                 thread->preempt_stop = false;
-                thread->preempt = false;
 
                 // The thread is already at a safe-point
                 // and we've now locked that in.
@@ -595,9 +593,8 @@ suspend_state_t scheduler_suspend_thread(thread_t* thread) {
                     break;
                 }
 
-                // Request synchronous preemption.
+                // Request preemption
                 thread->preempt_stop = true;
-                thread->preempt = true;
 
                 // Prepare for asynchronous preemption.
                 cas_from_suspend(thread, THREAD_STATUS_RUNNING | THREAD_SUSPEND, THREAD_STATUS_RUNNING);
@@ -1020,7 +1017,7 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     if (current_thread != NULL) {
-        TRACE("TODO: release this, something with ref counts or idk");
+        free_thread(current_thread);
     }
 
     schedule(ctx);

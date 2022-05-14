@@ -152,12 +152,13 @@ typedef struct thread {
     // thread control block
     thread_control_block_t* tcb;
 
+    // the bottom of the stack, so
+    // we can free it later
+    void* stack_bottom;
+
     //
     // scheduling related
     //
-
-    // preemption signal
-    bool preempt;
 
     // transition to THREAD_STATUS_PREEMPTED on preemption, otherwise just deschedule
     bool preempt_stop;
@@ -223,11 +224,24 @@ typedef void(*thread_entry_t)(void* ctx);
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...);
 
 /**
- * Called upon a thread exit
- *
- * @param thread    [IN] The thread that exited
+ * Exits from the currently running thread
  */
 void thread_exit();
+
+/**
+ * Free a thread
+ *
+ * Must be called from a context with no preemption
+ *
+ * @param thread    [IN] The thread to free
+ */
+void free_thread(thread_t* thread);
+
+/**
+ * Reclaims free threads from the global free list, useful
+ * if the kernel heap has run out or we ran out of free stacks
+ */
+void reclaim_free_threads();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // All thread iteration

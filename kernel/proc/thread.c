@@ -355,9 +355,12 @@ static thread_t* alloc_thread() {
     thread_t* thread = malloc(sizeof(thread_t));
     CHECK(thread != NULL);
 
+    thread->stack_bottom = alloc_stack();
+    CHECK(thread->stack_bottom != NULL);
+
     // allocate the tcb
     void* tcb_bottom = malloc_aligned(m_tls_size + sizeof(thread_control_block_t), m_tls_align);
-    CHECK(tcb_bottom != 0);
+    CHECK(tcb_bottom != NULL);
     thread->tcb = tcb_bottom + m_tls_size;
 
     // set the tcb base in the tcb (part of sysv)
@@ -396,7 +399,7 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     memset(&thread->save_state, 0, sizeof(thread->save_state));
     thread->save_state.rip = (uint64_t) entry;
     thread->save_state.rflags = BIT1 | BIT9 | BIT21;
-    thread->save_state.rsp = (uint64_t)alloc_stack();
+    thread->save_state.rsp = (uint64_t) thread->stack_bottom;
 
     // we want the return address to be thread_exit
     // and the stack to be aligned to 16 bytes + 8
@@ -429,3 +432,49 @@ void thread_exit() {
     scheduler_drop_current();
 }
 
+void free_thread(thread_t* thread) {
+    thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
+
+    // change the status to dead
+    cas_thread_state(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_DEAD);
+
+    // add to the list
+    thread_list_push(free_threads, thread);
+    m_free_threads_count++;
+
+    // if we have too many threads locally on the cpu
+    // move some of them to the global threads list
+    if (m_free_threads_count >= 64) {
+        spinlock_lock(&m_global_free_threads_lock);
+        while (m_free_threads_count >= 32) {
+            thread = thread_list_pop(free_threads);
+            m_free_threads_count--;
+            thread_list_push(&m_global_free_threads, thread);
+            m_global_free_threads_count++;
+        }
+        spinlock_unlock(&m_global_free_threads_lock);
+    }
+}
+
+void reclaim_free_threads() {
+    int free_count = 0;
+
+    spinlock_lock(&m_global_free_threads_lock);
+    while (!thread_list_empty(&m_global_free_threads)) {
+        thread_t* thread = thread_list_pop(&m_global_free_threads);
+        m_global_free_threads_count--;
+
+        // free the thread control block
+        void* tcb = thread->tcb - m_tls_size;
+        free(tcb);
+
+        // free the stack
+        free_stack(thread->stack_bottom);
+
+        // free the thread itself
+        free(thread);
+    }
+    spinlock_unlock(&m_global_free_threads_lock);
+
+    TRACE("Reclaimed %d threads from the global free list", free_count);
+}
