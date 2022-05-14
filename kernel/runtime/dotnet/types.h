@@ -154,11 +154,20 @@ DEFINE_ARRAY(System_Int32);
 
 struct System_Reflection_Assembly {
     struct System_Object;
+
+    // the module and entry point of this assembly
+    System_Reflection_Module Module;
+    System_Reflection_MethodInfo EntryPoint;
+
+    // types defined inside the binary
     System_Type_Array DefinedTypes;
     System_Reflection_MethodInfo_Array DefinedMethods;
     System_Reflection_FieldInfo_Array DefinedFields;
-    System_Reflection_Module Module;
-    System_Reflection_MethodInfo EntryPoint;
+
+    // types imported from other assemblies, for easy lookup whenever needed
+    System_Type_Array ImportedTypes;
+    System_Reflection_MethodInfo_Array ImportedMethods;
+    System_Reflection_FieldInfo_Array ImportedFields;
 
     // the loaded module
     // TODO: turn into an array for easy management
@@ -174,17 +183,11 @@ struct System_Reflection_Assembly {
     }* UserStringsTable;
 };
 
-/**
- * Get a type by its token, returns NULL if not found
- *
- * @param assembly  [IN] The assembly this token is coming from
- * @param token     [IN] The token of the type to get
- */
 System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, token_t token);
-
 System_Reflection_MethodInfo assembly_get_method_by_token(System_Reflection_Assembly assembly, token_t token);
-
 System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assembly assembly, token_t token);
+
+System_Type assembly_get_type_by_name(System_Reflection_Assembly assembly, const char* name, const char* namespace);
 
 System_String assembly_get_string_by_token(System_Reflection_Assembly assembly, token_t token);
 

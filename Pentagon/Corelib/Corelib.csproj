@@ -4,7 +4,6 @@
         <NoStdLib>true</NoStdLib>
         <NoConfig>true</NoConfig>
         <TargetFramework>net6.0</TargetFramework>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
         <DisableImplicitNamespaceImports_DotNet>true</DisableImplicitNamespaceImports_DotNet>
         <RootNamespace />

@@ -12,6 +12,22 @@
 
 System_Reflection_Assembly g_corelib = NULL;
 
+
+// TODO: we really need a bunch of constants for the flags for better readability
+
+/**
+ * Validates the metadata itself according to the rules specified in ECMA 335, this should
+ * allow us to prevent edge cases, like duplicates, weird flags combinations and more.
+ */
+static err_t validate_metadata(metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+
+
+cleanup:
+    return err;
+}
+
 static err_t decode_metadata(pe_file_t* ctx, metadata_t* metadata) {
     err_t err = NO_ERROR;
     void* metadata_root = NULL;
@@ -22,6 +38,9 @@ static err_t decode_metadata(pe_file_t* ctx, metadata_t* metadata) {
 
     // parse it
     CHECK_AND_RETHROW(metadata_parse(ctx, metadata_root, ctx->cli_header->metadata.size, metadata));
+
+    // now validate it
+    CHECK_AND_RETHROW(validate_metadata(metadata));
 
 cleanup:
     // we no longer need this
@@ -985,12 +1004,160 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));
 
-    // get the entry point
-    GC_UPDATE(assembly, EntryPoint, assembly_get_method_by_token(assembly, file.cli_header->entry_point_token));
-
     // save this
     g_corelib = assembly;
     gc_add_root(&g_corelib);
+
+cleanup:
+    free_metadata(&metadata);
+    free_pe_file(&file);
+
+    return err;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// this is the normal parsing and initialization
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static err_t loader_load_refs(System_Reflection_Assembly assembly, metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+    metadata_assembly_ref_t* assembly_refs = metadata->tables[METADATA_ASSEMBLY_REF].table;
+    size_t assembly_refs_count = metadata->tables[METADATA_ASSEMBLY_REF].rows;
+
+    //
+    // resolve all external types which are assembly ref, this makes it easier
+    // for resolving other stuff later on
+    //
+
+    metadata_type_ref_t* type_refs = metadata->tables[METADATA_TYPE_REF].table;
+    size_t type_refs_count = metadata->tables[METADATA_TYPE_REF].rows;
+
+    GC_UPDATE(assembly, ImportedTypes, GC_NEW_ARRAY(tSystem_Type, type_refs_count));
+
+    for (int i = 0; i < type_refs_count; i++) {
+        metadata_type_ref_t* type_ref = &type_refs[i];
+        if (type_ref->resolution_scope.table != METADATA_ASSEMBLY_REF) continue;
+
+        // get the ref
+        CHECK(0 < type_ref->resolution_scope.index && type_ref->resolution_scope.index <= assembly_refs_count);
+        metadata_assembly_ref_t* assembly_ref = &assembly_refs[type_ref->resolution_scope.index - 1];
+
+        // resolve the assembly
+        System_Reflection_Assembly refed = NULL;
+        if (strcmp(assembly_ref->name, "Corelib") == 0) {
+            refed = g_corelib;
+        } else {
+            // TODO: properly load anything which is not loaded
+            CHECK_FAIL();
+        }
+        CHECK(refed != NULL);
+
+        // TODO: validate the version we have loaded
+
+        // get the type
+        System_Type refed_type = assembly_get_type_by_name(refed, type_ref->type_name, type_ref->type_namespace);
+        CHECK(refed_type != NULL, "Missing type `%s.%s` in assembly `%s`", type_ref->type_namespace, type_ref->type_name, assembly_ref->name);
+
+        // store it
+        GC_UPDATE_ARRAY(assembly->ImportedTypes, i, refed_type);
+    }
+
+    //
+    // TODO: resolve field refs
+    //
+
+    //
+    // TODO: resolve method refs
+    //
+
+    //
+    // TODO: resolve externals which are nested types
+    //
+
+    //
+    // validate we got everything
+    //
+
+    for (int i = 0; i < assembly->ImportedTypes->Length; i++) {
+        CHECK(assembly->ImportedTypes->Data[i] != NULL);
+    }
+
+//    for (int i = 0; i < assembly->ImportedMethods->Length; i++) {
+//        CHECK(assembly->ImportedMethods->Data[i] != NULL);
+//    }
+//
+//    for (int i = 0; i < assembly->ImportedFields->Length; i++) {
+//        CHECK(assembly->ImportedFields->Data[i] != NULL);
+//    }
+
+cleanup:
+    return err;
+}
+
+err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_Assembly* out_assembly) {
+    err_t err = NO_ERROR;
+    metadata_t metadata = { 0 };
+
+    // Start by loading the PE file for the corelib
+    pe_file_t file = {
+            .file = buffer,
+            .file_size = buffer_size
+    };
+    CHECK_AND_RETHROW(pe_parse(&file));
+
+    // decode the dotnet metadata
+    CHECK_AND_RETHROW(decode_metadata(&file, &metadata));
+
+    // allocate the new assembly
+    System_Reflection_Assembly assembly = GC_NEW(tSystem_Reflection_Assembly);
+
+    // first thing first, load all the external dependencies
+    CHECK_AND_RETHROW(loader_load_refs(assembly, &metadata));
+
+    // load all the types and stuff
+    int types_count = metadata.tables[METADATA_TYPE_DEF].rows;
+    metadata_type_def_t* type_defs = metadata.tables[METADATA_TYPE_DEF].table;
+
+    int method_count = metadata.tables[METADATA_METHOD_DEF].rows;
+    int field_count = metadata.tables[METADATA_FIELD].rows;
+
+    // create all the types
+    GC_UPDATE(assembly, DefinedTypes, GC_NEW_ARRAY(tSystem_Type, types_count));
+    for (int i = 0; i < types_count; i++) {
+        GC_UPDATE_ARRAY(assembly->DefinedTypes, i, GC_NEW(tSystem_Type));
+    }
+
+    // create the module
+    CHECK(metadata.tables[METADATA_MODULE].rows == 1);
+    metadata_module_t* module = metadata.tables[METADATA_MODULE].table;
+    GC_UPDATE(assembly, Module, GC_NEW(tSystem_Reflection_Module));
+    GC_UPDATE(assembly->Module, Name, new_string_from_cstr(module->name));
+    GC_UPDATE(assembly->Module, Assembly, assembly);
+
+    // create all the methods and fields
+    GC_UPDATE(assembly, DefinedMethods, GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, method_count));
+    GC_UPDATE(assembly, DefinedFields, GC_NEW_ARRAY(tSystem_Reflection_FieldInfo, field_count));
+
+    // do first time type init
+    CHECK_AND_RETHROW(setup_type_info(&file, &metadata, assembly));
+
+    // initialize all the types we have
+    for (int i = 0; i < types_count; i++) {
+        CHECK_AND_RETHROW(loader_fill_type(assembly->DefinedTypes->Data[i], NULL, NULL));
+    }
+
+    // now get all the user strings into our pool
+    CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
+
+    // now jit it (or well, prepare the ir of it)
+    CHECK_AND_RETHROW(jit_assembly(assembly));
+
+    // get the entry point
+    GC_UPDATE(assembly, EntryPoint, assembly_get_method_by_token(assembly, file.cli_header->entry_point_token));
+
+    // give out the assembly
+    *out_assembly = assembly;
 
 cleanup:
     free_metadata(&metadata);

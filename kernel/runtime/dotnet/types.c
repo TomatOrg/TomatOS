@@ -108,7 +108,11 @@ System_Type assembly_get_type_by_token(System_Reflection_Assembly assembly, toke
         } break;
 
         case METADATA_TYPE_REF: {
-            ASSERT(!"assembly_get_type_by_token: TODO: TypeRef");
+            if (token.index - 1 >= assembly->ImportedTypes->Length) {
+                ASSERT(!"assembly_get_type_by_token: token outside of range");
+                return NULL;
+            }
+            return assembly->ImportedTypes->Data[token.index - 1];
         } break;
 
         case METADATA_TYPE_SPEC: {
@@ -136,6 +140,10 @@ System_Reflection_MethodInfo assembly_get_method_by_token(System_Reflection_Asse
             return assembly->DefinedMethods->Data[token.index - 1];
         } break;
 
+        case METADATA_MEMBER_REF: {
+            ASSERT(!"assembly_get_method_by_token: TODO: MemberRef");
+        } break;
+
         default:
             ASSERT(!"assembly_get_method_by_token: invalid table for type");
             return NULL;
@@ -161,6 +169,16 @@ System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assemb
             ASSERT(!"assembly_get_field_by_token: invalid table for type");
             return NULL;
     }
+}
+
+System_Type assembly_get_type_by_name(System_Reflection_Assembly assembly, const char* name, const char* namespace) {
+    for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
+        System_Type type = assembly->DefinedTypes->Data[i];
+        if (string_equals_cstr(type->Namespace, namespace) && string_equals_cstr(type->Name, name)) {
+            return type;
+        }
+    }
+    return NULL;
 }
 
 System_String assembly_get_string_by_token(System_Reflection_Assembly assembly, token_t token) {

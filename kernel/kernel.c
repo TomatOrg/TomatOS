@@ -204,7 +204,7 @@ static void kernel_startup() {
     // load the kernel assembly
     start = microtime();
     System_Reflection_Assembly kernel_asm = NULL;
-//    CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
+    CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
     TRACE("kernel loading took %dms", (microtime() - start) / 1000);
 
     // create the app domain with both assemblies
@@ -212,7 +212,7 @@ static void kernel_startup() {
     app_domain_t* kernel_domain = create_app_domain();
     CHECK(kernel_domain != NULL);
     app_domain_load(kernel_domain, g_corelib);
-//    app_domain_load(kernel_domain, kernel_asm);
+    app_domain_load(kernel_domain, kernel_asm);
     app_domain_link(kernel_domain);
     TRACE("Kernel app domain creation took %dms", (microtime() - start) / 1000);
 

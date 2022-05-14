@@ -17,6 +17,8 @@ extern System_Reflection_Assembly g_corelib;
  */
 err_t loader_load_corelib(void* buffer, size_t buffer_size);
 
+err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_Assembly* assembly);
+
 /**
  * Fill the type information of the given type
  */
