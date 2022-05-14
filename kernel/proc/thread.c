@@ -405,6 +405,10 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     PUSH64(thread->save_state.rsp, 0);
     PUSH64(thread->save_state.rsp, thread_exit);
 
+    // finally setup a proper floating point context (according to sys-v abi)
+    thread->save_state.fx_save_state.fcw = BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5 | BIT8 | BIT9;
+    thread->save_state.fx_save_state.mxcsr = BIT7 | BIT8 | BIT9 | BIT10 | BIT11 | BIT12;
+
     // set the state as waiting
     cas_thread_state(thread, THREAD_STATUS_DEAD, THREAD_STATUS_WAITING);
 

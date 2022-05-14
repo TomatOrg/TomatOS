@@ -91,10 +91,13 @@ cleanup:
 static void enable_cpu_features() {
     cr0_t cr0 = { .packed = __readcr0() };
     cr0.WP = 1;
+    cr0.EM = 0;
+    cr0.MP = 1;
     __writecr0(cr0.packed);
 
     cr4_t cr4 = { .packed = __readcr4() };
     cr4.OSFXSR = 1;
+    cr4.OSXMMEXCPT = 1;
     __writecr4(cr4.packed);
 }
 
@@ -192,7 +195,10 @@ static void start_thread() {
     TRACE("Loading corelib took %dms", (microtime() - start) / 1000);
 
     app_domain_t* app_domain = create_app_domain();
+    start = microtime();
     app_domain_load(app_domain, g_corelib);
+    app_domain_link(app_domain);
+    TRACE("Loading and linking corelib to app domain took %dms", (microtime() - start) / 1000);
 
 //    TRACE("Types:");
 //    for (int i = 0; i < g_corelib->DefinedTypes->Length; i++) {

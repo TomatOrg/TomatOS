@@ -25,7 +25,7 @@ static void exch(char* base,size_t size,size_t a,size_t b) {
 static void quicksort(char* base,size_t size,ssize_t l,ssize_t r,
                       int (*compar)(const void*,const void*)) {
     ssize_t i=l-1, j=r, p=l-1, q=r, k;
-    char* v=base+r*size;
+    char* v=(char*)((uintptr_t)base+r*size);
     if (r<=l) return;
     for (;;) {
         while (++i != r && compar(base+i*size,v)<0) ;

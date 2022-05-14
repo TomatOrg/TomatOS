@@ -269,26 +269,14 @@ cleanup:
 // Name formatting
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void print_full_type_name(System_Type type, FILE* file) {
-    if (type->DeclaringType != NULL) {
-        print_full_type_name(type, file);
-        fputc('+', file);
-    } else {
-        if (type->Namespace->Length > 0) {
-            fprintf(file, "%U.", type->Namespace);
-        }
-    }
-    fprintf(file, "%U", type->Name);
-}
-
 static void print_full_method_name(System_Reflection_MethodInfo method, FILE* name) {
-    print_full_type_name(method->DeclaringType, name);
+    type_print_full_name(method->DeclaringType, name);
     fputc(':', name);
     fputc(':', name);
     fprintf(name, "%U", method->Name);
     fputc('(', name);
     for (int i = 0; i < method->Parameters->Length; i++) {
-        print_full_type_name(method->Parameters->Data[i]->ParameterType, name);
+        type_print_full_name(method->Parameters->Data[i]->ParameterType, name);
         if (i + 1 != method->Parameters->Length) {
             fputc(',', name);
         }
@@ -2526,7 +2514,7 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
         System_Type type = assembly->DefinedTypes->Data[i];
         FILE* name = fcreate();
-        print_full_type_name(type, name);
+        type_print_full_name(type, name);
         fputc('\0', name);
         hmput(ctx.types, type, MIR_new_import(ctx.context, name->buffer));
         fclose(name);

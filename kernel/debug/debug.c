@@ -92,6 +92,45 @@ void debug_disasm_at(void* ptr, int opcodes) {
     }
 }
 
+//void _MIR_dump_code (const char *name, int index, uint8_t *code, size_t _code_len) {
+//    int64_t code_len = (int64_t)_code_len;
+//    // initialize decoder and formatter
+//    ZydisDecoder decoder;
+//    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
+//
+//    ZydisFormatter formatter;
+//    ZydisFormatterInit(&formatter, ZYDIS_FORMATTER_STYLE_INTEL);
+//    default_print_address_absolute = (ZydisFormatterFunc)&ZydisFormatterPrintAddressAbsolute;
+//    ZydisFormatterSetHook(&formatter, ZYDIS_FORMATTER_FUNC_PRINT_ADDRESS_ABS, (const void**)&default_print_address_absolute);
+//
+//    // decode and print it
+//    ZydisDecodedInstruction instruction;
+//    ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT_VISIBLE];
+//    while (ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, code, UINT64_MAX,
+//                                               &instruction, operands, ZYDIS_MAX_OPERAND_COUNT_VISIBLE,
+//                                               ZYDIS_DFLAG_VISIBLE_OPERANDS_ONLY))) {
+//        // format the opcode_info
+//        char buffer[256];
+//        ZydisFormatterFormatInstruction(&formatter, &instruction, operands,
+//                                        instruction.operand_count_visible, buffer, sizeof(buffer),
+//                                        (uintptr_t)code);
+//
+//        // get the symbol name
+//        char addr_buffer[256] = { 0 };
+//        debug_format_symbol((uintptr_t)code, addr_buffer, sizeof(addr_buffer));
+//
+//        // print it
+//        printf(" %s: %s\n\r", addr_buffer, buffer);
+//
+//        // next...
+//        code += instruction.length;
+//        code_len -= instruction.length;
+//        if (code_len <= 0) {
+//            break;
+//        }
+//    }
+//}
+
 static void insert_symbol(symbol_t symbol) {
     for (int i = 0; i < arrlen(m_symbols); i++) {
         if (m_symbols[i].address > symbol.address) {

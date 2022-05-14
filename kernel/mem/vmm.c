@@ -308,17 +308,23 @@ cleanup:
 err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
-    size_t pml1i = ((uintptr_t)va >> 12) & 0xFFFFFFFFFull;
-
     // simply iterate all the indexes and free them
-    for (int i = 0; i < page_count; i++, pml1i++) {
+    for (int i = 0; i < page_count; i++, va += PAGE_SIZE) {
+        size_t pml1i = ((uintptr_t)va >> 12) & 0xFFFFFFFFFull;
+
+        // make sure the page is mapped and change the write/exec perms
         CHECK(PAGE_TABLE_PML1[pml1i].present);
         PAGE_TABLE_PML1[pml1i].writeable = (perms & MAP_WRITE) ? 1 : 0;
         PAGE_TABLE_PML1[pml1i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
 
+        // unmap if needed
         if (perms & MAP_UNMAP_DIRECT) {
             vmm_unmap_direct_page(PAGE_TABLE_PML1[pml1i].frame << 12);
         }
+
+        // invalidate the TLB entry
+        // TODO: shootdown for the other cores
+        __invlpg(va);
     }
 
 cleanup:

@@ -297,9 +297,9 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
         } else if (page_fault_code.instruction_fetch) {
             ERROR("tried to run non-executable code");
         } else {
-            const char* rw = page_fault_code.write ? "write" : "read";
-            if (page_fault_code.present) {
-                ERROR("%s from non-present page", rw);
+            const char* rw = page_fault_code.write ? "write to" : "read from";
+            if (!page_fault_code.present) {
+                ERROR("%s non-present page", rw);
             } else {
                 ERROR("page-protection violation when %s page", rw);
             }

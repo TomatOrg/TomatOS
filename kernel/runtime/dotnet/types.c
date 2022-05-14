@@ -425,3 +425,26 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
 
     return false;
 }
+
+void type_print_full_name(System_Type type, FILE* file) {
+    if (type->DeclaringType != NULL) {
+        type_print_full_name(type, file);
+        fputc('+', file);
+    } else {
+        if (type->Namespace->Length > 0) {
+            fprintf(file, "%U.", type->Namespace);
+        }
+    }
+    fprintf(file, "%U", type->Name);
+}
+
+bool isinstance(System_Object object, System_Type type) {
+    System_Type objectType = object->type;
+    while (objectType != NULL) {
+        if (objectType == type) {
+            return true;
+        }
+        objectType = objectType->BaseType;
+    }
+    return false;
+}

@@ -428,6 +428,8 @@ System_Type get_array_type(System_Type Type);
 
 System_Type get_by_ref_type(System_Type Type);
 
+void type_print_full_name(System_Type Type, FILE* output);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 extern System_Type tSystem_Enum;
@@ -478,3 +480,6 @@ System_Type type_get_intermediate_type(System_Type T);
 bool type_is_array_element_compatible_with(System_Type T, System_Type U);
 bool type_is_compatible_with(System_Type T, System_Type U);
 bool type_is_verifier_assignable_to(System_Type Q, System_Type R);
+
+bool isinstance(System_Object object, System_Type type);
+

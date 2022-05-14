@@ -47,7 +47,6 @@ LDFLAGS		+= -Tkernel/linker.ld
 
 # For the printf library
 CFLAGS		+= -DPRINTF_NTOA_BUFFER_SIZE=64
-CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_FLOAT
 CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_EXPONENTIAL
 
 #-----------------------------------------------------------------------------------------------------------------------
