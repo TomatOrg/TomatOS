@@ -28,7 +28,8 @@ sudo cp -rv limine/limine.sys out/build/test_image/boot/
 sudo cp -rv \
   out/bin/pentagon.elf \
   test/limine.cfg \
-  Pentagon/Corelib/bin/Release/net5.0/Corelib.dll \
+  Pentagon/Corelib/bin/Release/net6.0/Corelib.dll \
+  Pentagon/Pentagon/bin/Release/net6.0/Pentagon.dll \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it

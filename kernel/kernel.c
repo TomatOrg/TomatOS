@@ -369,10 +369,16 @@ void _start(void) {
     // load the corelib module
     TRACE("Boot modules:");
     struct limine_file* corelib_file = NULL;
+    struct limine_file* kernel_file = NULL;
     for (int i = 0; i < g_limine_module.response->module_count; i++) {
         struct limine_file* file = g_limine_module.response->modules[i];
         if (strcmp(file->path, "/boot/Corelib.dll") == 0) {
             corelib_file = file;
+        } else if (strcmp(file->path, "/boot/Corelib.dll") == 0) {
+            kernel_file = file;
+        } else {
+            // TODO: if in /drivers/ folder then load it
+            // TODO: load a driver manifest for load order
         }
         TRACE("\t%s", file->path);
     }

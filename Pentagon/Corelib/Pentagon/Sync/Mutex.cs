@@ -1,6 +1,6 @@
 namespace Pentagon
 {
-    public struct Mutex
+    internal struct Mutex
     {
 
         private int _state;

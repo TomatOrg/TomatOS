@@ -1,6 +1,6 @@
 namespace Pentagon
 {
-    public struct Spinlock
+    internal struct Spinlock
     {
         private bool _locked;
         private bool _status;

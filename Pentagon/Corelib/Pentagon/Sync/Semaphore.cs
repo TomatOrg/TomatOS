@@ -1,6 +1,6 @@
 namespace Pentagon
 {
-    public struct Semaphore
+    internal struct Semaphore
     {
 
         private int _value;
