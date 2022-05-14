@@ -384,6 +384,9 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     thread_t* thread = get_free_thread();
     if (thread == NULL) {
         thread = alloc_thread();
+        if (thread == NULL) {
+            return NULL;
+        }
         cas_thread_state(thread, THREAD_STATUS_IDLE, THREAD_STATUS_DEAD);
         add_to_all_threads(thread);
     }

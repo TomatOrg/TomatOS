@@ -239,7 +239,9 @@ void free_thread(thread_t* thread);
 
 /**
  * Reclaims free threads from the global free list, useful
- * if the kernel heap has run out or we ran out of free stacks
+ * if the kernel heap has run out of memory or even if we need
+ * more free pages (as it will free stacks that can be reclaimed
+ * as well)
  */
 void reclaim_free_threads();
 
