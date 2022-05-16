@@ -144,10 +144,12 @@ System_String string_append_cstr(System_String old, const char* str);
 
 typedef struct System_Reflection_Module *System_Reflection_Module;
 typedef struct System_Reflection_Assembly *System_Reflection_Assembly;
+typedef struct System_Reflection_MemberInfo *System_Reflection_MemberInfo;
 
 DEFINE_ARRAY(System_Reflection_Module);
 DEFINE_ARRAY(System_Reflection_Assembly);
 DEFINE_ARRAY(System_Reflection_FieldInfo);
+DEFINE_ARRAY(System_Reflection_MemberInfo);
 DEFINE_ARRAY(System_Int32);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -166,8 +168,7 @@ struct System_Reflection_Assembly {
 
     // types imported from other assemblies, for easy lookup whenever needed
     System_Type_Array ImportedTypes;
-    System_Reflection_MethodInfo_Array ImportedMethods;
-    System_Reflection_FieldInfo_Array ImportedFields;
+    System_Reflection_MemberInfo_Array ImportedMembers;
 
     // the loaded module
     // TODO: turn into an array for easy management
@@ -201,12 +202,12 @@ struct System_Reflection_Module {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-typedef struct System_Reflection_MemberInfo {
+struct System_Reflection_MemberInfo {
     struct System_Object;
     System_Type DeclaringType;
     System_Reflection_Module Module;
     System_String Name;
-} *System_Reflection_MemberInfo;
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -350,6 +351,8 @@ static inline bool method_is_special_name(System_Reflection_MethodInfo method) {
 static inline bool method_is_pinvoke_impl(System_Reflection_MethodInfo method) { return method->Attributes & 0x2000; }
 static inline bool method_is_rt_special_name(System_Reflection_MethodInfo method) { return method->Attributes & 0x1000; }
 
+void method_print_full_name(System_Reflection_MethodInfo method, FILE* output);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct System_Exception *System_Exception;
@@ -430,13 +433,45 @@ const char* type_visibility_str(type_visibility_t visibility);
 /**
  * Get the array type for the given type
  *
- * @param Type  [IN] The system type
+ * @param Type  [IN] The type
  */
 System_Type get_array_type(System_Type Type);
 
+/**
+ * Get the by-ref type for the given type
+ *
+ * @param Type  [IN] The type
+ */
 System_Type get_by_ref_type(System_Type Type);
 
+/**
+ * Print the full name of the type, including type nesting
+ *
+ * @param Type      [IN] The type to print
+ * @param output    [IN] The buffer to print to
+ */
 void type_print_full_name(System_Type Type, FILE* output);
+
+/**
+ * Get a field by its name
+ *
+ * TODO: take into account member types
+ *
+ * @param type      [IN] The declaring type
+ * @param name      [IN] The name
+ */
+System_Reflection_FieldInfo type_get_field_cstr(System_Type type, const char* name);
+
+/**
+ * Iterate all the methods of the type with the same name
+ *
+ * TODO: take into account member types
+ *
+ * @param type      [IN] The declaring type
+ * @param name      [IN] The name of the type
+ * @param index     [IN] The index from which to continue
+ */
+System_Reflection_MethodInfo type_iterate_methods_cstr(System_Type type, const char* name, int* index);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -464,6 +499,7 @@ extern System_Type tSystem_UIntPtr;
 extern System_Type tSystem_Reflection_Module;
 extern System_Type tSystem_Reflection_Assembly;
 extern System_Type tSystem_Reflection_FieldInfo;
+extern System_Type tSystem_Reflection_MemberInfo;
 extern System_Type tSystem_Reflection_ParameterInfo;
 extern System_Type tSystem_Reflection_LocalVariableInfo;
 extern System_Type tSystem_Reflection_ExceptionHandlingClause;

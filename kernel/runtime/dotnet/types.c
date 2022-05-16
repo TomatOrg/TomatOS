@@ -31,6 +31,7 @@ System_Type tSystem_UIntPtr = NULL;
 System_Type tSystem_Reflection_Module = NULL;
 System_Type tSystem_Reflection_Assembly = NULL;
 System_Type tSystem_Reflection_FieldInfo = NULL;
+System_Type tSystem_Reflection_MemberInfo = NULL;
 System_Type tSystem_Reflection_ParameterInfo = NULL;
 System_Type tSystem_Reflection_LocalVariableInfo = NULL;
 System_Type tSystem_Reflection_ExceptionHandlingClause = NULL;
@@ -141,7 +142,16 @@ System_Reflection_MethodInfo assembly_get_method_by_token(System_Reflection_Asse
         } break;
 
         case METADATA_MEMBER_REF: {
-            ASSERT(!"assembly_get_method_by_token: TODO: MemberRef");
+            if (token.index - 1 >= assembly->ImportedMembers->Length) {
+                ASSERT(!"assembly_get_method_by_token: token outside of range");
+                return NULL;
+            }
+            System_Reflection_MemberInfo memberInfo = assembly->ImportedMembers->Data[token.index - 1];
+            if (memberInfo->type != tSystem_Reflection_MethodInfo) {
+                ASSERT(!"assembly_get_method_by_token: wanted member is not a method");
+                return NULL;
+            }
+            return (System_Reflection_MethodInfo)memberInfo;
         } break;
 
         default:
@@ -163,6 +173,19 @@ System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assemb
                 return NULL;
             }
             return assembly->DefinedFields->Data[token.index - 1];
+        } break;
+
+        case METADATA_MEMBER_REF: {
+            if (token.index - 1 >= assembly->ImportedMembers->Length) {
+                ASSERT(!"assembly_get_field_by_token: token outside of range");
+                return NULL;
+            }
+            System_Reflection_MemberInfo memberInfo = assembly->ImportedMembers->Data[token.index - 1];
+            if (memberInfo->type != tSystem_Reflection_FieldInfo) {
+                ASSERT(!"assembly_get_field_by_token: wanted member is not a field");
+                return NULL;
+            }
+            return (System_Reflection_FieldInfo)memberInfo;
         } break;
 
         default:
@@ -454,6 +477,40 @@ void type_print_full_name(System_Type type, FILE* file) {
         }
     }
     fprintf(file, "%U", type->Name);
+}
+
+void method_print_full_name(System_Reflection_MethodInfo method, FILE* name) {
+    type_print_full_name(method->DeclaringType, name);
+    fputc(':', name);
+    fputc(':', name);
+    fprintf(name, "%U", method->Name);
+    fputc('(', name);
+    for (int i = 0; i < method->Parameters->Length; i++) {
+        type_print_full_name(method->Parameters->Data[i]->ParameterType, name);
+        if (i + 1 != method->Parameters->Length) {
+            fputc(',', name);
+        }
+    }
+    fputc(')', name);
+}
+
+System_Reflection_FieldInfo type_get_field_cstr(System_Type type, const char* name) {
+    for (int i = 0; i < type->Fields->Length; i++) {
+        if (string_equals_cstr(type->Fields->Data[i]->Name, name)) {
+            return type->Fields->Data[i];
+        }
+    }
+    return NULL;
+}
+
+System_Reflection_MethodInfo type_iterate_methods_cstr(System_Type type, const char* name, int* index) {
+    for (int i = *index; i < type->Methods->Length; i++) {
+        if (string_equals_cstr(type->Methods->Data[i]->Name, name)) {
+            *index = i + 1;
+            return type->Methods->Data[i];
+        }
+    }
+    return NULL;
 }
 
 bool isinstance(System_Object object, System_Type type) {

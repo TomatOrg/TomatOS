@@ -6,27 +6,14 @@
 #include "util/stb_ds.h"
 #include "opcodes.h"
 #include "runtime/dotnet/jit/jit.h"
+#include "runtime/dotnet/metadata/sig_spec.h"
 
 #include <util/string.h>
 #include <mem/mem.h>
 
 System_Reflection_Assembly g_corelib = NULL;
 
-
 // TODO: we really need a bunch of constants for the flags for better readability
-
-/**
- * Validates the metadata itself according to the rules specified in ECMA 335, this should
- * allow us to prevent edge cases, like duplicates, weird flags combinations and more.
- */
-static err_t validate_metadata(metadata_t* metadata) {
-    err_t err = NO_ERROR;
-
-
-
-cleanup:
-    return err;
-}
 
 static err_t decode_metadata(pe_file_t* ctx, metadata_t* metadata) {
     err_t err = NO_ERROR;
@@ -38,9 +25,6 @@ static err_t decode_metadata(pe_file_t* ctx, metadata_t* metadata) {
 
     // parse it
     CHECK_AND_RETHROW(metadata_parse(ctx, metadata_root, ctx->cli_header->metadata.size, metadata));
-
-    // now validate it
-    CHECK_AND_RETHROW(validate_metadata(metadata));
 
 cleanup:
     // we no longer need this
@@ -876,6 +860,7 @@ static type_init_t m_type_init[] = {
     TYPE_INIT("System.Reflection", "Module", System_Reflection_Module),
     TYPE_INIT("System.Reflection", "Assembly", System_Reflection_Assembly),
     TYPE_INIT("System.Reflection", "FieldInfo", System_Reflection_FieldInfo),
+    TYPE_INIT("System.Reflection", "MemberInfo", System_Reflection_MemberInfo),
     TYPE_INIT("System.Reflection", "ParameterInfo", System_Reflection_ParameterInfo),
     TYPE_INIT("System.Reflection", "LocalVariableInfo", System_Reflection_LocalVariableInfo),
     TYPE_INIT("System.Reflection", "ExceptionHandlingClause", System_Reflection_ExceptionHandlingClause),
@@ -998,6 +983,10 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
         assembly->DefinedTypes->Data[i]->type = tSystem_Type;
     }
 
+    // no imports for corelib
+    GC_UPDATE(assembly, ImportedTypes, GC_NEW_ARRAY(tSystem_Type, 0));
+    GC_UPDATE(assembly, ImportedMembers, GC_NEW_ARRAY(tSystem_Reflection_MemberInfo, 0));
+
     // now get all the user strings into our pool
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
@@ -1063,33 +1052,92 @@ static err_t loader_load_refs(System_Reflection_Assembly assembly, metadata_t* m
         GC_UPDATE_ARRAY(assembly->ImportedTypes, i, refed_type);
     }
 
-    //
-    // TODO: resolve field refs
-    //
-
-    //
-    // TODO: resolve method refs
-    //
-
-    //
     // TODO: resolve externals which are nested types
-    //
 
-    //
-    // validate we got everything
-    //
-
+    // validate we got all the types before we continue to members
     for (int i = 0; i < assembly->ImportedTypes->Length; i++) {
         CHECK(assembly->ImportedTypes->Data[i] != NULL);
     }
 
-//    for (int i = 0; i < assembly->ImportedMethods->Length; i++) {
-//        CHECK(assembly->ImportedMethods->Data[i] != NULL);
-//    }
-//
-//    for (int i = 0; i < assembly->ImportedFields->Length; i++) {
-//        CHECK(assembly->ImportedFields->Data[i] != NULL);
-//    }
+    //
+    // Resolve members
+    //
+
+    metadata_member_ref_t* member_refs = metadata->tables[METADATA_MEMBER_REF].table;
+    size_t member_refs_count = metadata->tables[METADATA_MEMBER_REF].rows;
+
+    // the array of imported fields and methods
+    GC_UPDATE(assembly, ImportedMembers, GC_NEW_ARRAY(tSystem_Reflection_MemberInfo, type_refs_count));
+
+    // dummy field so we can parse into it
+    System_Reflection_FieldInfo dummyField = GC_NEW(tSystem_Reflection_FieldInfo);
+    GC_UPDATE(dummyField, Module, assembly->Module);
+
+    // dummy method so we can parse into it
+    System_Reflection_MethodInfo dummyMethod = GC_NEW(tSystem_Reflection_MethodInfo);
+    GC_UPDATE(dummyMethod, Module, assembly->Module);
+
+    for (int i = 0; i < member_refs_count; i++) {
+        metadata_member_ref_t* member_ref = &member_refs[i];
+        System_Type declaring_type = assembly_get_type_by_token(assembly, member_ref->class);
+
+        CHECK(member_ref->signature.size > 0);
+        switch (member_ref->signature.data[0] & 0xf) {
+            // method
+            case DEFAULT:
+            case VARARG:
+            case GENERIC: {
+                // parse the signature
+                CHECK_AND_RETHROW(parse_stand_alone_method_sig(member_ref->signature, dummyMethod));
+
+                // find a method with that type
+                int index = 0;
+                System_Reflection_MethodInfo methodInfo = NULL;
+                while ((methodInfo = type_iterate_methods_cstr(declaring_type, member_ref->name, &index)) != NULL) {
+                    // check the return type and parameters count is the same
+                    if (methodInfo->ReturnType != dummyMethod->ReturnType) continue;
+                    if (methodInfo->Parameters->Length != dummyMethod->Parameters->Length) continue;
+
+                    // check that the parameters are the same
+                    bool found = true;
+                    for (int pi = 0; pi < methodInfo->Parameters->Length; pi++) {
+                        if (methodInfo->Parameters->Data[pi]->ParameterType != dummyMethod->Parameters->Data[pi]->ParameterType) {
+                            found = false;
+                            break;
+                        }
+                    }
+
+                    if (found) {
+                        break;
+                    }
+                }
+
+                // set it
+                CHECK(methodInfo != NULL);
+                GC_UPDATE_ARRAY(assembly->ImportedMembers, i, methodInfo);
+            } break;
+
+            // field
+            case FIELD: {
+                // parse the field
+                CHECK_AND_RETHROW(parse_field_sig(member_ref->signature, dummyField));
+
+                // get it
+                System_Reflection_FieldInfo fieldInfo = type_get_field_cstr(declaring_type, member_ref->name);
+                CHECK(fieldInfo != NULL);
+
+                // make sure the type matches
+                CHECK(fieldInfo->FieldType == dummyField->FieldType);
+
+                // update
+                GC_UPDATE_ARRAY(assembly->ImportedMembers, i, fieldInfo);
+            } break;
+
+            default: {
+                CHECK_FAIL("Invalid member ref signature: %02x", member_ref->signature.data[0]);
+            } break;
+        }
+    }
 
 cleanup:
     return err;
@@ -1112,9 +1160,6 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
     // allocate the new assembly
     System_Reflection_Assembly assembly = GC_NEW(tSystem_Reflection_Assembly);
 
-    // first thing first, load all the external dependencies
-    CHECK_AND_RETHROW(loader_load_refs(assembly, &metadata));
-
     // load all the types and stuff
     int types_count = metadata.tables[METADATA_TYPE_DEF].rows;
     metadata_type_def_t* type_defs = metadata.tables[METADATA_TYPE_DEF].table;
@@ -1134,6 +1179,9 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
     GC_UPDATE(assembly, Module, GC_NEW(tSystem_Reflection_Module));
     GC_UPDATE(assembly->Module, Name, new_string_from_cstr(module->name));
     GC_UPDATE(assembly->Module, Assembly, assembly);
+
+    // load all the external dependencies
+    CHECK_AND_RETHROW(loader_load_refs(assembly, &metadata));
 
     // create all the methods and fields
     GC_UPDATE(assembly, DefinedMethods, GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, method_count));

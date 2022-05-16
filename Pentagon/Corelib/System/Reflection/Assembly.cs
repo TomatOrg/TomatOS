@@ -11,8 +11,7 @@ namespace System.Reflection
         private FieldInfo[] _definedFields;
         
         private Type[] _importedTypes;
-        private MethodInfo[] _importedMethods;
-        private FieldInfo[] _importedFields;
+        private MemberInfo[] _importedMembers;
         
         private byte[] _mirModule;
         private string[] _userStrings;

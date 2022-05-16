@@ -11,6 +11,7 @@
 #define STDCALL 0x2
 #define THISCALL 0x3
 #define FASTCALL 0x4
+#define GENERIC 0x10
 #define SENTINEL 0x41
 
 typedef enum element_type {

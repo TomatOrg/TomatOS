@@ -269,31 +269,16 @@ cleanup:
 // Name formatting
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void print_full_method_name(System_Reflection_MethodInfo method, FILE* name) {
-    type_print_full_name(method->DeclaringType, name);
-    fputc(':', name);
-    fputc(':', name);
-    fprintf(name, "%U", method->Name);
-    fputc('(', name);
-    for (int i = 0; i < method->Parameters->Length; i++) {
-        type_print_full_name(method->Parameters->Data[i]->ParameterType, name);
-        if (i + 1 != method->Parameters->Length) {
-            fputc(',', name);
-        }
-    }
-    fputc(')', name);
-}
-
-static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_MethodInfo method) {
+static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_MethodInfo method, bool external) {
     err_t err = NO_ERROR;
 
     FILE* proto_name = fcreate();
-    print_full_method_name(method, proto_name);
+    method_print_full_name(method, proto_name);
     fprintf(proto_name, "$proto");
     fputc('\0', proto_name);
 
     FILE* func_name = fcreate();
-    print_full_method_name(method, func_name);
+    method_print_full_name(method, func_name);
     fputc('\0', func_name);
 
     size_t nres = 1;
@@ -351,11 +336,16 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
     // create a forward (only if this is a real method)
     MIR_item_t forward = NULL;
     if (!method_is_abstract(method)) {
-        // create a forward
-        forward = MIR_new_forward(ctx->context, func_name->buffer);
+        if (external) {
+            // import the method
+            forward = MIR_new_import(ctx->context, func_name->buffer);
+        } else {
+            // create a forward
+            forward = MIR_new_forward(ctx->context, func_name->buffer);
 
-        // export the method
-        MIR_new_export(ctx->context, func_name->buffer);
+            // export the method
+            MIR_new_export(ctx->context, func_name->buffer);
+        }
     }
 
     function_entry_t entry = (function_entry_t){
@@ -935,7 +925,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     System_Reflection_Assembly assembly = method->Module->Assembly;
 
     FILE* method_name = fcreate();
-    print_full_method_name(method, method_name);
+    method_print_full_name(method, method_name);
     fputc('\0', method_name);
 
     // results
@@ -2489,6 +2479,18 @@ cleanup:
     return err;
 }
 
+static void jit_import_type(jit_context_t* ctx, System_Type type) {
+    if (hmgeti(ctx->types, type) != -1) {
+        return;
+    }
+
+    FILE* name = fcreate();
+    type_print_full_name(type, name);
+    fputc('\0', name);
+    hmput(ctx->types, type, MIR_new_import(ctx->context, name->buffer));
+    fclose(name);
+}
+
 err_t jit_assembly(System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
     jit_context_t ctx = {};
@@ -2509,18 +2511,33 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     ctx.is_instance_proto = MIR_new_proto(ctx.context, "isinstance$proto", 1, &res_type, 2, MIR_T_P, "object", MIR_T_P, "type");
     ctx.is_instance_func = MIR_new_import(ctx.context, "isinstance");
 
-
+    //
     // predefine all the types
+    //
+
+    // internal types
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
-        System_Type type = assembly->DefinedTypes->Data[i];
-        FILE* name = fcreate();
-        type_print_full_name(type, name);
-        fputc('\0', name);
-        hmput(ctx.types, type, MIR_new_import(ctx.context, name->buffer));
-        fclose(name);
+        jit_import_type(&ctx, assembly->DefinedTypes->Data[i]);
     }
 
+    // external types
+    for (int i = 0; i < assembly->ImportedTypes->Length; i++) {
+        jit_import_type(&ctx, assembly->ImportedTypes->Data[i]);
+    }
+
+    // all exceptions that the runtime may throw
+    jit_import_type(&ctx, tSystem_ArithmeticException);
+    jit_import_type(&ctx, tSystem_DivideByZeroException);
+    jit_import_type(&ctx, tSystem_ExecutionEngineException);
+    jit_import_type(&ctx, tSystem_IndexOutOfRangeException);
+    jit_import_type(&ctx, tSystem_NullReferenceException);
+    jit_import_type(&ctx, tSystem_OutOfMemoryException);
+    jit_import_type(&ctx, tSystem_OverflowException);
+
+    //
     // predefine all strings
+    //
+
     for (int i = 0; i < hmlen(assembly->UserStringsTable); i++) {
         FILE* name = fcreate();
         fprintf(name, "string$%d", assembly->UserStringsTable[i].key);
@@ -2529,15 +2546,23 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
         fclose(name);
     }
 
+    //
     // predefine all methods
-    for (int i = 0; i < assembly->DefinedMethods->Length; i++) {
-        System_Reflection_MethodInfo method = assembly->DefinedMethods->Data[i];
-        CHECK_AND_RETHROW(prepare_method_signature(&ctx, method));
+    //
+
+    for (int i = 0; i < hmlen(ctx.types); i++) {
+        System_Type type = ctx.types[i].key;
+        if (type == NULL) continue;
+        bool external = type->Assembly != assembly;
+        for (int mi = 0; mi < type->Methods->Length; mi++) {
+            CHECK_AND_RETHROW(prepare_method_signature(&ctx, type->Methods->Data[mi], external));
+        }
     }
 
-    // TODO: import all external types and methods
-
+    //
     // now ir all the methods
+    //
+
     for (int ti = 0; ti < assembly->DefinedTypes->Length; ti++) {
         System_Type type = assembly->DefinedTypes->Data[ti];
 
@@ -2554,7 +2579,7 @@ cleanup:
         // save everything to a module that we can load later
         assembly->MirModule = fcreate();
         MIR_write(ctx.context, assembly->MirModule);
-        TRACE("module is %d bytes", arrlen(assembly->MirModule->buffer));
+        TRACE("MIR for `%U` is %S", assembly->Module->Name, arrlen(assembly->MirModule->buffer));
 
         MIR_finish(ctx.context);
     }

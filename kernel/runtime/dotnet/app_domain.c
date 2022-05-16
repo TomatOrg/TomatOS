@@ -19,7 +19,7 @@ app_domain_t* create_app_domain() {
 //    MIR_gen_set_debug_file(app->context, 0, stdout);
 //    MIR_gen_set_debug_level(app->context, 0, 0);
 
-    // TODO: isinstance can be made into IL code
+    // TODO: isinstance can be made into MIR code
 
     // load the builtin stuff
     MIR_load_external(app->context, "gc_new", gc_new);
@@ -33,6 +33,10 @@ void app_domain_load(app_domain_t* app, System_Reflection_Assembly assembly) {
     // load the module itself
     fseek(assembly->MirModule, 0, SEEK_SET);
     MIR_read(app->context, assembly->MirModule);
+
+    if (assembly->EntryPoint != NULL) {
+        app->EntryPoint = assembly->EntryPoint;
+    }
 
     // load all the type references
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
@@ -56,19 +60,40 @@ void app_domain_load(app_domain_t* app, System_Reflection_Assembly assembly) {
     }
 }
 
-void app_domain_link(app_domain_t* app) {
+method_result_t app_domain_link_and_start(app_domain_t* app) {
+    FILE* main_func_name = fcreate();
+    method_print_full_name(app->EntryPoint, main_func_name);
+    fputc('\0', main_func_name);
+
     // load all the modules
-    MIR_item_t main_func;
+    MIR_item_t main_func = NULL;
     for (
         MIR_module_t module = DLIST_HEAD(MIR_module_t, *MIR_get_module_list(app->context));
         module != NULL;
-        module = DLIST_NEXT (MIR_module_t, module))
-    {
+        module = DLIST_NEXT (MIR_module_t, module)
+    ) {
         MIR_load_module (app->context, module);
+
+        // find the main function
+        // TODO: only search the main module
+        for (
+            MIR_item_t func = DLIST_HEAD (MIR_item_t, module->items);
+            func != NULL;
+             func = DLIST_NEXT (MIR_item_t, func)
+        ) {
+            if (func->item_type != MIR_func_item) continue;
+            if (strcmp (func->u.func->name, main_func_name->buffer) == 0) main_func = func;
+        }
     }
+
+    fclose(main_func_name);
 
     // link it
     MIR_link(app->context, MIR_set_lazy_gen_interface, NULL);
+
+    method_result_t(*main)() = MIR_gen(app->context, 0, main_func);
+
+    return main();
 }
 
 void free_app_domain(app_domain_t* app) {
