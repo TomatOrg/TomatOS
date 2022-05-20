@@ -296,13 +296,9 @@ INTERRUPT static void run_queue_put(thread_t* thread, bool next) {
 
     // we want this thread to run next
     if (next) {
-        thread_t* old_next = rq->next;
-        thread_t* temp = old_next;
         // try to change the old thread to the new one
-        while (!atomic_compare_exchange_weak(&rq->next, &temp, thread)) {
-            old_next = rq->next;
-            temp = old_next;
-        }
+        thread_t* old_next = rq->next;
+        while (!atomic_compare_exchange_weak(&rq->next, &old_next, thread));
 
         // no thread was supposed to run next, just return
         if (old_next == NULL) {
@@ -341,11 +337,8 @@ INTERRUPT static void run_queue_put(thread_t* thread, bool next) {
 
 /**
  * Get a thread from the local runnable queue.
- *
- * If inheritTime is set to true if should inherit the remaining time
- * in the current time slice. Otherwise, it should start a new time slice.
  */
-INTERRUPT static thread_t* run_queue_get(bool* inherit_time) {
+INTERRUPT static thread_t* run_queue_get() {
     local_run_queue_t* rq = get_run_queue();
 
     // If there's a run next, it's the next thread to run.
@@ -356,7 +349,6 @@ INTERRUPT static thread_t* run_queue_get(bool* inherit_time) {
     // Hence, there's no need to retry this CAS if it falls.
     thread_t* temp_next = next;
     if (next != NULL && atomic_compare_exchange_weak(&rq->next, &temp_next, NULL)) {
-        *inherit_time = true;
         return next;
     }
 
@@ -368,7 +360,6 @@ INTERRUPT static thread_t* run_queue_get(bool* inherit_time) {
         }
         thread_t* thread = rq->queue[head % RUN_QUEUE_LEN];
         if (atomic_compare_exchange_weak_explicit(&rq->head, &head, head + 1, memory_order_release, memory_order_relaxed)) {
-            *inherit_time = false;
             return thread;
         }
     }
@@ -677,25 +668,19 @@ static void scheduler_set_deadline() {
  *
  * @param ctx               [IN] The context of the scheduler interrupt
  * @param thread            [IN] The thread to run
- * @param inherit_time      [IN] Should the time slice be inherited or should we make a new one
  */
-INTERRUPT static void execute(interrupt_context_t* ctx, thread_t* thread, bool inherit_time) {
+INTERRUPT static void execute(interrupt_context_t* ctx, thread_t* thread) {
     // set the current thread
     m_current_thread = thread;
 
     // get ready to run it
     cas_thread_state(thread, THREAD_STATUS_RUNNABLE, THREAD_STATUS_RUNNING);
 
-    if (!inherit_time) {
-        // add another tick
-        m_scheduler_tick++;
+    // add another tick
+    m_scheduler_tick++;
 
-        // set a new timeslice of 10 milliseconds
-        scheduler_set_deadline();
-    } else if (m_scheduler_tick == 0) {
-        // this is the first tick, set an initial timeslice
-        scheduler_set_deadline();
-    }
+    // set a new timeslice of 10 milliseconds
+    scheduler_set_deadline();
 
     // set the gprs context
     restore_thread_context(thread, ctx);
@@ -812,12 +797,12 @@ INTERRUPT static thread_t* steal_work() {
     return NULL;
 }
 
-INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
+INTERRUPT static thread_t* find_runnable() {
     thread_t* thread = NULL;
 
     while (true) {
         // try the local run queue first
-        thread = run_queue_get(inherit_time);
+        thread = run_queue_get();
         if (thread != NULL) {
             m_spinning = false;
             return thread;
@@ -829,7 +814,6 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
             thread = global_run_queue_get(0);
             unlock_scheduler();
             if (thread != NULL) {
-                *inherit_time = false;
                 m_spinning = false;
                 return thread;
             }
@@ -851,7 +835,6 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
             // try to steal some work
             thread = steal_work();
             if (thread != NULL) {
-                *inherit_time = false;
                 return thread;
             }
         }
@@ -863,7 +846,6 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
         if (m_global_run_queue_size != 0) {
             thread = global_run_queue_get(0);
             unlock_scheduler();
-            *inherit_time = false;
             return thread;
         }
 
@@ -900,7 +882,6 @@ INTERRUPT static thread_t* find_runnable(bool* inherit_time) {
 
 INTERRUPT static void schedule(interrupt_context_t* ctx) {
     thread_t* thread = NULL;
-    bool inherit_time = false;
 
     // Check the global runnable queue once in a while to ensure fairness.
     // Otherwise, two goroutines can completely occupy the local run queue
@@ -913,17 +894,17 @@ INTERRUPT static void schedule(interrupt_context_t* ctx) {
 
     if (thread == NULL) {
         // get from the local run queue
-        thread = run_queue_get(&inherit_time);
+        thread = run_queue_get();
     }
 
     if (thread == NULL) {
         // will block until a thread is ready, essentially an idle loop,
         // this must return something eventually.
-        thread = find_runnable(&inherit_time);
+        thread = find_runnable();
     }
 
     // actually run the new thread
-    execute(ctx, thread, inherit_time);
+    execute(ctx, thread);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -954,10 +935,8 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt
         // set the thread to be runnable
         cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
 
-        // put in the global run queue
-        lock_scheduler();
-        global_run_queue_put(current_thread);
-        unlock_scheduler();
+        // put in the local run queue
+        run_queue_put(current_thread, false);
     }
 
     // now schedule a new thread
@@ -1084,6 +1063,6 @@ err_t init_scheduler() {
     m_run_queues = malloc(get_cpu_count() * sizeof(local_run_queue_t));
     CHECK(m_run_queues != NULL);
 
-    cleanup:
+cleanup:
     return err;
 }

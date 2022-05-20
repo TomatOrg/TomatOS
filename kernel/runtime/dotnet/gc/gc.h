@@ -9,19 +9,6 @@
 #include <stdint.h>
 
 /**
- * Blue color is used to indicate
- * unallocated objects
- */
-#define GC_COLOR_BLUE 2
-
-/**
- * Green color is used to indicate
- * an root object that should be
- * finalized
- */
-#define GC_COLOR_GREEN 3
-
-/**
  * Initialize the garbage collector
  */
 err_t init_gc();
@@ -52,13 +39,17 @@ void* gc_new(System_Type type, size_t size);
 #define GC_NEW(type) \
     ({ \
         System_Type __type = type; \
-        gc_new(__type, __type->ManagedSize); \
+        void* object = gc_new(__type, __type->ManagedSize); \
+        ASSERT(object != NULL); \
+        object; \
     })
 
 #define GC_NEW_STRING(count) \
     ({ \
         size_t __count = count; \
-        gc_new(tSystem_String, tSystem_String->ManagedSize + 2 * __count); \
+        System_String str = gc_new(tSystem_String, tSystem_String->ManagedSize + 2 * __count); \
+        ASSERT(str != NULL); \
+        str; \
     })
 
 /**
@@ -72,6 +63,7 @@ void* gc_new(System_Type type, size_t size);
         System_Type __elementType = elementType; \
         System_Type __arrayType = get_array_type(__elementType); \
         System_Array __newArray = gc_new(__arrayType, __arrayType->ManagedSize + __elementType->StackSize * __count); \
+        ASSERT(__newArray != NULL); \
         __newArray->Length = __count; \
         (void*)__newArray; \
     })

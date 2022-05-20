@@ -404,6 +404,9 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     thread->save_state.rflags = BIT1 | BIT9 | BIT21;
     thread->save_state.rsp = (uint64_t) thread->stack_top;
 
+    // set the context
+    thread->save_state.rdi = (uintptr_t)ctx;
+
     // we want the return address to be thread_exit
     // and the stack to be aligned to 16 bytes + 8
     // as per the sys-v abi (http://www.x86-64.org/documentation/abi.pdf)

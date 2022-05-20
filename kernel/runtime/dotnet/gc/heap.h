@@ -6,7 +6,27 @@
 
 err_t init_heap();
 
-System_Object heap_alloc(size_t size);
+void heap_dump_mapping();
+
+/**
+ * Allocate a new object
+ *
+ * @param size      [IN] The requested size
+ * @param color     [IN] The color to give the object
+ */
+System_Object heap_alloc(size_t size, int color);
+
+/**
+ * Free an allocated object
+ *
+ * @param object    [IN] The object to free
+ */
+void heap_free(System_Object object);
+
+/**
+ * Reclaim heap memory, should be done after alot of object freeing
+ */
+void heap_reclaim();
 
 /**
  * Find the object from a pointer, returns NULL if it is

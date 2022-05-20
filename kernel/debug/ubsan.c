@@ -8,6 +8,8 @@
 // Generic type handling
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define NO_SANITIZE __attribute__((no_sanitize("undefined")))
+
 typedef struct source_location {
     const char* filename;
     uint32_t line;
@@ -23,40 +25,40 @@ typedef struct type_descriptor {
     char name[0];
 } type_descriptor_t;
 
-static bool is_integer(const type_descriptor_t* type) {
+static NO_SANITIZE bool is_integer(const type_descriptor_t* type) {
     return type->kind == TK_INTEGER;
 }
 
-static bool is_signed_integer(const type_descriptor_t* type) {
+static NO_SANITIZE bool is_signed_integer(const type_descriptor_t* type) {
     return is_integer(type) && (type->info & 1);
 }
 
-static bool is_unsigned_integer(const type_descriptor_t* type) {
+static NO_SANITIZE bool is_unsigned_integer(const type_descriptor_t* type) {
     return is_integer(type) && !(type->info & 1);
 }
 
-static unsigned get_integer_bit_width(const type_descriptor_t* type) {
+static NO_SANITIZE unsigned get_integer_bit_width(const type_descriptor_t* type) {
     ASSERT(is_integer(type));
     return 1 << (type->info >> 1);
 }
 
-static bool is_float(const type_descriptor_t* type) {
+static NO_SANITIZE bool is_float(const type_descriptor_t* type) {
     return type->kind == TK_FLOAT;
 }
 
-static unsigned get_float_bit_width(const type_descriptor_t* type) {
+static NO_SANITIZE unsigned get_float_bit_width(const type_descriptor_t* type) {
     ASSERT(is_float(type));
     return type->info;
 }
 
-static bool is_inline_int(const type_descriptor_t* type) {
+static NO_SANITIZE bool is_inline_int(const type_descriptor_t* type) {
     ASSERT(is_integer(type));
     const unsigned inline_bits = sizeof(size_t) * 8;
     const unsigned bits = get_integer_bit_width(type);
     return bits <= inline_bits;
 }
 
-static int64_t get_sint_value(const type_descriptor_t* type, size_t val) {
+static NO_SANITIZE int64_t get_sint_value(const type_descriptor_t* type, size_t val) {
     ASSERT(is_signed_integer(type));
     if (is_inline_int(type)) {
         const unsigned extra_bits = sizeof(__int128_t) * 8 - get_integer_bit_width(type);
@@ -72,7 +74,7 @@ static int64_t get_sint_value(const type_descriptor_t* type, size_t val) {
     }
 }
 
-static uint64_t get_uint_value(const type_descriptor_t* type, size_t val) {
+static NO_SANITIZE uint64_t get_uint_value(const type_descriptor_t* type, size_t val) {
     ASSERT(is_unsigned_integer(type));
     if (is_inline_int(type)) {
         return val;
@@ -87,7 +89,7 @@ static uint64_t get_uint_value(const type_descriptor_t* type, size_t val) {
     }
 }
 
-static uint64_t get_positive_int_value(const type_descriptor_t* type, size_t val) {
+static NO_SANITIZE uint64_t get_positive_int_value(const type_descriptor_t* type, size_t val) {
     if (is_unsigned_integer(type)) {
         return get_uint_value(type, val);
     }
@@ -96,19 +98,19 @@ static uint64_t get_positive_int_value(const type_descriptor_t* type, size_t val
     return signed_val;
 }
 
-static bool is_minus_one(const type_descriptor_t* type, size_t val) {
+static NO_SANITIZE bool is_minus_one(const type_descriptor_t* type, size_t val) {
     return is_signed_integer(type) && get_sint_value(type, val) == -1;
 }
 
-static bool is_negative(const type_descriptor_t* type, size_t val) {
+static NO_SANITIZE bool is_negative(const type_descriptor_t* type, size_t val) {
     return is_signed_integer(type) && get_sint_value(type, val) < 0;
 }
 
-static void print_source_location(source_location_t data) {
+static NO_SANITIZE void print_source_location(source_location_t data) {
     printf(" at %s:%d:%d\n\r", data.filename, data.line, data.column);
 }
 
-static void print_value(const type_descriptor_t* type, size_t value) {
+static NO_SANITIZE void print_value(const type_descriptor_t* type, size_t value) {
     if (is_signed_integer(type)) {
         printf("%lld", get_sint_value(type, value));
     } else if (is_unsigned_integer(type)) {
@@ -136,7 +138,7 @@ static const char* m_type_check_kinds[] = {
     "dynamic operation on"
 };
 
-void __ubsan_handle_type_mismatch_v1(type_mismatch_data_t* data, size_t pointer) {
+void NO_SANITIZE __ubsan_handle_type_mismatch_v1(type_mismatch_data_t* data, size_t pointer) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
 
     size_t alignment = 1 << data->log_alignment;
@@ -183,15 +185,15 @@ typedef struct overflow_data {
     printf(" cannot be represented in type %s", data->type->name); \
     print_source_location(data->loc);
 
-void __ubsan_handle_add_overflow(overflow_data_t* data, size_t lhs, size_t rhs) { UBSAN_HANDLE_OVERFLOW("+"); }
-void __ubsan_handle_sub_overflow(overflow_data_t* data, size_t lhs, size_t rhs) { UBSAN_HANDLE_OVERFLOW("-"); }
-void __ubsan_handle_mul_overflow(overflow_data_t* data, size_t lhs, size_t rhs) { UBSAN_HANDLE_OVERFLOW("*"); }
+void NO_SANITIZE __ubsan_handle_add_overflow(overflow_data_t* data, size_t lhs, size_t rhs) { UBSAN_HANDLE_OVERFLOW("+"); }
+void NO_SANITIZE __ubsan_handle_sub_overflow(overflow_data_t* data, size_t lhs, size_t rhs) { UBSAN_HANDLE_OVERFLOW("-"); }
+void NO_SANITIZE __ubsan_handle_mul_overflow(overflow_data_t* data, size_t lhs, size_t rhs) { UBSAN_HANDLE_OVERFLOW("*"); }
 
-void __ubsan_handle_divrem_overflow(overflow_data_t* data, size_t lhs, size_t rhs) {
+void NO_SANITIZE __ubsan_handle_divrem_overflow(overflow_data_t* data, size_t lhs, size_t rhs) {
     ASSERT(!"TODO: __ubsan_handle_divrem_overflow");
 }
 
-void __ubsan_handle_negate_overflow(overflow_data_t* data, size_t old_val) {
+void NO_SANITIZE __ubsan_handle_negate_overflow(overflow_data_t* data, size_t old_val) {
     ASSERT(!"TODO: __ubsan_handle_negate_overflow");
 }
 
@@ -205,7 +207,7 @@ typedef struct shift_out_of_bounds {
     const type_descriptor_t* rhs_type;
 } shift_out_of_bounds_t;
 
-void __ubsan_handle_shift_out_of_bounds(shift_out_of_bounds_t* data, size_t lhs, size_t rhs) {
+void NO_SANITIZE __ubsan_handle_shift_out_of_bounds(shift_out_of_bounds_t* data, size_t lhs, size_t rhs) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
 
     if (
@@ -247,7 +249,7 @@ typedef struct out_of_bounds_data {
     const type_descriptor_t* index_type;
 } out_of_bounds_data_t;
 
-void __ubsan_handle_out_of_bounds(out_of_bounds_data_t* data, size_t index) {
+void NO_SANITIZE __ubsan_handle_out_of_bounds(out_of_bounds_data_t* data, size_t index) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
     printf("index %d out of bounds for type %s", index, data->array_type->name);
     print_source_location(data->loc);
@@ -261,7 +263,7 @@ typedef struct unreachable_data {
     source_location_t loc;
 } unreachable_data_t;
 
-void __ubsan_handle_builtin_unreachable(unreachable_data_t* data) {
+void NO_SANITIZE __ubsan_handle_builtin_unreachable(unreachable_data_t* data) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
     printf("execution reached an unreachable program point");
     print_source_location(data->loc);
@@ -276,7 +278,7 @@ typedef struct vla_bound_data {
     const type_descriptor_t* type;
 } vla_bound_data_t;
 
-void __ubsan_handle_vla_bound_not_positive(vla_bound_data_t* data, size_t bound) {
+void NO_SANITIZE __ubsan_handle_vla_bound_not_positive(vla_bound_data_t* data, size_t bound) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
     printf("variable length array bound evaluates to non-positive value ");
     print_value(data->type, bound);
@@ -293,7 +295,7 @@ typedef struct float_cast_overflow {
     const type_descriptor_t* to_type;
 } float_cast_overflow_t;
 
-void __ubsan_handle_float_cast_overflow(float_cast_overflow_t* data, size_t from) {
+void NO_SANITIZE __ubsan_handle_float_cast_overflow(float_cast_overflow_t* data, size_t from) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
     print_value(data->from_type, from);
     printf(" is outside of the range of representable values of type %s", data->to_type->name);
@@ -309,7 +311,7 @@ typedef struct invalid_value_data {
     const type_descriptor_t* type;
 } invalid_value_data_t;
 
-void __ubsan_handle_load_invalid_value(invalid_value_data_t* data, size_t val) {
+void NO_SANITIZE __ubsan_handle_load_invalid_value(invalid_value_data_t* data, size_t val) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
 
     printf("load of value ");
@@ -337,7 +339,7 @@ typedef struct invalid_builtin_data {
     unsigned char kind;
 } invalid_builtin_data_t;
 
-void __ubsan_handle_invalid_builtin(invalid_builtin_data_t* data) {
+void NO_SANITIZE __ubsan_handle_invalid_builtin(invalid_builtin_data_t* data) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
     printf("passing zero to %s, which is not a valid argument",
            (data->kind == BCK_CTZ_PASSED_ZERO) ? "ctz()" : "clz()");
@@ -352,7 +354,7 @@ typedef struct pointer_overflow_data {
     source_location_t loc;
 } pointer_overflow_data_t;
 
-void __ubsan_handle_pointer_overflow(pointer_overflow_data_t* data, size_t base, size_t result) {
+void NO_SANITIZE __ubsan_handle_pointer_overflow(pointer_overflow_data_t* data, size_t base, size_t result) {
     printf("[CPU%03d][!] ubsan: ", get_apic_id());
 
     if (base == 0 && result == 0) {

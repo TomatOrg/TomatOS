@@ -3,6 +3,7 @@
 #include "gc.h"
 #include "kernel.h"
 #include "proc/cpu_local.h"
+#include "arch/intrin.h"
 
 #include <proc/thread.h>
 #include <util/string.h>
@@ -85,8 +86,7 @@ err_t init_heap() {
     CHECK(m_heap_locks != NULL);
 
     // setup the top levels
-    int num = 16;
-    for (int pml4i = PML4_INDEX(OBJECT_HEAP_START); pml4i < PML4_INDEX(OBJECT_HEAP_START) + POOL_COUNT; pml4i++) {
+    for (pml_index_t pml4i = PML4_INDEX(OBJECT_HEAP_START); pml4i < PML4_INDEX(OBJECT_HEAP_START) + POOL_COUNT; pml4i++) {
         // allocate it
         void* page = palloc(PAGE_SIZE);
         CHECK_ERROR(page != NULL, ERROR_OUT_OF_RESOURCES);
@@ -106,14 +106,23 @@ err_t init_heap() {
 cleanup:
     return err;
 }
-
 /**
  * Gives an approximate of the object size
  * according to the pool it is in
  */
 static int calc_object_size(uintptr_t obj) {
     size_t poolidx = (obj - OBJECT_HEAP_START) / SIZE_512GB;
-    return 2 << (4 + poolidx);
+    return 2 << (3 + poolidx);
+}
+
+void heap_dump_mapping() {
+    TRACE("\t%p-%p (%S): Object heap", OBJECT_HEAP_START, OBJECT_HEAP_END, OBJECT_HEAP_END - OBJECT_HEAP_START);
+    size_t size = 16;
+    for (int i = 0; i < POOL_COUNT; i++) {
+        uintptr_t base = OBJECT_HEAP_START + i * SIZE_512GB;
+        TRACE("\t\t%p-%p (%S): %S objects", base, base + SIZE_512GB, SIZE_512GB, size);
+        size *= 2;
+    }
 }
 
 System_Object heap_find(uintptr_t ptr) {
@@ -133,7 +142,7 @@ System_Object heap_find(uintptr_t ptr) {
     return NULL;
 }
 
-System_Object heap_alloc(size_t size) {
+System_Object heap_alloc(size_t size, int color) {
     // check if we support this allocation
     if (size > SIZE_512MB) {
         return NULL;
@@ -154,7 +163,8 @@ System_Object heap_alloc(size_t size) {
     System_Object allocated = NULL;
 
     // some constants for the searching
-    pml_index_t pml4i = pool_idx + PML4_INDEX(OBJECT_HEAP_START);
+    pml_index_t pml4i = PML4_INDEX(OBJECT_HEAP_START) + pool_idx;
+    ASSERT(calc_object_size(PML4_BASE(pml4i)) == aligned_size);
 
     // go over each 1GB region in the pool, making sure that each of the pools
     // actually exists
@@ -210,7 +220,7 @@ System_Object heap_alloc(size_t size) {
 
                             // free all the pages that we tried to allocate
                             while (i--) {
-                                uintptr_t phys = PAGE_TABLE_PML2[pml2i + i].frame;
+                                uintptr_t phys = PAGE_TABLE_PML2[pml2i + i].frame << 12;
                                 void* direct = PHYS_TO_DIRECT(phys);
                                 vmm_map(phys, direct, SIZE_2MB / PAGE_SIZE, MAP_WRITE);
                                 pfree(direct);
@@ -226,7 +236,6 @@ System_Object heap_alloc(size_t size) {
                             .writeable = 1,
                             .present = 1,
                             .frame = DIRECT_TO_PHYS(page) >> 12
-                            // TODO: set that we have all the entries
                         };
 
                         // unmap the physical page
@@ -275,7 +284,7 @@ System_Object heap_alloc(size_t size) {
 
                                     // free all the pages that we tried to allocate
                                     while (i--) {
-                                        uintptr_t phys = PAGE_TABLE_PML1[pml1i + i].frame;
+                                        uintptr_t phys = PAGE_TABLE_PML1[pml1i + i].frame << 12;
                                         void* direct = PHYS_TO_DIRECT(phys);
                                         vmm_map(phys, direct, 1, MAP_WRITE);
                                         pfree(direct);
@@ -357,6 +366,11 @@ System_Object heap_alloc(size_t size) {
     }
 
 exit:
+    // set the color of the allocation
+    if (allocated != NULL) {
+        allocated->color = color;
+    }
+
     // if we still have a taken lock then free it now
     if (last_lock_taken != NULL) {
         spinlock_unlock(last_lock_taken);
@@ -366,18 +380,165 @@ exit:
     return allocated;
 }
 
+void heap_free(System_Object object) {
+    // zero-out the entire object, this includes setting the color to zero, which will
+    // essentially free the object, this can be done without locking at all because at worst
+    // something is going to allocate it in a second
+    object->color = COLOR_BLUE;
+}
+
+void heap_reclaim() {
+    spinlock_t* last_lock_taken = NULL;
+
+    // iterate over all the top-level pools, each having 512 sub-pools
+    for (int pool_idx = 0; pool_idx < POOL_COUNT; pool_idx++) {
+        pml_index_t pml4i = pool_idx + PML4_INDEX(OBJECT_HEAP_START);
+        size_t pool_object_size = 2 << (3 + pool_idx);
+
+        // go over each 1GB region in the pool, making sure that each of the pools
+        // actually exists
+        for (int subpool_idx = 0; subpool_idx < SUBPOOLS_COUNT; subpool_idx++) {
+            pml_index_t pml3i = (pml4i << 9) + subpool_idx;
+
+            // we got to the first pool in the subpool region, lock the region
+            if ((subpool_idx % SUBPOOLS_PER_LOCK) == 0) {
+                // unlock the last lock taken
+                if (last_lock_taken != NULL) {
+                    spinlock_unlock(last_lock_taken);
+                }
+
+                // now take a new lock
+                last_lock_taken = &m_heap_locks[pool_idx * POOL_COUNT + subpool_idx / SUBPOOLS_PER_LOCK];
+                spinlock_lock(last_lock_taken);
+            }
+
+            if (!PAGE_TABLE_PML3[pml3i].present) continue;
+
+            bool can_remove_pml3 = true;
+            if (pool_object_size >= SIZE_2MB) {
+                // the objects are larger than 2MB, so we can skip at the object size and simply check
+                // the PML2 per object to check if it is present
+                for (uintptr_t ptr = PML3_BASE(pml3i); ptr < PML3_BASE(pml3i) + SIZE_1GB; ptr += pool_object_size) {
+                    pml_index_t pml2i = PML2_INDEX(ptr);
+                    if (!PAGE_TABLE_PML2[pml2i].present) continue;
+
+                    // check if the object is free
+                    System_Object object = (System_Object) ptr;
+                    if (object->color != COLOR_BLUE) {
+                        TRACE("Non-blue object");
+                        can_remove_pml3 = false;
+                        continue;
+                    }
+
+                    // we can free all the memory it takes
+                    for (pml_index_t i = 0; i < pool_object_size / SIZE_2MB; i++) {
+                        uintptr_t phys = PAGE_TABLE_PML2[pml2i + i].frame << 12;
+                        void* direct = PHYS_TO_DIRECT(phys);
+                        vmm_map(phys, direct, SIZE_2MB / PAGE_SIZE, MAP_WRITE);
+                        pfree(direct);
+                        PAGE_TABLE_PML2[pml2i + i] = (page_entry_t){ 0 };;
+                        __invlpg((void*)PML2_BASE(pml2i + i));
+                    }
+                }
+            } else {
+                // the objects are smaller than 2MB, meaning each PML2 has multiple objects,
+                // so iterate it
+                for (pml_index_t pml2i = pml3i << 9; pml2i < (pml3i << 9) + 512; pml2i++) {
+                    if (!PAGE_TABLE_PML2[pml2i].present) continue;
+
+                    int can_remove_pml2 = true;
+                    if (pool_object_size >= SIZE_4KB) {
+                        // the objects are larger than 4KB, so we can skip at the object size
+                        // and simply check the PML1 per object to check if it is present
+                        for (uintptr_t ptr = PML2_BASE(pml2i); ptr < PML2_BASE(pml2i) + SIZE_2MB; ptr += pool_object_size) {
+                            pml_index_t pml1i = PML1_INDEX(ptr);
+                            if (!PAGE_TABLE_PML1[pml1i].present) continue;
+
+                            // check if the object is free
+                            System_Object object = (System_Object) ptr;
+                            if (object->color != COLOR_BLUE) {
+                                can_remove_pml2 = false;
+                                can_remove_pml3 = false;
+                                continue;
+                            }
+
+                            // we can free all the memory it takes
+                            for (pml_index_t i = 0; i < pool_object_size / PAGE_SIZE; i++) {
+                                uintptr_t phys = PAGE_TABLE_PML1[pml1i + i].frame << 12;
+                                void* direct = PHYS_TO_DIRECT(phys);
+                                vmm_map(phys, direct, 1, MAP_WRITE);
+                                pfree(direct);
+                                PAGE_TABLE_PML1[pml1i + i] = (page_entry_t){ 0 };;
+                                __invlpg((void*)PML1_BASE(pml1i + i));
+                            }
+                        }
+                    } else {
+                        // the objects are smaller than 4KB, meaning each PML1 has multiple
+                        // objects, so iterate it
+                        for (pml_index_t pml1i = pml2i << 9; pml1i < (pml2i << 9) + 512; pml1i++) {
+                            if (!PAGE_TABLE_PML1[pml1i].present) continue;
+
+                            // iterate all the objects and check if the pool is empty completely
+                            bool can_remove_pml1 = true;
+                            for (uintptr_t ptr = PML1_BASE(pml1i); ptr < PML1_BASE(pml1i) + SIZE_4KB; ptr += pool_object_size) {
+                                System_Object object = (System_Object) ptr;
+                                if (object->color != COLOR_BLUE) {
+                                    can_remove_pml1 = false;
+                                    can_remove_pml2 = false;
+                                    can_remove_pml3 = false;
+                                }
+                            }
+
+                            // no items, free it
+                            if (can_remove_pml1) {
+                                uintptr_t phys = PAGE_TABLE_PML1[pml1i].frame << 12;
+                                void* direct = PHYS_TO_DIRECT(phys);
+                                vmm_map(phys, direct, 1, MAP_WRITE);
+                                pfree(direct);
+                                PAGE_TABLE_PML1[pml1i] = (page_entry_t){ 0 };;
+                                __invlpg((void*)PML1_BASE(pml1i));
+                            }
+                        }
+                    }
+
+                    if (can_remove_pml2) {
+                        uintptr_t phys = PAGE_TABLE_PML2[pml2i].frame << 12;
+                        void* direct = PHYS_TO_DIRECT(phys);
+                        vmm_map(phys, direct, 1, MAP_WRITE);
+                        pfree(direct);
+                        PAGE_TABLE_PML2[pml2i] = (page_entry_t){ 0 };;
+                    }
+                }
+            }
+
+            if (can_remove_pml3) {
+                uintptr_t phys = PAGE_TABLE_PML3[pml3i].frame << 12;
+                void* direct = PHYS_TO_DIRECT(phys);
+                vmm_map(phys, direct, 1, MAP_WRITE);
+                pfree(direct);
+                PAGE_TABLE_PML3[pml3i] = (page_entry_t){ 0 };;
+            }
+        }
+    }
+
+    // if we still have a taken lock then free it now
+    if (last_lock_taken != NULL) {
+        spinlock_unlock(last_lock_taken);
+    }
+}
+
 void heap_iterate_dirty_objects(object_callback_t callback) {
     spinlock_t* last_lock_taken = NULL;
 
     // iterate over all the top-level pools, each having 512 sub-pools
     for (int pool_idx = 0; pool_idx < POOL_COUNT; pool_idx++) {
         pml_index_t pml4i = pool_idx + PML4_INDEX(OBJECT_HEAP_START);
-        size_t pool_object_size = 2 << (4 + pool_idx);
+        size_t pool_object_size = 2 << (3 + pool_idx);
 
         // go over each 1GB region in the pool, making sure that each of the pools
         // actually exists
         for (int subpool_idx = 0; subpool_idx < SUBPOOLS_COUNT; subpool_idx++) {
-            pml_index_t pml3i = pml4i << 9;
+            pml_index_t pml3i = (pml4i << 9) + subpool_idx;
 
             // we got to the first pool in the subpool region, lock the region
             if ((subpool_idx % SUBPOOLS_PER_LOCK) == 0) {
@@ -410,8 +571,8 @@ void heap_iterate_dirty_objects(object_callback_t callback) {
                     // iterate the objects in the card if we have a callback
                     if (callback != NULL) {
                         // get the object base and iterate it until the pool end
-                        uintptr_t object_base = ALIGN_DOWN(pml2i << 12, pool_object_size);
-                        for (uintptr_t obj = object_base; obj < (pml2i + 1) << 12; obj += pool_object_size) {
+                        uintptr_t object_base = ALIGN_DOWN(PML2_BASE(pml2i), pool_object_size);
+                        for (uintptr_t obj = object_base; obj < PML2_BASE(pml2i + 1); obj += pool_object_size) {
                             System_Object object = (System_Object)obj;
                             callback(object);
                         }
@@ -433,8 +594,8 @@ void heap_iterate_dirty_objects(object_callback_t callback) {
                         // iterate the objects in the card if we have a callback
                         if (callback != NULL) {
                             // get the object base and iterate it until the pool end
-                            uintptr_t object_base = ALIGN_DOWN(pml1i << 12, pool_object_size);
-                            for (uintptr_t obj = object_base; obj < (pml1i + 1) << 12; obj += pool_object_size) {
+                            uintptr_t object_base = ALIGN_DOWN(PML1_BASE(pml1i), pool_object_size);
+                            for (uintptr_t obj = object_base; obj < PML1_BASE(pml1i + 1); obj += pool_object_size) {
                                 System_Object object = (System_Object)obj;
                                 callback(object);
                             }
@@ -461,7 +622,7 @@ void heap_iterate_objects(object_callback_t callback) {
     // iterate over all the top-level pools, each having 512 sub-pools
     for (int pool_idx = 0; pool_idx < POOL_COUNT; pool_idx++) {
         pml_index_t pml4i = pool_idx + PML4_INDEX(OBJECT_HEAP_START);
-        size_t pool_object_size = 2 << (4 + pool_idx);
+        size_t pool_object_size = 2 << (3 + pool_idx);
 
         // go over each 1GB region in the pool, making sure that each of the pools
         // actually exists

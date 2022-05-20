@@ -931,7 +931,7 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
 
     // allocate the corelib on the kernel heap and not the object heap, just because
     // it is always going to be allocated anyways
-    System_Reflection_Assembly assembly = malloc(sizeof(struct System_Reflection_Assembly));
+    System_Reflection_Assembly assembly = gc_new(NULL, sizeof(struct System_Reflection_Assembly));
     CHECK(assembly != NULL);
 
     // setup the basic type system

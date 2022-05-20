@@ -66,11 +66,14 @@ struct System_Object {
 
     // the color of the object
     uint8_t color : 3;
-#define COLOR_BLUE      0
-#define COLOR_WHITE     1
-#define COLOR_GRAY      2
-#define COLOR_BLACK     3
-#define COLOR_YELLOW    4
+#define COLOR_BLUE      0   /* unallocated object */
+#define COLOR_WHITE     1   /* object that has not been traced */
+#define COLOR_GRAY      2   /* object that has been traced, but its children have not been traced yet */
+#define COLOR_BLACK     3   /* object that has been traced, and its children have been traced as well */
+#define COLOR_YELLOW    4   /* object that has not been traced (for color switching) */
+#define COLOR_GREEN     5   /* object that should be registered for finalization */
+#define COLOR_RESERVED0 6   /* reserved for future use */
+#define COLOR_RESERVED1 7   /* reserved for future use */
 
     // should finalizer be called or not
     uint8_t suppress_finalizer : 1;

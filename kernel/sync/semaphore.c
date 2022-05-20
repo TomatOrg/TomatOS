@@ -38,25 +38,30 @@
 
 void semaphore_queue(semaphore_t* semaphore, waiting_thread_t* wt, bool lifo) {
     waiting_thread_t* t = semaphore->waiters;
-    if (lifo) {
-        // Substitute wt in t's place in waiters.
+
+    if (t == NULL) {
         semaphore->waiters = wt;
-        wt->ticket = t->ticket;
-        wt->wait_link = t;
-        wt->wait_tail = t->wait_tail;
-        if (wt->wait_tail == NULL) {
-            wt->wait_tail = t;
-        }
-        t->wait_tail = NULL;
     } else {
-        // Add wt to the end of t's wait list
-        if (t->wait_tail == NULL) {
-            t->wait_link = wt;
+        if (lifo) {
+            // Substitute wt in t's place in waiters.
+            semaphore->waiters = wt;
+            wt->ticket = t->ticket;
+            wt->wait_link = t;
+            wt->wait_tail = t->wait_tail;
+            if (wt->wait_tail == NULL) {
+                wt->wait_tail = t;
+            }
+            t->wait_tail = NULL;
         } else {
-            t->wait_tail->wait_link = wt;
+            // Add wt to the end of t's wait list
+            if (t->wait_tail == NULL) {
+                t->wait_link = wt;
+            } else {
+                t->wait_tail->wait_link = wt;
+            }
+            t->wait_tail = wt;
+            t->wait_link = NULL;
         }
-        t->wait_tail = wt;
-        t->wait_link = NULL;
     }
 }
 
@@ -161,7 +166,7 @@ void semaphore_release(semaphore_t* semaphore, bool handoff) {
     atomic_fetch_sub(&semaphore->nwait, 1);
     spinlock_unlock(&semaphore->lock);
 
-    if (handoff & semaphore_can_acquire(semaphore)) {
+    if (handoff && semaphore_can_acquire(semaphore)) {
         wt->ticket = 1;
     }
 
