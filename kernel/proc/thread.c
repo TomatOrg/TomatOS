@@ -355,8 +355,8 @@ static thread_t* alloc_thread() {
     thread_t* thread = malloc(sizeof(thread_t));
     CHECK(thread != NULL);
 
-    thread->stack_bottom = alloc_stack();
-    CHECK(thread->stack_bottom != NULL);
+    thread->stack_top = alloc_stack();
+    CHECK(thread->stack_top != NULL);
 
     // allocate the tcb
     void* tcb_bottom = malloc_aligned(m_tls_size + sizeof(thread_control_block_t), m_tls_align);
@@ -402,7 +402,7 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     memset(&thread->save_state, 0, sizeof(thread->save_state));
     thread->save_state.rip = (uint64_t) entry;
     thread->save_state.rflags = BIT1 | BIT9 | BIT21;
-    thread->save_state.rsp = (uint64_t) thread->stack_bottom;
+    thread->save_state.rsp = (uint64_t) thread->stack_top;
 
     // we want the return address to be thread_exit
     // and the stack to be aligned to 16 bytes + 8
@@ -472,7 +472,7 @@ void reclaim_free_threads() {
         free(tcb);
 
         // free the stack
-        free_stack(thread->stack_bottom);
+        free_stack(thread->stack_top);
 
         // free the thread itself
         free(thread);

@@ -61,43 +61,26 @@ typedef uintptr_t System_UIntPtr;
  * Represents a dotnet object
  */
 struct System_Object {
-    union {
-        // while the object is alive
-        struct {
-            // the type of the object, must be first
-            System_Type type;
+    // the type of the object
+    System_Type type;
 
-            // the log pointer, for tracing object changes
-            System_Object* log_pointer;
+    // the color of the object
+    uint8_t color : 3;
+#define COLOR_BLUE      0
+#define COLOR_WHITE     1
+#define COLOR_GRAY      2
+#define COLOR_BLACK     3
+#define COLOR_YELLOW    4
 
-            // the color of the object, black and white switch during collection
-            // and blue means unallocated
-            uint8_t color;
+    // should finalizer be called or not
+    uint8_t suppress_finalizer : 1;
 
-            // the rank of the object from the allocator
-            uint8_t rank;
+    uint8_t _reserved0 : 4;
 
-            // if true the finalizer should not run
-            uint8_t suppress_finalizer;
-
-            // the app domain this object was created under
-            uint8_t _reserved0;
-            uint8_t _reserved1;
-            uint8_t _reserved2;
-            uint8_t _reserved3;
-            uint8_t _reserved4;
-        };
-
-        // while the object is in the heap
-        struct {
-            // next chunk
-            System_Object chunk_next;
-        };
-    };
-
-    // next free object in the chunk, and the next
-    // object in general on the heap for sweeping
-    System_Object next;
+    uint8_t _reserved1;
+    uint8_t _reserved2;
+    uint8_t _reserved3;
+    uint32_t _reserved4;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

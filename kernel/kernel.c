@@ -116,9 +116,9 @@ static _Atomic(bool) m_smp_error = false;
  */
 static _Atomic(bool) m_start_scheduler = false;
 
-static _Atomic(size_t) m_cpu_count = 1;
+static _Atomic(int) m_cpu_count = 1;
 
-size_t get_cpu_count() {
+int get_cpu_count() {
     return m_cpu_count;
 }
 
@@ -195,6 +195,7 @@ static void kernel_startup() {
 
     // Initialize the runtime
     CHECK_AND_RETHROW(init_gc());
+    CHECK_AND_RETHROW(init_heap());
 
     // load the corelib
     uint64_t start = microtime();

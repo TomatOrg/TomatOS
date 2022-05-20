@@ -24,4 +24,4 @@ extern volatile struct limine_kernel_address_request g_limine_kernel_address;
 /**
  * Get the amount of cpus this machine has
  */
-size_t get_cpu_count();
+int get_cpu_count();

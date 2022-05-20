@@ -12,31 +12,14 @@ typedef union object_set_entry {
 
 typedef object_set_entry_t* object_set_t;
 
+typedef enum gc_thread_status {
+    THREAD_STATUS_ASYNC,
+    THREAD_STATUS_SYNC1,
+    THREAD_STATUS_SYNC2,
+} gc_thread_status_t;
+
 typedef struct gc_thread_data {
-    /**
-     * Is tracing set on
-     */
-    bool trace_on;
-
-    /**
-     * Is snooping set on
-     */
-    bool snoop;
-
-    /**
-     * The color used to allocate objects
-     */
-    uint8_t alloc_color;
-
-    /**
-     * The tracing buffer of the thread
-     */
-    struct System_Object** buffer;
-
-    /**
-     * The snooped object object set
-     */
-    object_set_t snooped;
+    gc_thread_status_t status;
 } gc_thread_data_t;
 
 /**

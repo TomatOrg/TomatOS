@@ -15,7 +15,7 @@ void reset_trace_lock();
 void trace_hex(const void* data, size_t size);
 
 #define TRACE(fmt, ...) printf("[CPU%03d][*] " fmt "\n\r", get_apic_id(), ## __VA_ARGS__)
-#define WARN(fmt, ...)  printf("[CPU%03d][!] " fmt "\n\r", get_apic_id(), ## __VA_ARGS__)
+#define WARN(fmt, ...)  printf("[CPU%03d][!] " fmt " (%s:%d)\n\r", get_apic_id(), ## __VA_ARGS__, __FILE_NAME__, __LINE__)
 #define ERROR(fmt, ...) printf("[CPU%03d][-] " fmt "\n\r", get_apic_id(), ## __VA_ARGS__)
 
 #define TRACE_HEX(data, size) trace_hex(data, size);

@@ -47,7 +47,7 @@ bool spinlock_try_lock(spinlock_t* spinlock) {
         if (status) _enable();
     }
 
-    return status;
+    return result;
 }
 
 void spinlock_unlock(spinlock_t* spinlock) {

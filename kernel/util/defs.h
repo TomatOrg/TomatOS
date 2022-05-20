@@ -9,18 +9,13 @@
 // General purpose definitions
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define ALIGN_UP(x, align) \
-    ({ \
-        size_t _x = (size_t)(x); \
-        size_t _align = (size_t)(align); \
-        (__typeof(x))((_x + (_align - 1)) & ~(_align - 1)); \
-    })
+#define ALIGN_UP(x, align) __builtin_align_up(x, align)
+#define ALIGN_DOWN(x, align) __builtin_align_down(x, align)
 
-#define ALIGN_DOWN(x, align) \
+#define SIGN_EXTEND(x, size) \
     ({ \
-        size_t _x = (size_t)(x); \
-        size_t _align = (size_t)(align); \
-        (__typeof(x))(_x - (_x & (_align - 1))); \
+        struct { signed long long value : size; } s; \
+        s.value = x; \
     })
 
 #define MIN(a, b) \

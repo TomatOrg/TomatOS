@@ -24,6 +24,11 @@
 #define BUDDY_TREE_START                (DIRECT_MAP_END + SIZE_1GB)
 #define BUDDY_TREE_END                  (BUDDY_TREE_START + BUDDY_TREE_SIZE)
 
+// The virtual area used for the GC objects, total of 26 pools, each
+// is 512GB, so total of 13TB of virtual memory
+#define OBJECT_HEAP_START               (0xffff810000000000)
+#define OBJECT_HEAP_END                 (0xffff810000000000 + SIZE_1TB * 13)
+
 // This is the area the recursive paging exist on
 #define RECURSIVE_PAGING_SIZE           (SIZE_512GB)
 #define RECURSIVE_PAGING_START          (0xFFFFFF0000000000ull)
@@ -43,6 +48,8 @@
 #define KERNEL_BASE                     (0xffffffff80000000)
 
 // verify we have no overlaps
+STATIC_ASSERT(BUDDY_TREE_END < OBJECT_HEAP_START);
+STATIC_ASSERT(OBJECT_HEAP_END < RECURSIVE_PAGING_START);
 STATIC_ASSERT(BUDDY_TREE_END < RECURSIVE_PAGING_START);
 STATIC_ASSERT(KERNEL_HEAP_END < KERNEL_BASE);
 

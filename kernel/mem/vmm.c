@@ -192,13 +192,7 @@ void init_vmm_per_cpu() {
 // Implementation details of the vmm
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- * Unmap a single page from the direct map, don't page fault
- * if the page is not already mapped.
- *
- * @param pa    [IN] the physical page to unmap
- */
-static void vmm_unmap_direct_page(uintptr_t pa) {
+void vmm_unmap_direct_page(uintptr_t pa) {
     uintptr_t va = (uintptr_t)PHYS_TO_DIRECT(pa);
     size_t pml4i = (va >> 39) & 0x1FFull;
     size_t pml3i = (va >> 30) & 0x3FFFFull;
@@ -215,7 +209,7 @@ static void vmm_unmap_direct_page(uintptr_t pa) {
 /**
  * Allocate a page for the vmm to use
  */
-static uintptr_t vmm_alloc_page() {
+uintptr_t vmm_alloc_page() {
     uintptr_t new_phys = INVALID_PHYS_ADDR;
 
     if (m_early_alloc) {
@@ -239,14 +233,7 @@ static uintptr_t vmm_alloc_page() {
     return new_phys;
 }
 
-/**
- * Setup a single level of the page table, this will allocate the page
- * if needed
- *
- * @param pml       [IN] The PML virtual base
- * @param index     [IN] The index of the page in the level
- */
-static bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
+bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
     if (!pml[index].present) {
         uintptr_t frame = vmm_alloc_page();
         if (frame == INVALID_PHYS_ADDR) {
@@ -256,8 +243,8 @@ static bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t in
         // map it
         pml[index] = (page_entry_t) {
             .present = 1,
-            .frame = frame >> 12,
-            .writeable = 1
+            .writeable = 1,
+            .frame = frame >> 12
         };
 
         // now that it is mapped we can clear it

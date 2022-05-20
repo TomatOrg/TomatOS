@@ -16,10 +16,27 @@ typedef struct page_entry {
     uint64_t global : 1;
     uint64_t available_low : 3;
     uint64_t frame : 40;
-    uint64_t available_high : 11;
+    uint64_t available : 11;
     uint64_t no_execute : 1;
 } PACKED page_entry_t;
 STATIC_ASSERT(sizeof(page_entry_t) == sizeof(uint64_t));
+
+typedef signed long long pml_index_t;
+
+#define PAGE_TABLE_PML1     ((page_entry_t*)0xFFFFFF0000000000ull)
+#define PAGE_TABLE_PML2     ((page_entry_t*)0xFFFFFF7F80000000ull)
+#define PAGE_TABLE_PML3     ((page_entry_t*)0xFFFFFF7FBFC00000ull)
+#define PAGE_TABLE_PML4     ((page_entry_t*)0xFFFFFF7FBFDFE000ull)
+
+#define PML4_INDEX(va)      ((pml_index_t)(((uintptr_t)(va) >> 39) & 0x1FFull))
+#define PML3_INDEX(va)      ((pml_index_t)(((uintptr_t)(va) >> 30) & 0x3FFFFull))
+#define PML2_INDEX(va)      ((pml_index_t)(((uintptr_t)(va) >> 21) & 0x7FFFFFFull))
+#define PML1_INDEX(va)      ((pml_index_t)(((uintptr_t)(va) >> 12) & 0xFFFFFFFFFull))
+
+#define PML4_BASE(idx)      ((uintptr_t)(SIGN_EXTEND((pml_index_t)(idx) << 39, 48)))
+#define PML3_BASE(idx)      ((uintptr_t)(SIGN_EXTEND((pml_index_t)(idx) << 30, 48)))
+#define PML2_BASE(idx)      ((uintptr_t)(SIGN_EXTEND((pml_index_t)(idx) << 21, 48)))
+#define PML1_BASE(idx)      ((uintptr_t)(SIGN_EXTEND((pml_index_t)(idx) << 12, 48)))
 
 /**
  * Represents an invalid physical address for related functions
@@ -41,6 +58,24 @@ void vmm_switch_allocator();
  * Initialize the vmm per cpu
  */
 void init_vmm_per_cpu();
+
+/**
+ * Setup a single level of the page table, this will allocate the page
+ * if needed
+ *
+ * @param pml       [IN] The PML virtual base
+ * @param pml       [IN] The next PML virtual base
+ * @param index     [IN] The index of the page in the level
+ */
+bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index);
+
+/**
+ * Unmap a single page from the direct map, don't page fault
+ * if the page is not already mapped.
+ *
+ * @param pa    [IN] the physical page to unmap
+ */
+void vmm_unmap_direct_page(uintptr_t pa);
 
 typedef enum map_perm {
     /**

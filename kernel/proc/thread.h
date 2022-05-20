@@ -152,9 +152,9 @@ typedef struct thread {
     // thread control block
     thread_control_block_t* tcb;
 
-    // the bottom of the stack, so
+    // the top of the stack, so
     // we can free it later
-    void* stack_bottom;
+    void* stack_top;
 
     //
     // scheduling related

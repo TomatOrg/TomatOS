@@ -4,22 +4,27 @@
 
 #include <stddef.h>
 
-/**
- * Request an object of the given size from the heap
- */
+err_t init_heap();
+
 System_Object heap_alloc(size_t size);
 
 /**
- * Return an object to the heap
+ * Find the object from a pointer, returns NULL if it is
+ * not a real object
  */
-void heap_free(System_Object object);
+System_Object heap_find(uintptr_t ptr);
+
+typedef void (*object_callback_t)(System_Object object);
 
 /**
- * Flush all freed objects, this will will possibly create small chunks
+ * Iterate all the dirty objects in the heap
+ *
+ * once iterated the card will be marked as clear
  */
-void heap_flush();
+void heap_iterate_dirty_objects(object_callback_t callback);
 
 /**
- * Get the number of objects that are considered alive
+ * Iterate all the objects on the heap, be it allocated or not, and call the
+ * iven callback function
  */
-size_t heap_alive();
+void heap_iterate_objects(object_callback_t callback);
