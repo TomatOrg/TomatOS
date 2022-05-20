@@ -28,3 +28,8 @@ void heap_iterate_dirty_objects(object_callback_t callback);
  * iven callback function
  */
 void heap_iterate_objects(object_callback_t callback);
+
+/**
+ * Dump the whole heap
+ */
+void heap_dump();

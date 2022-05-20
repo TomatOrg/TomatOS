@@ -261,7 +261,7 @@ System_Object heap_alloc(size_t size) {
                 if (aligned_size >= SIZE_4KB) {
                     // the objects are larger than 4KB, so we can skip at the object size
                     // and simply check the PML1 per object to check if it is present
-                    for (uintptr_t ptr = PML1_BASE(pml2i); ptr < PML1_BASE(pml2i) + SIZE_2MB; ptr += aligned_size) {
+                    for (uintptr_t ptr = PML2_BASE(pml2i); ptr < PML2_BASE(pml2i) + SIZE_2MB; ptr += aligned_size) {
                         pml_index_t pml1i = PML1_INDEX(ptr);
 
                         if (!PAGE_TABLE_PML1[pml1i].present) {
@@ -466,7 +466,7 @@ void heap_iterate_objects(object_callback_t callback) {
         // go over each 1GB region in the pool, making sure that each of the pools
         // actually exists
         for (int subpool_idx = 0; subpool_idx < SUBPOOLS_COUNT; subpool_idx++) {
-            pml_index_t pml3i = pml4i << 9;
+            pml_index_t pml3i = (pml4i << 9) + subpool_idx;
 
             // we got to the first pool in the subpool region, lock the region
             if ((subpool_idx % SUBPOOLS_PER_LOCK) == 0) {
@@ -509,7 +509,7 @@ void heap_iterate_objects(object_callback_t callback) {
                             if (!PAGE_TABLE_PML1[pml1i].present) continue;
 
                             // just iterate all of them
-                            for (uintptr_t ptr = PML2_BASE(pml1i); ptr < PML2_BASE(pml1i) + SIZE_4KB; ptr += pool_object_size) {
+                            for (uintptr_t ptr = PML1_BASE(pml1i); ptr < PML1_BASE(pml1i) + SIZE_4KB; ptr += pool_object_size) {
                                 callback((System_Object)ptr);
                             }
                         }
@@ -523,4 +523,43 @@ void heap_iterate_objects(object_callback_t callback) {
     if (last_lock_taken != NULL) {
         spinlock_unlock(last_lock_taken);
     }
+}
+
+static const char* m_color_str[] = {
+    [COLOR_BLUE] = "BLUE",
+    [COLOR_WHITE] = "WHITE",
+    [COLOR_GRAY] = "GRAY",
+    [COLOR_BLACK] = "BLACK",
+    [COLOR_YELLOW] = "YELLOW",
+};
+
+static pml_index_t m_last_pool_idx = -1;
+
+static void heap_dump_callback(System_Object object) {
+    if (object->color == COLOR_BLUE) return;
+
+    pml_index_t pool_idx = PML4_INDEX((uintptr_t)object - OBJECT_HEAP_START);
+    if (m_last_pool_idx != pool_idx) {
+        TRACE("\tHeap #%d: %S", pool_idx, calc_object_size((uintptr_t)object));
+        m_last_pool_idx = pool_idx;
+    }
+
+    printf("[CPU%03d][*] \t\t%p - ", get_cpu_id(), object);
+    if (object->type == NULL) {
+        printf("<no type>");
+    } else {
+        type_print_full_name(object->type, stdout);
+    }
+    printf(": %s", m_color_str[object->color]);
+
+    if (object->type == tSystem_String) {
+        printf(" - \"%U\"", (System_String)object);
+    }
+
+    printf("\n\r");
+}
+
+void heap_dump() {
+    TRACE("Object heap:");
+    heap_iterate_objects(heap_dump_callback);
 }

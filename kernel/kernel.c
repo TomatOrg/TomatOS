@@ -227,6 +227,7 @@ static void kernel_startup() {
     TRACE("Kernel output: %d", output.result);
 
 cleanup:
+    heap_dump();
     ASSERT(!IS_ERROR(err));
     TRACE("Kernel initialization finished!");
 }

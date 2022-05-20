@@ -3,16 +3,11 @@ namespace System
     public class Object
     {
         private Type _type;
-        private unsafe void* _logPointer;
-        private byte _color;
-        private byte _rank;
-        private byte _supressFinalizer;
-        private byte _reserved0;
+        private byte flags;
         private byte _reserved1;
         private byte _reserved2;
         private byte _reserved3;
-        private byte _reserved4;
-        private unsafe void* _next;
+        private uint _reserved4;
 
         public Type GetType()
         {
