@@ -299,7 +299,6 @@ System_Object heap_alloc(size_t size, int color) {
                                     .writeable = 1,
                                     .present = 1,
                                     .frame = DIRECT_TO_PHYS(page) >> 12
-                                    // TODO: set that we have all the entries
                                 };
 
                                 // unmap the physical page
@@ -311,14 +310,9 @@ System_Object heap_alloc(size_t size, int color) {
                             }
                         }
 
-                        // TODO: check if we have enough entries
-
                         // return the object if it is empty
                         System_Object object = (System_Object) ptr;
                         if (object->color == COLOR_BLUE) {
-
-                            // TODO: decrement entries and update the rest of the levels
-
                             allocated = object;
                             goto exit;
                         }
@@ -339,22 +333,16 @@ System_Object heap_alloc(size_t size, int color) {
                                 .present = 1,
                                 .writeable = 1,
                                 .frame = DIRECT_TO_PHYS(page) >> 12
-                                // TODO: set that we have all the entries
                             };
 
                             // unmap the physical page
                             vmm_unmap_direct_page(DIRECT_TO_PHYS(page));
                         }
 
-                        // TODO: check if we have enough entries
-
                         // just iterate all of them
                         for (uintptr_t ptr = PML1_BASE(pml1i); ptr < PML1_BASE(pml1i) + SIZE_4KB; ptr += aligned_size) {
                             System_Object object = (System_Object) ptr;
                             if (object->color == COLOR_BLUE) {
-
-                                // TODO: decrement entries and update the rest of the levels
-
                                 allocated = object;
                                 goto exit;
                             }
@@ -385,6 +373,39 @@ void heap_free(System_Object object) {
     // essentially free the object, this can be done without locking at all because at worst
     // something is going to allocate it in a second
     object->color = COLOR_BLUE;
+}
+
+/**
+ * Free a PML range
+ *
+ * @param pml           [IN] The level table
+ * @param index         [IN] The index
+ * @param count         [IN] The amount of entries to free
+ * @param invalidate    [IN] Invalidate the addresses
+ */
+static void heap_free_pml(page_entry_t* pml, pml_index_t index, size_t page_size, size_t object_size, bool invalidate) {
+    for (pml_index_t i = 0; i < object_size / page_size; i++) {
+        // get the physical address
+        uintptr_t phys = pml[index + i].frame << 12;
+
+        // remap the direct address and free it
+        void* direct = PHYS_TO_DIRECT(phys);
+        vmm_map(phys, direct, page_size / PAGE_SIZE, MAP_WRITE);
+        pfree(direct);
+
+        // remove the current mapping
+        pml[index + i] = (page_entry_t){ 0 };
+
+        // invalidate the page from the heap
+        // TODO: invalidate on other cores
+        if (invalidate) {
+            if (page_size == SIZE_2MB) {
+                __invlpg((void*)PML2_BASE(index + i));
+            } else {
+                __invlpg((void*)PML1_BASE(index + i));
+            }
+        }
+    }
 }
 
 void heap_reclaim() {
@@ -425,20 +446,12 @@ void heap_reclaim() {
                     // check if the object is free
                     System_Object object = (System_Object) ptr;
                     if (object->color != COLOR_BLUE) {
-                        TRACE("Non-blue object");
                         can_remove_pml3 = false;
                         continue;
                     }
 
                     // we can free all the memory it takes
-                    for (pml_index_t i = 0; i < pool_object_size / SIZE_2MB; i++) {
-                        uintptr_t phys = PAGE_TABLE_PML2[pml2i + i].frame << 12;
-                        void* direct = PHYS_TO_DIRECT(phys);
-                        vmm_map(phys, direct, SIZE_2MB / PAGE_SIZE, MAP_WRITE);
-                        pfree(direct);
-                        PAGE_TABLE_PML2[pml2i + i] = (page_entry_t){ 0 };;
-                        __invlpg((void*)PML2_BASE(pml2i + i));
-                    }
+                    heap_free_pml(PAGE_TABLE_PML2, pml2i, SIZE_2MB, pool_object_size, true);
                 }
             } else {
                 // the objects are smaller than 2MB, meaning each PML2 has multiple objects,
@@ -463,14 +476,7 @@ void heap_reclaim() {
                             }
 
                             // we can free all the memory it takes
-                            for (pml_index_t i = 0; i < pool_object_size / PAGE_SIZE; i++) {
-                                uintptr_t phys = PAGE_TABLE_PML1[pml1i + i].frame << 12;
-                                void* direct = PHYS_TO_DIRECT(phys);
-                                vmm_map(phys, direct, 1, MAP_WRITE);
-                                pfree(direct);
-                                PAGE_TABLE_PML1[pml1i + i] = (page_entry_t){ 0 };;
-                                __invlpg((void*)PML1_BASE(pml1i + i));
-                            }
+                            heap_free_pml(PAGE_TABLE_PML1, pml1i, PAGE_SIZE, pool_object_size, true);
                         }
                     } else {
                         // the objects are smaller than 4KB, meaning each PML1 has multiple
@@ -491,32 +497,21 @@ void heap_reclaim() {
 
                             // no items, free it
                             if (can_remove_pml1) {
-                                uintptr_t phys = PAGE_TABLE_PML1[pml1i].frame << 12;
-                                void* direct = PHYS_TO_DIRECT(phys);
-                                vmm_map(phys, direct, 1, MAP_WRITE);
-                                pfree(direct);
-                                PAGE_TABLE_PML1[pml1i] = (page_entry_t){ 0 };;
-                                __invlpg((void*)PML1_BASE(pml1i));
+                                heap_free_pml(PAGE_TABLE_PML1, pml1i, PAGE_SIZE, PAGE_SIZE, true);
                             }
                         }
                     }
 
                     if (can_remove_pml2) {
-                        uintptr_t phys = PAGE_TABLE_PML2[pml2i].frame << 12;
-                        void* direct = PHYS_TO_DIRECT(phys);
-                        vmm_map(phys, direct, 1, MAP_WRITE);
-                        pfree(direct);
-                        PAGE_TABLE_PML2[pml2i] = (page_entry_t){ 0 };;
+                        // we can remove the top-level entry, which is a single page
+                        heap_free_pml(PAGE_TABLE_PML2, pml2i, PAGE_SIZE, PAGE_SIZE, false);
                     }
                 }
             }
 
             if (can_remove_pml3) {
-                uintptr_t phys = PAGE_TABLE_PML3[pml3i].frame << 12;
-                void* direct = PHYS_TO_DIRECT(phys);
-                vmm_map(phys, direct, 1, MAP_WRITE);
-                pfree(direct);
-                PAGE_TABLE_PML3[pml3i] = (page_entry_t){ 0 };;
+                // we can remove the top-level entry, which is a single page
+                heap_free_pml(PAGE_TABLE_PML3, pml3i, PAGE_SIZE, PAGE_SIZE, false);
             }
         }
     }

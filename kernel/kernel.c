@@ -217,7 +217,6 @@ static void kernel_startup() {
     TRACE("Kernel app domain creation took %dms", (microtime() - start) / 1000);
 
     // actually call the kernel main
-    start = microtime();
     method_result_t output = app_domain_link_and_start(kernel_domain);
     if (output.exception != NULL) {
         CHECK_FAIL("Got kernel exception: `%U`", output.exception->Message);
@@ -227,8 +226,6 @@ static void kernel_startup() {
     TRACE("Kernel output: %d", output.result);
 
 cleanup:
-    gc_wait();
-    heap_dump();
     ASSERT(!IS_ERROR(err));
     TRACE("Kernel initialization finished!");
 }
