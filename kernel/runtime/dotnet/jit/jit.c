@@ -918,6 +918,129 @@ cleanup:
     return err;
 }
 
+static err_t jit_binary_numeric_operation(jit_context_t* ctx, int il_offset, MIR_insn_code_t code, bool integer) {
+    err_t err = NO_ERROR;
+
+    MIR_reg_t value2_reg;
+    MIR_reg_t value1_reg;
+    System_Type value2_type;
+    System_Type value1_type;
+    CHECK_AND_RETHROW(stack_pop(ctx, &value2_type, &value2_reg));
+    CHECK_AND_RETHROW(stack_pop(ctx, &value1_type, &value1_reg));
+
+    if (code == MIR_DIV || code == MIR_UDIV || code == MIR_MOD || code == MIR_UMOD) {
+        MIR_insn_t label = MIR_new_label(ctx->context);
+
+        // these need to check that value2 is not zero
+        // if we have a non-zero value then skip the throw
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_insn(ctx->context, MIR_BT,
+                                     MIR_new_label_op(ctx->context, label),
+                                     MIR_new_reg_op(ctx->context, ctx->exception_reg)));
+
+        // throw the error, it has an unknown type
+        CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_DivideByZeroException));
+
+        // insert the skip label
+        MIR_append_insn(ctx->context, ctx->func, label);
+
+    }
+
+    MIR_reg_t result_reg;
+
+    if (value1_type == tSystem_Int32) {
+        if (value2_type == tSystem_Int32) {
+            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int32, &result_reg));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, code + 1,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value1_reg),
+                                         MIR_new_reg_op(ctx->context, value2_reg)));
+        } else {
+            CHECK_FAIL();
+        }
+    } else if (value1_type == tSystem_Int64) {
+        if (value2_type == tSystem_Int64) {
+            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int64, &result_reg));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, code,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value1_reg),
+                                         MIR_new_reg_op(ctx->context, value2_reg)));
+        } else {
+            CHECK_FAIL();
+        }
+    } else if (value1_type == tSystem_IntPtr) {
+        if (value2_type == tSystem_IntPtr) {
+            CHECK_AND_RETHROW(stack_push(ctx, tSystem_IntPtr, &result_reg));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, code,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value1_reg),
+                                         MIR_new_reg_op(ctx->context, value2_reg)));
+        } else {
+            CHECK_FAIL();
+        }
+    } else if (value1_type == tSystem_Single) {
+        CHECK(!integer);
+
+        if (value2_type == tSystem_Single) {
+            // float x float -> float
+            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, code + 2,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value1_reg),
+                                         MIR_new_reg_op(ctx->context, value2_reg)));
+        } else if (value2_type == tSystem_Double) {
+            // (double)float x double -> double
+            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, MIR_F2D,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value1_reg)));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, code + 3,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value2_reg)));
+        } else {
+            CHECK_FAIL();
+        }
+    } else if (value1_type == tSystem_Double) {
+        CHECK(!integer);
+
+        if (value2_type == tSystem_Single) {
+            // double x (double)float -> double
+            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, MIR_F2D,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value2_reg)));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, code + 3,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value1_reg),
+                                         MIR_new_reg_op(ctx->context, result_reg)));
+        } else if (value2_type == tSystem_Double) {
+            // double x double -> double
+            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, code + 3,
+                                         MIR_new_reg_op(ctx->context, result_reg),
+                                         MIR_new_reg_op(ctx->context, value1_reg),
+                                         MIR_new_reg_op(ctx->context, value2_reg)));
+        } else {
+            CHECK_FAIL();
+        }
+    } else {
+        CHECK_FAIL();
+    }
+
+    cleanup:
+    return err;
+}
+
 static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method) {
     err_t err = NO_ERROR;
 
@@ -1254,23 +1377,76 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             // Arithmetic
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            case CEE_ADD: {
-                MIR_reg_t value1, value2;
-                System_Type type1, type2;
-                MIR_reg_t dest;
-                CHECK_AND_RETHROW(stack_pop(ctx, &type2, &value2));
-                CHECK_AND_RETHROW(stack_pop(ctx, &type1, &value1));
-                if (type2 == tSystem_Int32 && type1 == tSystem_Int32) {
-                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int32, &dest));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_ADD,
-                                                 MIR_new_reg_op(ctx->context, dest),
-                                                 MIR_new_reg_op(ctx->context, value2),
-                                                 MIR_new_reg_op(ctx->context, value1)));
+            // arithmetic binary operations
+            case CEE_ADD: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_ADD, false)); break;
+            case CEE_DIV: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_DIV, false)); break;
+            case CEE_DIV_UN: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_UDIV, true)); break;
+            case CEE_MUL: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_MUL, false)); break;
+            case CEE_REM: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_MOD, false)); break;
+            case CEE_REM_UN: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_UMOD, true)); break;
+            case CEE_SUB: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_SUB, false)); break;
+
+            // bitwise binary operations
+            case CEE_AND: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_AND, true)); break;
+            case CEE_OR: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_OR, true)); break;
+            case CEE_XOR: CHECK_AND_RETHROW(jit_binary_numeric_operation(ctx, il_offset, MIR_XOR, true)); break;
+
+            // unary operations
+            case CEE_NEG: {
+                MIR_reg_t value_reg;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+
+                MIR_reg_t result_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, value_type, &result_reg));
+
+                MIR_insn_code_t code;
+                if (value_type == tSystem_Int32) {
+                    code = MIR_NEGS;
+                } else if (value_type == tSystem_Int64 || value_type == tSystem_IntPtr) {
+                    code = MIR_NEG;
+                } else if (value_type == tSystem_Single) {
+                    code = MIR_FNEG;
+                } else if (value_type == tSystem_Double) {
+                    code = MIR_DNEG;
                 } else {
-                    CHECK_FAIL("TODO: implement other ADD types");
+                    CHECK_FAIL();
                 }
+
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, code,
+                                             MIR_new_reg_op(ctx->context, result_reg),
+                                             MIR_new_reg_op(ctx->context, value_reg)));
             } break;
+
+            case CEE_NOT: {
+                MIR_reg_t value_reg;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+
+                MIR_reg_t result_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, value_type, &result_reg));
+
+                MIR_insn_code_t code;
+                if (value_type == tSystem_Int32) {
+                    code = MIR_XORS;
+                } else if (value_type == tSystem_Int64 || value_type == tSystem_IntPtr) {
+                    code = MIR_XOR;
+                } else {
+                    CHECK_FAIL();
+                }
+
+                // ~value == value ^ -1
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, code,
+                                             MIR_new_reg_op(ctx->context, result_reg),
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_int_op(ctx->context, -1)));
+            } break;
+
+            // TODO: shift operations
+
+            // TODO: checked arithmetic
 
             case CEE_CONV_I1:
             case CEE_CONV_I2:
