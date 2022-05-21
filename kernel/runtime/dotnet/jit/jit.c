@@ -735,8 +735,6 @@ static err_t jit_throw(jit_context_t* ctx, int il_offset, System_Type type) {
                         break;
                     }
 
-                    TRACE("%U != %U", thrown->Name, clause->CatchType->Name);
-
                     // try next
                     thrown = thrown->BaseType;
                 }
@@ -1976,9 +1974,22 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                           MIR_new_ref_op(ctx->context, type_item),
                                                           MIR_new_int_op(ctx->context, operand_method->DeclaringType->ManagedSize)));
 
-                        // TODO: how am I going to do the exception abi for exceptions x-x, I guess it is
-                        //       going to be the best to just return null when we are out of memory and just
-                        //       go from there...
+                        // if we got NULL from the gc_new function it means we got an OOM
+
+                        // handle any exception which might have been thrown
+                        MIR_insn_t label = MIR_new_label(ctx->context);
+
+                        // if we have a non-zero value then skip the throw
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_BT,
+                                                     MIR_new_label_op(ctx->context, label),
+                                                     MIR_new_reg_op(ctx->context, ctx->exception_reg)));
+
+                        // throw the error, it has an unknown type
+                        CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_OutOfMemoryException));
+
+                        // insert the skip label
+                        MIR_append_insn(ctx->context, ctx->func, label);
                     } else {
                         // this is a call, get it from the stack
                         System_Type arg_type;
