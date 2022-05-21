@@ -1068,6 +1068,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     // variables
     MIR_reg_t* locals = NULL;
 
+    // jump table dynamic array
+    MIR_op_t *switch_ops = NULL;
+
     if (method->ReturnType != NULL) {
         res_type[1] = get_mir_type(method->ReturnType);
         if (res_type[1] == MIR_T_BLK) {
@@ -1298,6 +1301,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         double operand_f64;
         System_Type operand_type;
         System_String operand_string;
+        uint32_t operand_switch_n;
+        int32_t *operand_switch_dests; 
 
         char param[128] = { 0 };
         switch (opcode_info->operand) {
@@ -1334,7 +1339,12 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 il_ptr += sizeof(token_t);
                 operand_string = assembly_get_string_by_token(assembly, value);
             } break;
-            case OPCODE_OPERAND_InlineSwitch: CHECK_FAIL("TODO: switch support");
+            case OPCODE_OPERAND_InlineSwitch: {
+                operand_switch_n = *(uint32_t*)&body->Il->Data[il_ptr];
+                il_ptr += 4;
+                operand_switch_dests = (int32_t*)&body->Il->Data[il_ptr];
+                il_ptr += operand_switch_n * 4;
+            } break;
             case OPCODE_OPERAND_InlineTok: CHECK_FAIL("TODO: tok support");; break;
             case OPCODE_OPERAND_InlineType: {
                 token_t value = *(token_t*)&body->Il->Data[il_ptr];
@@ -2622,9 +2632,36 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
+            case CEE_BEQ:
+            case CEE_BEQ_S: {
+                CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32));
+            } break;
+
             case CEE_BNE_UN:
             case CEE_BNE_UN_S: {
                 CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BNE, il_offset, operand_i32));
+            } break;
+
+            case CEE_SWITCH: {
+                MIR_reg_t value_reg;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+
+                switch_ops = realloc(switch_ops, (operand_switch_n+1) * sizeof(MIR_op_t));
+                switch_ops[0] = MIR_new_reg_op(ctx->context, value_reg);
+                for (int i = 0; i < operand_switch_n; i++) {
+                    MIR_label_t label;
+                    CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, il_ptr + operand_switch_dests[i], &label));
+                    switch_ops[i+1] = MIR_new_label_op(ctx->context, label); // remember that ops[0] is the branch selector
+                }
+                MIR_label_t not_taken = MIR_new_label(ctx->context);
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_BGE,
+                                             MIR_new_label_op(ctx->context, not_taken),
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_int_op(ctx->context, operand_switch_n)));
+                MIR_append_insn(ctx->context, ctx->func, MIR_new_insn_arr(ctx->context, MIR_SWITCH, operand_switch_n+1, switch_ops));
+                MIR_append_insn(ctx->context, ctx->func, not_taken);
             } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2809,6 +2846,11 @@ cleanup:
         }
         MIR_finish_func(ctx->context);
         ctx->func = NULL;
+    }
+
+    // if an error happens while handling a switch inst, switch_ops is not freed
+    if (switch_ops != NULL) {
+        free(switch_ops);
     }
 
     // free the name of the method
