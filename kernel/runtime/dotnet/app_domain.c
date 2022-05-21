@@ -23,6 +23,7 @@ app_domain_t* create_app_domain() {
 
     // load the builtin stuff
     MIR_load_external(app->context, "gc_new", gc_new);
+    MIR_load_external(app->context, "gc_update", gc_update);
     MIR_load_external(app->context, "get_array_type", get_array_type);
     MIR_load_external(app->context, "isinstance", isinstance);
 

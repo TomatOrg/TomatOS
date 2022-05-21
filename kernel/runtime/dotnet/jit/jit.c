@@ -1,6 +1,9 @@
 #include "jit.h"
 
 #include "runtime/dotnet/opcodes.h"
+#include "runtime/dotnet/types.h"
+#include "runtime/dotnet/gc/gc.h"
+#include "util/except.h"
 #include "util/stb_ds.h"
 #include "mir/mir.h"
 #include "time/timer.h"
@@ -132,6 +135,9 @@ typedef struct jit_context {
 
     MIR_item_t gc_new_proto;
     MIR_item_t gc_new_func;
+
+    MIR_item_t gc_update_proto;
+    MIR_item_t gc_update_func;
 
     MIR_item_t get_array_type_proto;
     MIR_item_t get_array_type_func;
@@ -1250,6 +1256,24 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             // Arithmetic
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+            case CEE_ADD: {
+                MIR_reg_t value1, value2;
+                System_Type type1, type2;
+                MIR_reg_t dest;
+                CHECK_AND_RETHROW(stack_pop(ctx, &type2, &value2));
+                CHECK_AND_RETHROW(stack_pop(ctx, &type1, &value1));
+                if (type2 == tSystem_Int32 && type1 == tSystem_Int32) {
+                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int32, &dest));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_ADD,
+                                                 MIR_new_reg_op(ctx->context, dest),
+                                                 MIR_new_reg_op(ctx->context, value2),
+                                                 MIR_new_reg_op(ctx->context, value1)));
+                } else {
+                    CHECK_FAIL("TODO: implement other ADD types");
+                }
+            } break;
+
             case CEE_CONV_I1:
             case CEE_CONV_I2:
             case CEE_CONV_I4:
@@ -1378,20 +1402,24 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 System_Reflection_LocalVariableInfo variable = body->LocalVariables->Data[operand_i32];
                 System_Type type = type_get_intermediate_type(variable->LocalType);
 
-                // handle implicit float casts
+                // handle implicit float casts, if it is invalid and doesn't
+                // go to any of these it will simply fail in the verifier
                 MIR_insn_code_t code = MIR_MOV;
                 if (value_type == tSystem_Single) {
                     if (type == tSystem_Double) {
                         // float->double
                         code = MIR_F2D;
                         value_type = type;
+                    } else if (type == tSystem_Single) {
+                        code = MIR_FMOV;
                     }
-
                 } else if (value_type == tSystem_Double) {
                     if (type == tSystem_Single) {
                         // double->float
                         code = MIR_D2F;
                         value_type = type;
+                    } else if (type == tSystem_Double) {
+                        code = MIR_DMOV;
                     }
                 }
 
@@ -1559,6 +1587,24 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                 MIR_new_insn(ctx->context, MIR_MOV,
                                              MIR_new_reg_op(ctx->context, sr),
                                              MIR_new_int_op(ctx->context, operand_i32)));
+            } break;
+
+            case CEE_LDC_R4: {
+                MIR_reg_t reg;
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &reg));
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_FMOV,
+                                             MIR_new_reg_op(ctx->context, reg),
+                                             MIR_new_float_op(ctx->context, operand_f32)));
+            } break;
+
+            case CEE_LDC_R8: {
+                MIR_reg_t reg;
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &reg));
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_DMOV,
+                                             MIR_new_reg_op(ctx->context, reg),
+                                             MIR_new_double_op(ctx->context, operand_f64)));
             } break;
 
             case CEE_LDSTR: {
@@ -1741,6 +1787,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // TODO: check field access
 
                 // TODO: does the runtime actually use ldfld for static fields?
+                //       in theory CIL allows that, but I think I won't for simplicity
                 CHECK(!field_is_static(operand_field));
 
                 // check the object is not null
@@ -1749,8 +1796,15 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // validate the assignability
                 CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
 
-                if (
-                    type_is_object_ref(value_type) ||
+                if (type_is_object_ref(value_type)) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_call_insn(ctx->context, 5,
+                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
+                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_func),
+                                                      MIR_new_reg_op(ctx->context, obj_reg),
+                                                      MIR_new_int_op(ctx->context, operand_field->MemoryOffset),
+                                                      MIR_new_reg_op(ctx->context, value_reg)));
+                } else if (
                     value_type == tSystem_Int32 ||
                     value_type == tSystem_Int64 ||
                     value_type == tSystem_IntPtr
@@ -2112,6 +2166,99 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, num_elems_reg)));
             } break;
 
+            case CEE_LDELEM_I1: operand_type = tSystem_SByte; goto cee_ldelem;
+            case CEE_LDELEM_I2: operand_type = tSystem_Int16; goto cee_ldelem;
+            case CEE_LDELEM_I4: operand_type = tSystem_Int32; goto cee_ldelem;
+            case CEE_LDELEM_I8: operand_type = tSystem_Int64; goto cee_ldelem;
+            case CEE_LDELEM_U1: operand_type = tSystem_Byte; goto cee_ldelem;
+            case CEE_LDELEM_U2: operand_type = tSystem_UInt16; goto cee_ldelem;
+            case CEE_LDELEM_U4: operand_type = tSystem_UInt32; goto cee_ldelem;
+            case CEE_LDELEM_R4: operand_type = tSystem_Single; goto cee_ldelem;
+            case CEE_LDELEM_R8: operand_type = tSystem_Double; goto cee_ldelem;
+            case CEE_LDELEM_I: operand_type = tSystem_IntPtr; goto cee_ldelem;
+            case CEE_LDELEM_REF:    // implicit from array type
+            case CEE_LDELEM:        // operand type is loaded
+            cee_ldelem: {
+                // pop all the values from the stack
+                MIR_reg_t value_reg;
+                MIR_reg_t index_reg;
+                MIR_reg_t array_reg;
+                System_Type index_type;
+                System_Type array_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &index_type, &index_reg));
+                CHECK_AND_RETHROW(stack_pop(ctx, &array_type, &array_reg));
+
+                // this must be an array
+                CHECK(array_type->IsArray);
+                System_Type T = array_type->ElementType;
+
+                // for anything which is not ldelem.ref we know the operand_type
+                // from the array
+                if (operand_type != NULL) {
+                    CHECK(type_is_array_element_compatible_with(T, operand_type));
+                } else {
+                    // the type is gotten from the array
+                    operand_type = T;
+                }
+
+                // check the array type
+                CHECK(index_type == tSystem_Int32);
+
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg));
+
+                // check the array indexes
+                CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
+
+                if (type_is_object_ref(operand_type)) {
+                    CHECK_AND_RETHROW(stack_push(ctx, T, &value_reg));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, value_reg),
+                                                 MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
+                                                                tSystem_Array->ManagedSize,
+                                                                array_reg, index_reg, T->StackSize)));
+                } else if (
+                    type_is_integer(operand_type) ||
+                    operand_type == tSystem_Single ||
+                    operand_type == tSystem_Double
+                ) {
+                    // extend properly depending on sign and type
+                    MIR_insn_code_t code = MIR_MOV;
+                    if (operand_type == tSystem_Single) {
+                        code = MIR_FMOV;
+                    } else if (operand_type == tSystem_Double) {
+                        code = MIR_DMOV;
+                    } else if (operand_type == tSystem_SByte) {
+                        code = MIR_EXT8;
+                    } else if (operand_type == tSystem_Int16) {
+                        code = MIR_EXT16;
+                    } else if (operand_type == tSystem_Int32) {
+                        code = MIR_EXT32;
+                    } else if (operand_type == tSystem_Byte) {
+                        code = MIR_UEXT8;
+                    } else if (operand_type == tSystem_UInt16) {
+                        code = MIR_UEXT16;
+                    } else if (operand_type == tSystem_UInt32) {
+                        code = MIR_UEXT32;
+                    }
+
+                    // get the actual type as the intermediate type
+                    CHECK_AND_RETHROW(stack_push(ctx, type_get_intermediate_type(operand_type), &value_reg));
+
+                    // we can copy this in a single mov
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, code,
+                                                 MIR_new_reg_op(ctx->context, value_reg),
+                                                 MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
+                                                                tSystem_Array->ManagedSize,
+                                                                array_reg, index_reg, T->StackSize)));
+
+                } else {
+                    CHECK_FAIL("TODO: memcpy array element");
+                }
+            } break;
+
             case CEE_STELEM_I1: operand_type = tSystem_SByte; goto cee_stelem;
             case CEE_STELEM_I2: operand_type = tSystem_Int16; goto cee_stelem;
             case CEE_STELEM_I4: operand_type = tSystem_Int32; goto cee_stelem;
@@ -2119,7 +2266,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             case CEE_STELEM_R4: operand_type = tSystem_Single; goto cee_stelem;
             case CEE_STELEM_R8: operand_type = tSystem_Double; goto cee_stelem;
             case CEE_STELEM_I: operand_type = tSystem_IntPtr; goto cee_stelem;
-            case CEE_STELEM_REF: CHECK_FAIL("TODO: we need to figure this shit out");
+            case CEE_STELEM_REF:
             case CEE_STELEM:
             cee_stelem: {
                 // pop all the values from the stack
@@ -2137,6 +2284,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(array_type->IsArray);
                 System_Type T = array_type->ElementType;
 
+                // for stelem.ref the operand type is the same as T
+                if (operand_type == NULL) {
+                    operand_type = T;
+                }
+
                 // we need to implicitly truncate
                 if (type_get_intermediate_type(T) == tSystem_Int32) {
                     value_type = operand_type;
@@ -2145,7 +2297,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // TODO: handle double->float and float->double implicit conversion
 
                 // validate all the type stuff
-                // TODO: throw unconditional System.ArrayTypeMismatchException
                 CHECK(type_is_array_element_compatible_with(value_type, operand_type));
                 CHECK(type_is_array_element_compatible_with(operand_type, type_get_verification_type(T)));
                 CHECK(index_type == tSystem_Int32);
@@ -2159,28 +2310,43 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 if (type_is_object_ref(T)) {
                     // we need to use gc_update routine because this
                     // is a managed pointer
-                    CHECK_FAIL("TODO: gc_update for stelem");
-                } else if (type_is_integer(value_type)) {
+
+                    // calculate the offset as `index_reg * sizeof(void*) + sizeof(System.Array)`
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MUL,
+                                                 MIR_new_reg_op(ctx->context, index_reg),
+                                                 MIR_new_reg_op(ctx->context, index_reg),
+                                                 MIR_new_int_op(ctx->context, sizeof(void*))));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_ADD,
+                                                 MIR_new_reg_op(ctx->context, index_reg),
+                                                 MIR_new_reg_op(ctx->context, index_reg),
+                                                 MIR_new_int_op(ctx->context, tSystem_Array->ManagedSize)));
+
+                    // use gc_update because we are storing a managed reference in a managed object
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_call_insn(ctx->context, 5,
+                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
+                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_func),
+                                                      MIR_new_reg_op(ctx->context, array_reg),
+                                                      MIR_new_reg_op(ctx->context, index_reg),
+                                                      MIR_new_reg_op(ctx->context, value_reg)));
+                } else if (
+                    type_is_integer(value_type) ||
+                    value_type == tSystem_Single ||
+                    value_type == tSystem_Double
+                ) {
+                    MIR_insn_code_t code = MIR_MOV;
+                    if (value_type == tSystem_Single) {
+                        code = MIR_FMOV;
+                    } else if (value_type == tSystem_Double) {
+                        code = MIR_DMOV;
+                    }
+
                     // we can copy this in a single mov
                     MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                    MIR_new_insn(ctx->context, code,
                                                  MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
-                                                                tSystem_Array->ManagedSize,
-                                                                array_reg, index_reg, T->StackSize),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (value_type == tSystem_Single) {
-                    // we can copy this in a single mov
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_FMOV,
-                                                 MIR_new_mem_op(ctx->context, MIR_T_F,
-                                                                tSystem_Array->ManagedSize,
-                                                                array_reg, index_reg, T->StackSize),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (value_type == tSystem_Double) {
-                    // we can copy this in a single mov
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_DMOV,
-                                                 MIR_new_mem_op(ctx->context, MIR_T_D,
                                                                 tSystem_Array->ManagedSize,
                                                                 array_reg, index_reg, T->StackSize),
                                                  MIR_new_reg_op(ctx->context, value_reg)));
@@ -2504,8 +2670,12 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     MIR_type_t res_type = MIR_T_P;
     ctx.gc_new_proto = MIR_new_proto(ctx.context, "gc_new$proto", 1, &res_type, 2, MIR_T_P, "type", MIR_T_U64, "size");
     ctx.gc_new_func = MIR_new_import(ctx.context, "gc_new");
+
     ctx.get_array_type_proto = MIR_new_proto(ctx.context, "get_array_type$proto", 1, &res_type, 1, MIR_T_P, "type");
     ctx.get_array_type_func = MIR_new_import(ctx.context, "get_array_type");
+
+    ctx.gc_update_proto = MIR_new_proto(ctx.context, "gc_update$proto", 0, NULL, 3, MIR_T_P, "o", MIR_T_U64, "idx", MIR_T_P, "new");
+    ctx.gc_update_func = MIR_new_import(ctx.context, "gc_update");
 
     res_type = MIR_T_I8;
     ctx.is_instance_proto = MIR_new_proto(ctx.context, "isinstance$proto", 1, &res_type, 2, MIR_T_P, "object", MIR_T_P, "type");
