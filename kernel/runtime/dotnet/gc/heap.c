@@ -700,7 +700,7 @@ static void heap_dump_callback(System_Object object) {
         m_last_pool_idx = pool_idx;
     }
 
-    printf("[CPU%03d][*] \t\t%p - ", get_cpu_id(), object);
+    printf("[*] \t\t%p - ", get_cpu_id(), object);
     if (object->type == NULL) {
         printf("<no type>");
     } else {

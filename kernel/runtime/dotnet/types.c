@@ -1,5 +1,6 @@
 #include "types.h"
 #include "util/stb_ds.h"
+#include "opcodes.h"
 
 #include <runtime/dotnet/gc/gc.h>
 
@@ -469,7 +470,7 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
 
 void type_print_full_name(System_Type type, FILE* file) {
     if (type->DeclaringType != NULL) {
-        type_print_full_name(type, file);
+        type_print_full_name(type->DeclaringType, file);
         fputc('+', file);
     } else {
         if (type->Namespace->Length > 0) {
@@ -522,4 +523,72 @@ bool isinstance(System_Object object, System_Type type) {
         objectType = objectType->BaseType;
     }
     return false;
+}
+
+void assembly_dump(System_Reflection_Assembly assembly) {
+    TRACE("Assembly `%U`:", assembly->Module->Name);
+    for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
+        System_Type type = assembly->DefinedTypes->Data[i];
+
+        printf("[*] \t%s ", type_visibility_str(type_visibility(type)));
+        type_print_full_name(type, stdout);
+        if (type->BaseType != NULL) {
+            printf(" : ");
+            type_print_full_name(type->BaseType, stdout);
+        }
+        printf("\n\r");
+
+        for (int j = 0; j < type->Fields->Length; j++) {
+            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
+                  field_access_str(field_access(type->Fields->Data[j])),
+                  field_is_static(type->Fields->Data[j]) ? "static " : "",
+                  type->Fields->Data[j]->FieldType->Namespace,
+                  type->Fields->Data[j]->FieldType->Name,
+                  type->Fields->Data[j]->Name,
+                  type->Fields->Data[j]->MemoryOffset);
+        }
+
+        for (int j = 0; j < type->Methods->Length; j++) {
+            System_Reflection_MethodInfo mi =  type->Methods->Data[j];
+
+            printf("[*] \t\t");
+
+            if (method_is_static(mi)) {
+                printf("static ");
+            }
+
+            if (method_is_abstract(mi)) {
+                printf("abstract ");
+            }
+
+            if (method_is_final(mi)) {
+                printf("final ");
+            }
+
+            if (method_is_virtual(mi)) {
+                printf("virtual[%d] ", mi->VtableOffset);
+            }
+
+            if (mi->ReturnType == NULL) {
+                printf("void");
+            } else {
+                type_print_full_name(mi->ReturnType, stdout);
+            }
+            printf(" ");
+
+            method_print_full_name(mi, stdout);
+
+            printf("\n\r");
+
+            if (method_get_code_type(mi) == METHOD_IL) {
+                opcode_disasm_method(mi);
+            } else if (method_get_code_type(mi) == METHOD_NATIVE) {
+                TRACE("\t\t\t<native method>");
+            } else if (method_get_code_type(mi) == METHOD_RUNTIME) {
+                TRACE("\t\t\t<runtime method>");
+            }
+        }
+
+        TRACE("");
+    }
 }

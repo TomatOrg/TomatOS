@@ -139,7 +139,7 @@ static const char* m_type_check_kinds[] = {
 };
 
 void NO_SANITIZE __ubsan_handle_type_mismatch_v1(type_mismatch_data_t* data, size_t pointer) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
 
     size_t alignment = 1 << data->log_alignment;
     if (pointer == 0) {
@@ -176,7 +176,7 @@ typedef struct overflow_data {
 } overflow_data_t;
 
 #define UBSAN_HANDLE_OVERFLOW(opr) \
-    printf("[CPU%03d][!] ubsan: ", get_apic_id()); \
+    printf("[!] ubsan: "); \
     bool is_signed = is_signed_integer(data->type); \
     printf("%s integer overflow: ", is_signed ? "signed" : "unsigned"); \
     print_value(data->type, lhs); \
@@ -208,7 +208,7 @@ typedef struct shift_out_of_bounds {
 } shift_out_of_bounds_t;
 
 void NO_SANITIZE __ubsan_handle_shift_out_of_bounds(shift_out_of_bounds_t* data, size_t lhs, size_t rhs) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
 
     if (
         is_negative(data->rhs_type, rhs) ||
@@ -250,7 +250,7 @@ typedef struct out_of_bounds_data {
 } out_of_bounds_data_t;
 
 void NO_SANITIZE __ubsan_handle_out_of_bounds(out_of_bounds_data_t* data, size_t index) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
     printf("index %d out of bounds for type %s", index, data->array_type->name);
     print_source_location(data->loc);
 }
@@ -264,7 +264,7 @@ typedef struct unreachable_data {
 } unreachable_data_t;
 
 void NO_SANITIZE __ubsan_handle_builtin_unreachable(unreachable_data_t* data) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
     printf("execution reached an unreachable program point");
     print_source_location(data->loc);
 }
@@ -279,7 +279,7 @@ typedef struct vla_bound_data {
 } vla_bound_data_t;
 
 void NO_SANITIZE __ubsan_handle_vla_bound_not_positive(vla_bound_data_t* data, size_t bound) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
     printf("variable length array bound evaluates to non-positive value ");
     print_value(data->type, bound);
     print_source_location(data->loc);
@@ -296,7 +296,7 @@ typedef struct float_cast_overflow {
 } float_cast_overflow_t;
 
 void NO_SANITIZE __ubsan_handle_float_cast_overflow(float_cast_overflow_t* data, size_t from) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
     print_value(data->from_type, from);
     printf(" is outside of the range of representable values of type %s", data->to_type->name);
     print_source_location(data->loc);
@@ -312,7 +312,7 @@ typedef struct invalid_value_data {
 } invalid_value_data_t;
 
 void NO_SANITIZE __ubsan_handle_load_invalid_value(invalid_value_data_t* data, size_t val) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
 
     printf("load of value ");
     print_value(data->type, val);
@@ -340,7 +340,7 @@ typedef struct invalid_builtin_data {
 } invalid_builtin_data_t;
 
 void NO_SANITIZE __ubsan_handle_invalid_builtin(invalid_builtin_data_t* data) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
     printf("passing zero to %s, which is not a valid argument",
            (data->kind == BCK_CTZ_PASSED_ZERO) ? "ctz()" : "clz()");
     print_source_location(data->loc);
@@ -355,7 +355,7 @@ typedef struct pointer_overflow_data {
 } pointer_overflow_data_t;
 
 void NO_SANITIZE __ubsan_handle_pointer_overflow(pointer_overflow_data_t* data, size_t base, size_t result) {
-    printf("[CPU%03d][!] ubsan: ", get_apic_id());
+    printf("[!] ubsan: ");
 
     if (base == 0 && result == 0) {
         printf("applying zero offset to null pointer");

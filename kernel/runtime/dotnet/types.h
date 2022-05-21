@@ -178,6 +178,8 @@ System_Type assembly_get_type_by_name(System_Reflection_Assembly assembly, const
 
 System_String assembly_get_string_by_token(System_Reflection_Assembly assembly, token_t token);
 
+void assembly_dump(System_Reflection_Assembly assembly);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct System_Reflection_Module {
@@ -482,6 +484,8 @@ extern System_Type tSystem_Single;
 extern System_Type tSystem_Double;
 extern System_Type tSystem_IntPtr;
 extern System_Type tSystem_UIntPtr;
+extern System_Type tSystem_Delegate;
+extern System_Type tSystem_MulticastDelegate;
 extern System_Type tSystem_Reflection_Module;
 extern System_Type tSystem_Reflection_Assembly;
 extern System_Type tSystem_Reflection_FieldInfo;

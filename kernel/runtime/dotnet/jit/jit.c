@@ -2147,9 +2147,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         CHECK_AND_RETHROW(stack_push(ctx, operand_method->DeclaringType, &arg_reg));
 
                         // get the item for the allocation
-                        int i = hmgeti(ctx->types, operand_method->DeclaringType);
-                        CHECK(i != -1);
-                        MIR_item_t type_item = ctx->types[i].value;
+                        int typei = hmgeti(ctx->types, operand_method->DeclaringType);
+                        CHECK(typei != -1);
+                        MIR_item_t type_item = ctx->types[typei].value;
 
                         // allocate the new object
                         MIR_append_insn(ctx->context, ctx->func,
@@ -2200,7 +2200,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // get the MIR signature and address
                 int funci = hmgeti(ctx->functions, operand_method);
-                CHECK(i != -1);
+                CHECK(funci != -1);
                 arg_ops[0] = MIR_new_ref_op(ctx->context, ctx->functions[funci].proto);
 
                 if (opcode == CEE_CALLVIRT && method_is_virtual(operand_method)) {
@@ -2967,7 +2967,10 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
 
         for (int mi = 0; mi < type->Methods->Length; mi++) {
             System_Reflection_MethodInfo method = type->Methods->Data[mi];
-            CHECK_AND_RETHROW(jit_method(&ctx, method));
+
+            if (method_get_code_type(method) == METHOD_IL) {
+                CHECK_AND_RETHROW(jit_method(&ctx, method));
+            }
         }
     }
 

@@ -811,6 +811,22 @@ cleanup:
     return err;
 }
 
+static err_t connect_nested_types(System_Reflection_Assembly assembly, metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+    metadata_nested_class_t* nested_classes = metadata->tables[METADATA_NESTED_CLASS].table;
+    for (int i = 0; i < metadata->tables[METADATA_NESTED_CLASS].rows; i++) {
+        metadata_nested_class_t* nested_class = &nested_classes[i];
+        System_Type enclosing = assembly_get_type_by_token(assembly, nested_class->enclosing_class);
+        System_Type nested = assembly_get_type_by_token(assembly, nested_class->nested_class);
+        CHECK(enclosing != NULL && nested != NULL);
+        nested->DeclaringType = enclosing;
+    }
+
+cleanup:
+    return err;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Type init
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -987,7 +1003,8 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     GC_UPDATE(assembly, ImportedTypes, GC_NEW_ARRAY(tSystem_Type, 0));
     GC_UPDATE(assembly, ImportedMembers, GC_NEW_ARRAY(tSystem_Reflection_MemberInfo, 0));
 
-    // now get all the user strings into our pool
+    // all the last setup
+    CHECK_AND_RETHROW(connect_nested_types(assembly, &metadata));
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
     // now jit it (or well, prepare the ir of it)
@@ -1195,7 +1212,8 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
         CHECK_AND_RETHROW(loader_fill_type(assembly->DefinedTypes->Data[i], NULL, NULL));
     }
 
-    // now get all the user strings into our pool
+    // all the last setup
+    CHECK_AND_RETHROW(connect_nested_types(assembly, &metadata));
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
     // now jit it (or well, prepare the ir of it)
