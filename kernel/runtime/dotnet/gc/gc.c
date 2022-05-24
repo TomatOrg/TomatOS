@@ -2,17 +2,18 @@
 
 #include "gc_thread_data.h"
 #include "heap.h"
-#include "time/timer.h"
-#include "sync/wait_group.h"
+
+#include <sync/conditional.h>
+#include <sync/wait_group.h>
 
 #include <proc/scheduler.h>
 #include <proc/thread.h>
-#include <sync/conditional.h>
+
 #include <util/stb_ds.h>
+#include "time/timer.h"
 
 #include <stdnoreturn.h>
 #include <stdatomic.h>
-
 
 /**
  * Get the gc local data as fs relative pointer, this should allow the compiler
@@ -75,7 +76,10 @@ void* gc_new(System_Type type, size_t size) {
     System_Object o = heap_alloc(size, m_allocation_color);
 
     // set the object type
-    o->type = type;
+    if (type != NULL) {
+        ASSERT(type->VTable != NULL);
+        o->vtable = type->VTable;
+    }
 
     // if there is no finalize then always suppress the finalizer
     if (type != NULL) {
@@ -291,27 +295,29 @@ static void gc_mark_global_roots() {
         }
     }
     spinlock_unlock(&m_global_roots_lock);
+
+    // get all the app domains and iterate all their assemblies and stuff
 }
 
 static void gc_mark_black(System_Object object) {
     // mark all the children as gray
-    if (object->type->IsArray && !object->type->ElementType->IsValueType) {
-        // array object, check if we need to revive items
+    if (object->vtable->type->IsArray && !object->vtable->type->ElementType->IsValueType) {
+        // array object, mark all the items
         System_Array array = (System_Array)object;
         for (int i = 0; i < array->Length; i++) {
             size_t offset = sizeof(struct System_Array) + i * sizeof(void*);
             System_Object o = read_field(object, offset);
             gc_mark_gray(o);
         }
-
-        // don't forget about the Type object
-        gc_mark_gray((System_Object)array->type);
     } else {
         // for normal objects iterate
-        for (int i = 0; i < arrlen(object->type->ManagedPointersOffsets); i++) {
-            gc_mark_gray(read_field(object, object->type->ManagedPointersOffsets[i]));
+        for (int i = 0; i < arrlen(object->vtable->type->ManagedPointersOffsets); i++) {
+            gc_mark_gray(read_field(object, object->vtable->type->ManagedPointersOffsets[i]));
         }
     }
+
+    // don't forget about the Type object
+    gc_mark_gray((System_Object)object->vtable->type);
 
     // mark this as black
     object->color = COLOR_BLACK;

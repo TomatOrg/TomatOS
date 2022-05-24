@@ -1,5 +1,4 @@
 #include "kernel.h"
-#include "runtime/dotnet/app_domain.h"
 
 #include <limine.h>
 
@@ -196,6 +195,7 @@ static void kernel_startup() {
     // Initialize the runtime
     CHECK_AND_RETHROW(init_gc());
     CHECK_AND_RETHROW(init_heap());
+    CHECK_AND_RETHROW(init_jit());
 
     // load the corelib
     uint64_t start = microtime();
@@ -208,22 +208,11 @@ static void kernel_startup() {
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
     TRACE("kernel loading took %dms", (microtime() - start) / 1000);
 
-    // create the app domain with both assemblies
-    start = microtime();
-    app_domain_t* kernel_domain = create_app_domain();
-    CHECK(kernel_domain != NULL);
-    app_domain_load(kernel_domain, g_corelib);
-    app_domain_load(kernel_domain, kernel_asm);
-    TRACE("Kernel app domain creation took %dms", (microtime() - start) / 1000);
-
-    // actually call the kernel main
-    method_result_t output = app_domain_link_and_start(kernel_domain);
-    if (output.exception != NULL) {
-        CHECK_FAIL("Got kernel exception: `%U`", output.exception->Message);
-    }
-
-    // print whatever it was
-    TRACE("Kernel output: %d", output.result);
+    // call it
+    method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
+    method_result_t result = entry_point();
+    CHECK(result.exception == NULL, "Got exception: \"%U\"", result.exception->Message);
+    TRACE("Kernel output: %d", result.value);
 
 cleanup:
     ASSERT(!IS_ERROR(err));

@@ -13,7 +13,6 @@ namespace System.Reflection
         private Type[] _importedTypes;
         private MemberInfo[] _importedMembers;
         
-        private byte[] _mirModule;
         private string[] _userStrings;
         private unsafe void* _userStringsTable;
 

@@ -148,7 +148,7 @@ System_Reflection_MethodInfo assembly_get_method_by_token(System_Reflection_Asse
                 return NULL;
             }
             System_Reflection_MemberInfo memberInfo = assembly->ImportedMembers->Data[token.index - 1];
-            if (memberInfo->type != tSystem_Reflection_MethodInfo) {
+            if (memberInfo->vtable->type != tSystem_Reflection_MethodInfo) {
                 ASSERT(!"assembly_get_method_by_token: wanted member is not a method");
                 return NULL;
             }
@@ -182,7 +182,7 @@ System_Reflection_FieldInfo assembly_get_field_by_token(System_Reflection_Assemb
                 return NULL;
             }
             System_Reflection_MemberInfo memberInfo = assembly->ImportedMembers->Data[token.index - 1];
-            if (memberInfo->type != tSystem_Reflection_FieldInfo) {
+            if (memberInfo->vtable->type != tSystem_Reflection_FieldInfo) {
                 ASSERT(!"assembly_get_field_by_token: wanted member is not a field");
                 return NULL;
             }
@@ -247,6 +247,10 @@ System_Type get_array_type(System_Type Type) {
     ArrayType->ManagedSize = tSystem_Array->ManagedSize;
     ArrayType->StackAlignment = tSystem_Array->StackAlignment;
     ArrayType->ManagedAlignment = tSystem_Array->ManagedAlignment;
+
+    // allocate the vtable
+    ArrayType->VTable = malloc(sizeof(object_vtable_t) + sizeof(void*) * 3);
+    ArrayType->VTable->type = ArrayType;
 
     // There are no managed pointers in here (The gc will handle array
     // stuff on its own)
@@ -468,31 +472,42 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
     return false;
 }
 
-void type_print_full_name(System_Type type, FILE* file) {
+void type_print_name(System_Type type, FILE* output) {
     if (type->DeclaringType != NULL) {
-        type_print_full_name(type->DeclaringType, file);
-        fputc('+', file);
+        type_print_full_name(type->DeclaringType, output);
+        fputc('+', output);
     } else {
         if (type->Namespace->Length > 0) {
-            fprintf(file, "%U.", type->Namespace);
+            fprintf(output, "%U.", type->Namespace);
         }
     }
-    fprintf(file, "%U", type->Name);
+    fprintf(output, "%U", type->Name);
 }
 
-void method_print_full_name(System_Reflection_MethodInfo method, FILE* name) {
-    type_print_full_name(method->DeclaringType, name);
-    fputc(':', name);
-    fputc(':', name);
-    fprintf(name, "%U", method->Name);
-    fputc('(', name);
+void type_print_full_name(System_Type type, FILE* output) {
+    fputc('[', output);
+    fprintf(output, "%U", type->Module->Name);
+    fputc(']', output);
+    type_print_name(type, output);
+}
+
+void method_print_name(System_Reflection_MethodInfo method, FILE* output) {
+    fprintf(output, "%U", method->Name);
+    fputc('(', output);
     for (int i = 0; i < method->Parameters->Length; i++) {
-        type_print_full_name(method->Parameters->Data[i]->ParameterType, name);
+        type_print_full_name(method->Parameters->Data[i]->ParameterType, output);
         if (i + 1 != method->Parameters->Length) {
-            fputc(',', name);
+            fputc(',', output);
         }
     }
-    fputc(')', name);
+    fputc(')', output);
+}
+
+void method_print_full_name(System_Reflection_MethodInfo method, FILE* output) {
+    type_print_full_name(method->DeclaringType, output);
+    fputc(':', output);
+    fputc(':', output);
+    method_print_name(method, output);
 }
 
 System_Reflection_FieldInfo type_get_field_cstr(System_Type type, const char* name) {
@@ -515,7 +530,7 @@ System_Reflection_MethodInfo type_iterate_methods_cstr(System_Type type, const c
 }
 
 bool isinstance(System_Object object, System_Type type) {
-    System_Type objectType = object->type;
+    System_Type objectType = object->vtable->type;
     while (objectType != NULL) {
         if (objectType == type) {
             return true;

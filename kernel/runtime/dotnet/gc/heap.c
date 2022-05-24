@@ -701,15 +701,17 @@ static void heap_dump_callback(System_Object object) {
     }
 
     printf("[*] \t\t%p - ", get_cpu_id(), object);
-    if (object->type == NULL) {
-        printf("<no type>");
+    if (object->vtable == NULL) {
+        printf("<no vtable>");
     } else {
-        type_print_full_name(object->type, stdout);
+        type_print_full_name(object->vtable->type, stdout);
     }
     printf(": %s", m_color_str[object->color]);
 
-    if (object->type == tSystem_String) {
-        printf(" - \"%U\"", (System_String)object);
+    if (object->vtable != NULL) {
+        if (object->vtable->type == tSystem_String) {
+            printf(" - \"%U\"", (System_String)object);
+        }
     }
 
     printf("\n\r");

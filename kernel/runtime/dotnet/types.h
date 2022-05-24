@@ -3,6 +3,8 @@
 #include "runtime/dotnet/metadata/metadata_spec.h"
 #include "runtime/dotnet/metadata/metadata.h"
 
+#include <mir/mir.h>
+
 #include <sync/mutex.h>
 
 #include <stdint.h>
@@ -57,12 +59,17 @@ typedef uintptr_t System_UIntPtr;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef struct object_vtable {
+    System_Type type;
+    void* virtual_functions[0];
+} object_vtable_t;
+
 /**
  * Represents a dotnet object
  */
 struct System_Object {
     // the type of the object
-    System_Type type;
+    object_vtable_t* vtable;
 
     // the color of the object
     uint8_t color : 3;
@@ -155,10 +162,6 @@ struct System_Reflection_Assembly {
     // types imported from other assemblies, for easy lookup whenever needed
     System_Type_Array ImportedTypes;
     System_Reflection_MemberInfo_Array ImportedMembers;
-
-    // the loaded module
-    // TODO: turn into an array for easy management
-    FILE* MirModule;
 
     // we have two entries, one for GC tracking (the array)
     // and one for internally looking up the string entries
@@ -296,6 +299,8 @@ struct System_Reflection_MethodInfo {
 
     bool IsFilled;
     int VtableOffset;
+
+    MIR_item_t MirFunc;
 };
 
 typedef enum method_access {
@@ -339,6 +344,14 @@ static inline bool method_is_special_name(System_Reflection_MethodInfo method) {
 static inline bool method_is_pinvoke_impl(System_Reflection_MethodInfo method) { return method->Attributes & 0x2000; }
 static inline bool method_is_rt_special_name(System_Reflection_MethodInfo method) { return method->Attributes & 0x1000; }
 
+/**
+ * Print the method name as<name>(<parameters>) <name>(<parameters>)
+ */
+void method_print_name(System_Reflection_MethodInfo method, FILE* output);
+
+/**
+ * Print the full method name as [<assembly>]<namespace>.<class>[+<nested>]::<name>(<parameters>)
+ */
 void method_print_full_name(System_Reflection_MethodInfo method, FILE* output);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -385,6 +398,7 @@ struct System_Type {
     int ManagedAlignment;
     int StackSize;
     int StackAlignment;
+    object_vtable_t* VTable;
 
     System_Type ArrayType;
     System_Type ByRefType;
@@ -433,10 +447,12 @@ System_Type get_array_type(System_Type Type);
 System_Type get_by_ref_type(System_Type Type);
 
 /**
- * Print the full name of the type, including type nesting
- *
- * @param Type      [IN] The type to print
- * @param output    [IN] The buffer to print to
+ * Print the type name as <namespace>.<class>[+<nested>]
+ */
+void type_print_name(System_Type Type, FILE* output);
+
+/**
+ * Print the full name as [assembly]<namespace>.<class>[+<nested>]
  */
 void type_print_full_name(System_Type Type, FILE* output);
 

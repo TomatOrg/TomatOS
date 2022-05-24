@@ -1,18 +1,18 @@
+using System.Runtime.CompilerServices;
+
 namespace System
 {
     public class Object
     {
-        private Type _type;
+        private unsafe void* _vtable;
         private byte flags;
         private byte _reserved1;
         private byte _reserved2;
         private byte _reserved3;
-        private uint _reserved4;
+        private uint _typeIndex;
 
-        public Type GetType()
-        {
-            return _type;
-        }
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public extern Type GetType();
         
         public virtual bool Equals(object obj)
         {

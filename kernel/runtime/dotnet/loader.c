@@ -1,12 +1,14 @@
+
+#include <runtime/dotnet/metadata/sig_spec.h>
+#include <runtime/dotnet/metadata/sig.h>
+#include <runtime/dotnet/jit/jit.h>
+#include <runtime/dotnet/gc/gc.h>
+
 #include "loader.h"
 #include "exception.h"
-#include "runtime/dotnet/gc/gc.h"
 #include "encoding.h"
-#include "runtime/dotnet/metadata/sig.h"
 #include "util/stb_ds.h"
 #include "opcodes.h"
-#include "runtime/dotnet/jit/jit.h"
-#include "runtime/dotnet/metadata/sig_spec.h"
 
 #include <util/string.h>
 #include <mem/mem.h>
@@ -325,7 +327,7 @@ static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Refle
             if (method_def->rva) {
                 // get the rva
                 pe_directory_t directory = {
-                        .rva = method_def->rva,
+                    .rva = method_def->rva,
                 };
                 const void* rva_base = pe_get_rva_ptr(file, &directory);
                 CHECK(rva_base != NULL);
@@ -544,6 +546,13 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Virtual Method Table initial creation, the rest will be handled later
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // create a vtable if needed
+        if (type->VTable == NULL) {
+            type->VTable = malloc(sizeof(object_vtable_t) + sizeof(void*) * virtualOfs);
+            CHECK(type->VTable != NULL);
+            type->VTable->type = type;
+        }
 
         // we must create the vtable before other type resolution is done because we must
         // have the subtypes know about the amount of virtual entries we have, and we must populate
@@ -839,26 +848,26 @@ typedef struct type_init {
     int stack_alignment;
     int managed_size;
     int managed_alignment;
-    bool value_type;
+    int vtable_size;
 } type_init_t;
 
-#define TYPE_INIT(_namespace, _name, code) \
-    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct code), alignof(struct code) }
+#define TYPE_INIT(_namespace, _name, code, _vtable_size) \
+    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct code), alignof(struct code), .vtable_size = (_vtable_size) }
 
 #define EXCEPTION_INIT(_namespace, _name, code) \
-    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct System_Exception), alignof(struct System_Exception) }
+    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct System_Exception), alignof(struct System_Exception), .vtable_size = 5 }
 
 #define VALUE_TYPE_INIT(_namespace, _name, code) \
     { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(code), alignof(code) }
 
 static type_init_t m_type_init[] = {
-    TYPE_INIT("System", "Exception", System_Exception),
+    TYPE_INIT("System", "Exception", System_Exception, 5),
     VALUE_TYPE_INIT("System", "Enum", System_Enum),
     VALUE_TYPE_INIT("System", "ValueType", System_ValueType),
-    TYPE_INIT("System", "Object", System_Object),
-    TYPE_INIT("System", "Type", System_Type),
-    TYPE_INIT("System", "Array", System_Array),
-    TYPE_INIT("System", "String", System_String),
+    TYPE_INIT("System", "Object", System_Object, 3),
+    TYPE_INIT("System", "Type", System_Type, 3),
+    TYPE_INIT("System", "Array", System_Array, 3),
+    TYPE_INIT("System", "String", System_String, 3),
     VALUE_TYPE_INIT("System", "Boolean", System_Boolean),
     VALUE_TYPE_INIT("System", "Char", System_Char),
     VALUE_TYPE_INIT("System", "SByte", System_SByte),
@@ -873,16 +882,16 @@ static type_init_t m_type_init[] = {
     VALUE_TYPE_INIT("System", "Double", System_Double),
     VALUE_TYPE_INIT("System", "IntPtr", System_IntPtr),
     VALUE_TYPE_INIT("System", "UIntPtr", System_UIntPtr),
-    TYPE_INIT("System.Reflection", "Module", System_Reflection_Module),
-    TYPE_INIT("System.Reflection", "Assembly", System_Reflection_Assembly),
-    TYPE_INIT("System.Reflection", "FieldInfo", System_Reflection_FieldInfo),
-    TYPE_INIT("System.Reflection", "MemberInfo", System_Reflection_MemberInfo),
-    TYPE_INIT("System.Reflection", "ParameterInfo", System_Reflection_ParameterInfo),
-    TYPE_INIT("System.Reflection", "LocalVariableInfo", System_Reflection_LocalVariableInfo),
-    TYPE_INIT("System.Reflection", "ExceptionHandlingClause", System_Reflection_ExceptionHandlingClause),
-    TYPE_INIT("System.Reflection", "MethodBase", System_Reflection_MethodBase),
-    TYPE_INIT("System.Reflection", "MethodBody", System_Reflection_MethodBody),
-    TYPE_INIT("System.Reflection", "MethodInfo", System_Reflection_MethodInfo),
+    TYPE_INIT("System.Reflection", "Module", System_Reflection_Module, 3),
+    TYPE_INIT("System.Reflection", "Assembly", System_Reflection_Assembly, 3),
+    TYPE_INIT("System.Reflection", "FieldInfo", System_Reflection_FieldInfo, 3),
+    TYPE_INIT("System.Reflection", "MemberInfo", System_Reflection_MemberInfo, 3),
+    TYPE_INIT("System.Reflection", "ParameterInfo", System_Reflection_ParameterInfo, 3),
+    TYPE_INIT("System.Reflection", "LocalVariableInfo", System_Reflection_LocalVariableInfo, 3),
+    TYPE_INIT("System.Reflection", "ExceptionHandlingClause", System_Reflection_ExceptionHandlingClause, 3),
+    TYPE_INIT("System.Reflection", "MethodBase", System_Reflection_MethodBase, 3),
+    TYPE_INIT("System.Reflection", "MethodBody", System_Reflection_MethodBody, 3),
+    TYPE_INIT("System.Reflection", "MethodInfo", System_Reflection_MethodInfo, 3),
     EXCEPTION_INIT("System", "ArithmeticException", System_ArithmeticException),
     EXCEPTION_INIT("System", "DivideByZeroException", System_DivideByZeroException),
     EXCEPTION_INIT("System", "ExecutionEngineException", System_ExecutionEngineException),
@@ -904,6 +913,10 @@ static void init_type(metadata_type_def_t* type_def, System_Type type) {
             type->StackSize = bt->stack_size;
             type->ManagedAlignment = bt->managed_alignment;
             type->StackAlignment = bt->stack_alignment;
+            if (bt->vtable_size != 0) {
+                type->VTable = malloc(sizeof(object_vtable_t) + sizeof(void*) * bt->vtable_size);
+                type->VTable->type = type;
+            }
             *bt->global = type;
             break;
         }
@@ -990,13 +1003,18 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
         CHECK_AND_RETHROW(loader_fill_type(assembly->DefinedTypes->Data[i], NULL, NULL));
     }
 
-    // now set the base definitions for the stuff
-    assembly->type = tSystem_Reflection_Assembly;
-    assembly->DefinedTypes->type = get_array_type(tSystem_Type);
-    assembly->DefinedMethods->type = get_array_type(tSystem_Reflection_MethodInfo);
-    assembly->DefinedFields->type = get_array_type(tSystem_Reflection_FieldInfo);
+    //
+    // now set all the page tables, because we are missing them at
+    // this point of writing
+    //
+
+    assembly->vtable = tSystem_Reflection_Assembly->VTable;
+    assembly->Module->vtable = tSystem_Reflection_Module->VTable;
+    assembly->DefinedTypes->vtable = get_array_type(tSystem_Type)->VTable;
+    assembly->DefinedMethods->vtable = get_array_type(tSystem_Reflection_MethodInfo)->VTable;
+    assembly->DefinedFields->vtable = get_array_type(tSystem_Reflection_FieldInfo)->VTable;
     for (int i = 0; i < types_count; i++) {
-        assembly->DefinedTypes->Data[i]->type = tSystem_Type;
+        assembly->DefinedTypes->Data[i]->vtable = tSystem_Type->VTable;
     }
 
     // no imports for corelib

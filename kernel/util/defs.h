@@ -1,6 +1,11 @@
 #pragma once
 
+#ifndef __JETBRAINS_IDE__
 #include "cpp_magic.h"
+#else
+#define _IF(...) __VA_ARGS__
+#define IF(...) _IF
+#endif
 
 #include <stdint.h>
 #include <stddef.h>

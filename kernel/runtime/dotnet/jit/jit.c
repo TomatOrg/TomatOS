@@ -3,10 +3,130 @@
 #include "runtime/dotnet/opcodes.h"
 #include "runtime/dotnet/types.h"
 #include "runtime/dotnet/gc/gc.h"
-#include "util/except.h"
-#include "util/stb_ds.h"
-#include "mir/mir.h"
-#include "time/timer.h"
+#include "kernel.h"
+
+#include <util/except.h>
+#include <util/stb_ds.h>
+#include <time/timer.h>
+
+#include <mir/mir-gen.h>
+#include <mir/mir.h>
+
+/**
+ * The global context use for running all the code
+ */
+static MIR_context_t m_mir_context = NULL;
+
+/**
+ * Mutex to protect the mir context
+ */
+static mutex_t m_mir_mutex;
+
+static method_result_t System_Object_GetType(System_Object this) {
+    return (method_result_t){ .exception = NULL, .value = (uintptr_t) this->vtable->type};
+}
+
+err_t init_jit() {
+    err_t err = NO_ERROR;
+
+    // init the context
+    m_mir_context = MIR_init();
+    CHECK(m_mir_context != NULL);
+
+    // load externals
+    MIR_load_external(m_mir_context, "isinstance", isinstance);
+    MIR_load_external(m_mir_context, "gc_new", gc_new);
+    MIR_load_external(m_mir_context, "gc_update", gc_update);
+    MIR_load_external(m_mir_context, "get_array_type", get_array_type);
+
+    MIR_load_external(m_mir_context, "[Corelib.dll]System.Object::GetType()", System_Object_GetType);
+
+    // init the code gen
+    MIR_gen_init(m_mir_context, 1);
+    MIR_gen_set_optimize_level(m_mir_context, 0, 4);
+
+#if 0
+    MIR_gen_set_debug_file(m_mir_context, 0, stdout);
+    MIR_gen_set_debug_level(m_mir_context, 0, 0);
+#endif
+
+cleanup:
+    return err;
+}
+
+void jit_dump_mir(System_Reflection_MethodInfo methodInfo) {
+    MIR_output_item(m_mir_context, stdout, methodInfo->MirFunc);
+}
+
+static err_t jit_load_assembly(MIR_context_t old_context, MIR_module_t module, System_Reflection_Assembly assembly) {
+    err_t err = NO_ERROR;
+
+
+    // we have finished the module, move it to the global context
+    // load it, and jit it
+    mutex_lock(&m_mir_mutex);
+
+    //
+    // move the module to the main context
+    //
+    MIR_change_module_ctx(old_context, module, m_mir_context);
+
+    //
+    // load the module
+    //
+    MIR_load_module(m_mir_context, module);
+
+    //
+    // load all the type references
+    //
+    for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
+        System_Type type = assembly->DefinedTypes->Data[i];
+        FILE* name = fcreate();
+        type_print_full_name(type, name);
+        fputc('\0', name);
+        MIR_load_external(m_mir_context, name->buffer, type);
+        fclose(name);
+    }
+
+    //
+    // load all the strings
+    //
+    for (int i = 0; i < hmlen(assembly->UserStringsTable); i++) {
+        // skip null entries
+        if (assembly->UserStringsTable[i].value == NULL) {
+            continue;
+        }
+        char name[64];
+        snprintf(name, sizeof(name), "string$%d", assembly->UserStringsTable[i].key);
+        MIR_load_external(m_mir_context, name, assembly->UserStringsTable[i].value);
+    }
+
+    // link it
+    MIR_link(m_mir_context, MIR_set_lazy_gen_interface, NULL);
+
+cleanup:
+    mutex_unlock(&m_mir_mutex);
+    return err;
+}
+
+static err_t jit_setup_vtables(System_Reflection_Assembly assembly) {
+    err_t err = NO_ERROR;
+
+    //
+    // go over all the types and setup the vtables for each of them
+    //
+    for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
+        System_Type type = assembly->DefinedTypes->Data[i];
+        if (type->VirtualMethods == NULL) continue;
+
+        for (int vi = 0; vi < type->VirtualMethods->Length; vi++) {
+            type->VTable->virtual_functions[vi] = type->VirtualMethods->Data[vi]->MirFunc->addr;
+        }
+    }
+
+cleanup:
+    return err;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Type helpers
@@ -141,12 +261,6 @@ typedef struct jit_context {
 
     MIR_item_t get_array_type_proto;
     MIR_item_t get_array_type_func;
-
-    MIR_item_t setjmp_proto;
-    MIR_item_t setjmp_func;
-
-    MIR_item_t longjmp_proto;
-    MIR_item_t longjmp_func;
 } jit_context_t;
 
 static MIR_reg_t new_reg(jit_context_t* ctx, System_Type type) {
@@ -342,7 +456,7 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
     // create a forward (only if this is a real method)
     MIR_item_t forward = NULL;
     if (!method_is_abstract(method)) {
-        if (external) {
+        if (external || method_is_unmanaged(method) || method_is_internal_call(method)) {
             // import the method
             forward = MIR_new_import(ctx->context, func_name->buffer);
         } else {
@@ -1113,6 +1227,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
     // Create the actual mir function
     ctx->func = MIR_new_func_arr(ctx->context, method_name->buffer, nres, res_type, arrlen(vars), vars);
+    method->MirFunc = ctx->func;
 
     // Create the exception handling reg
     ctx->exception_reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, "exception");
@@ -2136,15 +2251,19 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
 
                 // handle the `this` argument
+                MIR_reg_t this_reg;
+                System_Type this_type;
                 if (!method_is_static(operand_method)) {
-                    MIR_reg_t arg_reg;
                     if (opcode == CEE_NEWOBJ) {
                         // TODO: do we want to support value type creation with NEWOBJ?
                         //       will see if we ever get the official compiler to emit this
                         CHECK(!operand_method->DeclaringType->IsValueType);
 
+                        // this is the this_type
+                        this_type = operand_method->DeclaringType;
+
                         // we have to create the object right now
-                        CHECK_AND_RETHROW(stack_push(ctx, operand_method->DeclaringType, &arg_reg));
+                        CHECK_AND_RETHROW(stack_push(ctx, operand_method->DeclaringType, &this_reg));
 
                         // get the item for the allocation
                         int typei = hmgeti(ctx->types, operand_method->DeclaringType);
@@ -2156,7 +2275,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                         MIR_new_call_insn(ctx->context, 5,
                                                           MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
                                                           MIR_new_ref_op(ctx->context, ctx->gc_new_func),
-                                                          MIR_new_reg_op(ctx->context, arg_reg),
+                                                          MIR_new_reg_op(ctx->context, this_reg),
                                                           MIR_new_ref_op(ctx->context, type_item),
                                                           MIR_new_int_op(ctx->context, operand_method->DeclaringType->ManagedSize)));
 
@@ -2169,7 +2288,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, MIR_BT,
                                                      MIR_new_label_op(ctx->context, label),
-                                                     MIR_new_reg_op(ctx->context, ctx->exception_reg)));
+                                                     MIR_new_reg_op(ctx->context, this_reg)));
 
                         // throw the error, it has an unknown type
                         CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_OutOfMemoryException));
@@ -2178,8 +2297,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         MIR_append_insn(ctx->context, ctx->func, label);
                     } else {
                         // this is a call, get it from the stack
-                        System_Type arg_type;
-                        CHECK_AND_RETHROW(stack_pop(ctx, &arg_type, &arg_reg));
+                        CHECK_AND_RETHROW(stack_pop(ctx, &this_type, &this_reg));
 
                         // Value types have their this as a by-ref
                         System_Type thisType = operand_method->DeclaringType;
@@ -2189,13 +2307,13 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                         // verify a normal argument
                         CHECK(type_is_verifier_assignable_to(
-                                type_get_verification_type(arg_type), thisType));
+                                type_get_verification_type(this_type), thisType));
 
                         // make sure that the object is not null
-                        CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, arg_reg));
+                        CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, this_reg));
                     }
 
-                    arg_ops[i] = MIR_new_reg_op(ctx->context, arg_reg);
+                    arg_ops[i] = MIR_new_reg_op(ctx->context, this_reg);
                 }
 
                 // get the MIR signature and address
@@ -2203,10 +2321,31 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(funci != -1);
                 arg_ops[0] = MIR_new_ref_op(ctx->context, ctx->functions[funci].proto);
 
-                if (opcode == CEE_CALLVIRT && method_is_virtual(operand_method)) {
+                if (
+                    opcode == CEE_CALLVIRT &&
+                    method_is_virtual(operand_method)
+                ) {
                     // we are using callvirt and this is a virtual method, so we have to
                     // use a dynamic dispatch
-                    arg_ops[1] = MIR_new_ref_op(ctx->context, ctx->functions[funci].forward);
+
+                    MIR_reg_t temp_reg = new_reg(ctx, tSystem_Type);
+
+                    // get the vtable pointer from the object
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, temp_reg),
+                                                 MIR_new_mem_op(ctx->context, MIR_T_I64, 0, this_reg, 0, 1)));
+
+                    // get the address of the function from the vtable
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, temp_reg),
+                                                 MIR_new_mem_op(ctx->context, MIR_T_I64,
+                                                                offsetof(object_vtable_t, virtual_functions) + operand_method->VtableOffset * sizeof(void*),
+                                                                temp_reg, 0, 1)));
+
+                    // indirect call
+                    arg_ops[1] = MIR_new_reg_op(ctx->context, temp_reg);
                 } else {
                     // static dispatch
                     arg_ops[1] = MIR_new_ref_op(ctx->context, ctx->functions[funci].forward);
@@ -2892,7 +3031,12 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
 
     // setup mir context
     ctx.context = MIR_init();
-    MIR_module_t mod = MIR_new_module(ctx.context, "my_module");
+    CHECK(ctx.context != NULL);
+
+    FILE* module_name = fcreate();
+    fprintf(module_name, "%U", assembly->Module->Name);
+    MIR_module_t mod = MIR_new_module(ctx.context, module_name->buffer);
+    fclose(module_name);
     CHECK(mod != NULL);
 
     // setup special mir functions
@@ -2968,20 +3112,27 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
         for (int mi = 0; mi < type->Methods->Length; mi++) {
             System_Reflection_MethodInfo method = type->Methods->Data[mi];
 
-            if (method_get_code_type(method) == METHOD_IL) {
+            if (!method_is_internal_call(method) && !method_is_unmanaged(method)) {
                 CHECK_AND_RETHROW(jit_method(&ctx, method));
             }
         }
     }
 
+    // finish the module
+    MIR_finish_module(ctx.context);
+
+    //
+    // Do final stuff
+    //
+    CHECK_AND_RETHROW(jit_load_assembly(ctx.context, mod, assembly));
+    CHECK_AND_RETHROW(jit_setup_vtables(assembly));
+
 cleanup:
     if (ctx.context != NULL) {
-        MIR_finish_module(ctx.context);
-
-        // save everything to a module that we can load later
-        assembly->MirModule = fcreate();
-        MIR_write(ctx.context, assembly->MirModule);
-        TRACE("MIR for `%U` is %S", assembly->Module->Name, arrlen(assembly->MirModule->buffer));
+        if (IS_ERROR(err)) {
+            // if we got an error force finish the module so we won't have to care
+            MIR_finish_module(ctx.context);
+        }
 
         MIR_finish(ctx.context);
     }

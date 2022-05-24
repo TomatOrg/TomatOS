@@ -28,6 +28,7 @@ namespace System
         private int _managedAlignment;
         private int _stackSize;
         private int _stackAlignment;
+        private unsafe void* _vtable;
         
         private Type _arrayType;
         private Type _byRefType;
