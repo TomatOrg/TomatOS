@@ -80,7 +80,7 @@ SRCS 		+= lib/mir/mir.c
 SRCS 		+= lib/mir/mir-gen.c
 
 CFLAGS 		+= -DMIR_NO_SCAN
-#CFLAGS 		+= -DMIR_PARALLEL_GEN
+CFLAGS 		+= -DMIR_PARALLEL_GEN
 
 ########################################################################################################################
 # Targets
