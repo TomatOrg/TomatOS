@@ -1180,7 +1180,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     MIR_var_t* vars = NULL;
 
     // variables
-    MIR_reg_t* locals = NULL;
+    MIR_op_t* locals = NULL;
 
     // jump table dynamic array
     MIR_op_t *switch_ops = NULL;
@@ -1246,7 +1246,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
         if (body->InitLocals) {
             // we are going to initialize all of the variables
             MIR_reg_t reg = new_reg(ctx, variable->LocalType);
-            arrpush(locals, reg);
+            arrpush(locals, MIR_new_reg_op(ctx->context, reg));
             if (
                 type_is_object_ref(variable->LocalType) ||
                 variable->LocalType == tSystem_Int32 ||
@@ -1737,7 +1737,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     // simple move
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, code,
-                                                 MIR_new_reg_op(ctx->context, locals[operand_i32]),
+                                                 locals[operand_i32],
                                                  MIR_new_reg_op(ctx->context, value_reg)));
                 } else {
                     CHECK_FAIL("TODO: memcpy to a local");
@@ -1763,9 +1763,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     code = MIR_DMOV;
                 }
 
-                // make sure we have a valid register in here
-                CHECK(locals[operand_i32] > 0);
-
                 // push it
                 MIR_reg_t value_reg;
                 CHECK_AND_RETHROW(stack_push(ctx, value_type, &value_reg));
@@ -1783,10 +1780,49 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, code,
                                                  MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_reg_op(ctx->context, locals[operand_i32])));
+                                                 locals[operand_i32]));
                 } else {
                     // needs a copy
                     CHECK_FAIL("TODO: copy from local");
+                }
+            } break;
+
+            case CEE_LDLOCA:
+            case CEE_LDLOCA_S: {
+                // get the variable
+                CHECK(operand_i32 < body->LocalVariables->Length);
+                System_Reflection_LocalVariableInfo variable = body->LocalVariables->Data[operand_i32];
+                System_Type value_type = get_by_ref_type(type_get_verification_type(variable->LocalType));
+
+                // push it
+                MIR_reg_t value_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, value_type, &value_reg));
+
+                // emit the move
+                if (
+                    type_is_object_ref(value_type) ||
+                    value_type == tSystem_Int32 ||
+                    value_type == tSystem_Int64 ||
+                    value_type == tSystem_IntPtr ||
+                    value_type == tSystem_Single ||
+                    value_type == tSystem_Double
+                ) {
+                    if (locals[operand_i32].mode == MIR_OP_REG) {
+                        CHECK_FAIL("TODO: spill the value into the stack");
+                    } else {
+                        // already spilled, get the base register
+                        CHECK(locals[operand_i32].mode == MIR_OP_MEM);
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_MOV,
+                                                     MIR_new_reg_op(ctx->context, value_reg),
+                                                     MIR_new_reg_op(ctx->context, locals[operand_i32].u.mem.base)));
+                    }
+                } else {
+                    // just a move
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, value_reg),
+                                                 locals[operand_i32]));
                 }
             } break;
 
