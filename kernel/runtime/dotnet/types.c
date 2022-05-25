@@ -561,7 +561,7 @@ void assembly_dump(System_Reflection_Assembly assembly) {
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
         System_Type type = assembly->DefinedTypes->Data[i];
 
-        printf("[*] \t%s ", type_visibility_str(type_visibility(type)));
+        printf("[*] \t%s %s ", type_visibility_str(type_visibility(type)), type_is_interface(type) ? "interface" : "class");
         type_print_full_name(type, stdout);
         if (type->BaseType != NULL) {
             printf(" : ");
@@ -611,14 +611,19 @@ void assembly_dump(System_Reflection_Assembly assembly) {
 
             printf("\r\n");
 
-            // handle locals
-            for (int li = 0; li < mi->MethodBody->LocalVariables->Length; li++) {
-                printf("[*] \t\t\t");
-                type_print_full_name(mi->MethodBody->LocalVariables->Data[li]->LocalType, stdout);
-                printf(" V_%d\r\n", mi->MethodBody->LocalVariables->Data[li]->LocalIndex);
-            }
+            if (
+                method_get_code_type(mi) == METHOD_IL &&
+                !method_is_unmanaged(mi) &&
+                !method_is_abstract(mi) &&
+                !method_is_internal_call(mi)
+            ) {
+                // handle locals
+                for (int li = 0; li < mi->MethodBody->LocalVariables->Length; li++) {
+                    printf("[*] \t\t\t");
+                    type_print_full_name(mi->MethodBody->LocalVariables->Data[li]->LocalType, stdout);
+                    printf(" V_%d\r\n", mi->MethodBody->LocalVariables->Data[li]->LocalIndex);
+                }
 
-            if (method_get_code_type(mi) == METHOD_IL) {
                 opcode_disasm_method(mi);
             } else if (method_get_code_type(mi) == METHOD_NATIVE) {
                 TRACE("\t\t\t<native method>");

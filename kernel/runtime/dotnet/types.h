@@ -425,10 +425,11 @@ typedef enum type_layout {
     TYPE_EXPLICIT_LAYOUT = 2,
 } type_layout_t;
 
-static inline type_visibility_t type_visibility(System_Type Type) { return Type->Attributes & 0b111; }
-static inline type_layout_t type_layout(System_Type Type) { return (Type->Attributes >> 3) & 0b11; }
-static inline bool type_is_abstract(System_Type Type) { return Type->Attributes & 0x00000080; }
-static inline bool type_is_sealed(System_Type Type) { return Type->Attributes & 0x00000100; }
+static inline type_visibility_t type_visibility(System_Type type) { return type->Attributes & 0b111; }
+static inline type_layout_t type_layout(System_Type type) { return (type->Attributes >> 3) & 0b11; }
+static inline bool type_is_abstract(System_Type type) { return type->Attributes & 0x00000080; }
+static inline bool type_is_sealed(System_Type type) { return type->Attributes & 0x00000100; }
+static inline bool type_is_interface(System_Type type) { return type->Attributes & 0x00000020; }
 
 const char* type_visibility_str(type_visibility_t visibility);
 

@@ -134,6 +134,7 @@ static err_t jit_setup_vtables(System_Reflection_Assembly assembly) {
     //
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
         System_Type type = assembly->DefinedTypes->Data[i];
+        if (type_is_abstract(type) || type_is_interface(type)) continue;
         if (type->VirtualMethods == NULL) continue;
 
         for (int vi = 0; vi < type->VirtualMethods->Length; vi++) {
@@ -2360,6 +2361,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         // this is the this_type
                         this_type = operand_method->DeclaringType;
 
+                        // make sure this is a type we can actually create
+                        CHECK(!type_is_abstract(this_type));
+                        CHECK(!type_is_interface(this_type));
+
                         // we have to create the object right now
                         CHECK_AND_RETHROW(stack_push(ctx, operand_method->DeclaringType, &this_reg));
 
@@ -3232,7 +3237,11 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
         for (int mi = 0; mi < type->Methods->Length; mi++) {
             System_Reflection_MethodInfo method = type->Methods->Data[mi];
 
-            if (!method_is_internal_call(method) && !method_is_unmanaged(method)) {
+            if (
+                !method_is_internal_call(method) &&
+                !method_is_unmanaged(method) &&
+                !method_is_abstract(method)
+            ) {
                 CHECK_AND_RETHROW(jit_method(&ctx, method));
             }
         }

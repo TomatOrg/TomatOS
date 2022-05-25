@@ -5,29 +5,33 @@ namespace Pentagon;
 public class Kernel
 {
 
-    struct Vec2
+    public abstract class Number
     {
-        public int X;
-        public int Y;
+        public abstract int GetNumber();
 
-        public Vec2(int x, int y)
+    }
+
+    class A : Number
+    {
+        public override int GetNumber()
         {
-            X = x;
-            Y = y;
+            return 1;
         }
+    }
 
-        public Vec2(int scalar)
+    class B : Number
+    {
+
+        public override int GetNumber()
         {
-            X = scalar;
-            Y = scalar;
+            return 2;
         }
     }
 
     public static int Main()
     {
-        var first = new Vec2(2, 3);
-        Vec2 second = first;
-        return first.X;
+        Number num = new B();
+        return num.GetNumber();
     }
     
 }

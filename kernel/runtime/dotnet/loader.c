@@ -541,14 +541,20 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                     CHECK_AND_RETHROW(err);
                 }
             }
+
+            // for interfaces all methods need to be abstract
+            if (type_is_interface(type)) {
+                CHECK(method_is_abstract(methodInfo));
+            }
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Virtual Method Table initial creation, the rest will be handled later
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // create a vtable if needed
-        if (type->VTable == NULL) {
+        // create a vtable if needed, interfaces and abstract classes are never going
+        // to have a vtable, so no need to create one
+        if (type->VTable == NULL && !type_is_interface(type) && !type_is_abstract(type)) {
             type->VTable = malloc(sizeof(object_vtable_t) + sizeof(void*) * virtualOfs);
             CHECK(type->VTable != NULL);
             type->VTable->type = type;
