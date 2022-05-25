@@ -408,6 +408,18 @@ bool type_is_pointer_element_compatible_with(System_Type T, System_Type U) {
     return V == W;
 }
 
+static System_Type type_get_direct_base_class(System_Type T) {
+    if (T != NULL && T->IsArray) {
+        return tSystem_Array;
+    } else if (type_is_object_ref(T) || (T != NULL && type_is_interface(T))) {
+        return tSystem_Object;
+    } else if (T != NULL && T->IsValueType) {
+        return tSystem_ValueType;
+    } else {
+        return NULL;
+    }
+}
+
 bool type_is_compatible_with(System_Type T, System_Type U) {
     // T is identical to U.
     if (T == U) {
@@ -417,6 +429,14 @@ bool type_is_compatible_with(System_Type T, System_Type U) {
     // doesn't make sense to have a null type in here
     if (T == NULL || U == NULL) {
         return false;
+    }
+
+    if (type_is_object_ref(T)) {
+        if (U == type_get_direct_base_class(U)) {
+            return true;
+        }
+
+
     }
 
     if (!T->IsValueType) {

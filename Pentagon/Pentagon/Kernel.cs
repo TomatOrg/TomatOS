@@ -5,24 +5,35 @@ namespace Pentagon;
 public class Kernel
 {
 
-    public abstract class Number
+    public interface INumber
     {
-        public abstract int GetNumber();
+        public int GetNumber();
 
     }
 
-    class A : Number
+    public interface INumberLong
     {
-        public override int GetNumber()
+        public long GetLong();
+
+    }
+    
+    class A : INumber, INumberLong
+    {
+        public int GetNumber()
         {
             return 1;
         }
+        
+        public long GetLong()
+        {
+            return 123;
+        }
     }
 
-    class B : Number
+    class B : INumber
     {
 
-        public override int GetNumber()
+        public int GetNumber()
         {
             return 2;
         }
@@ -30,7 +41,7 @@ public class Kernel
 
     public static int Main()
     {
-        Number num = new B();
+        INumber num = new B();
         return num.GetNumber();
     }
     

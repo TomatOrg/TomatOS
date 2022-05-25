@@ -2438,18 +2438,23 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                     MIR_reg_t temp_reg = new_reg(ctx, tSystem_Type);
 
-                    // get the vtable pointer from the object
+                    // get the vtable pointer from the object, it is at the first
+                    // item for both an interface and an object
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, MIR_MOV,
                                                  MIR_new_reg_op(ctx->context, temp_reg),
                                                  MIR_new_mem_op(ctx->context, MIR_T_I64, 0, this_reg, 0, 1)));
+
+                    // for interfaces we start directly from the start of the vtable
+                    // while for objects it starts at the offset of the object_vtable_t.virtual_functions
+                    int offset = type_is_interface(operand_method->DeclaringType) ? 0 : offsetof(object_vtable_t, virtual_functions);
 
                     // get the address of the function from the vtable
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, MIR_MOV,
                                                  MIR_new_reg_op(ctx->context, temp_reg),
                                                  MIR_new_mem_op(ctx->context, MIR_T_I64,
-                                                                offsetof(object_vtable_t, virtual_functions) + operand_method->VtableOffset * sizeof(void*),
+                                                                offset + operand_method->VtableOffset * sizeof(void*),
                                                                 temp_reg, 0, 1)));
 
                     // indirect call
