@@ -2357,46 +2357,47 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 System_Type this_type;
                 if (!method_is_static(operand_method)) {
                     if (opcode == CEE_NEWOBJ) {
-                        // TODO: do we want to support value type creation with NEWOBJ?
-                        //       will see if we ever get the official compiler to emit this
-                        CHECK(!operand_method->DeclaringType->IsValueType);
-
                         // this is the this_type
                         this_type = operand_method->DeclaringType;
 
                         // we have to create the object right now
                         CHECK_AND_RETHROW(stack_push(ctx, operand_method->DeclaringType, &this_reg));
 
-                        // get the item for the allocation
-                        int typei = hmgeti(ctx->types, operand_method->DeclaringType);
-                        CHECK(typei != -1);
-                        MIR_item_t type_item = ctx->types[typei].value;
+                        if (this_type->IsValueType) {
+                            // For a value type we just need to zero it out before calling the ctor
+                            emit_zerofill(ctx, this_reg, this_type->StackSize);
+                        } else {
+                            // get the item for the allocation
+                            int typei = hmgeti(ctx->types, operand_method->DeclaringType);
+                            CHECK(typei != -1);
+                            MIR_item_t type_item = ctx->types[typei].value;
 
-                        // allocate the new object
-                        MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_call_insn(ctx->context, 5,
-                                                          MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
-                                                          MIR_new_ref_op(ctx->context, ctx->gc_new_func),
-                                                          MIR_new_reg_op(ctx->context, this_reg),
-                                                          MIR_new_ref_op(ctx->context, type_item),
-                                                          MIR_new_int_op(ctx->context, operand_method->DeclaringType->ManagedSize)));
+                            // allocate the new object
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_call_insn(ctx->context, 5,
+                                                              MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
+                                                              MIR_new_ref_op(ctx->context, ctx->gc_new_func),
+                                                              MIR_new_reg_op(ctx->context, this_reg),
+                                                              MIR_new_ref_op(ctx->context, type_item),
+                                                              MIR_new_int_op(ctx->context, operand_method->DeclaringType->ManagedSize)));
 
-                        // if we got NULL from the gc_new function it means we got an OOM
+                            // if we got NULL from the gc_new function it means we got an OOM
 
-                        // handle any exception which might have been thrown
-                        MIR_insn_t label = MIR_new_label(ctx->context);
+                            // handle any exception which might have been thrown
+                            MIR_insn_t label = MIR_new_label(ctx->context);
 
-                        // if we have a non-zero value then skip the throw
-                        MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_insn(ctx->context, MIR_BT,
-                                                     MIR_new_label_op(ctx->context, label),
-                                                     MIR_new_reg_op(ctx->context, this_reg)));
+                            // if we have a non-zero value then skip the throw
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_BT,
+                                                         MIR_new_label_op(ctx->context, label),
+                                                         MIR_new_reg_op(ctx->context, this_reg)));
 
-                        // throw the error, it has an unknown type
-                        CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_OutOfMemoryException));
+                            // throw the error, it has an unknown type
+                            CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_OutOfMemoryException));
 
-                        // insert the skip label
-                        MIR_append_insn(ctx->context, ctx->func, label);
+                            // insert the skip label
+                            MIR_append_insn(ctx->context, ctx->func, label);
+                        }
                     } else {
                         // this is a call, get it from the stack
                         CHECK_AND_RETHROW(stack_pop(ctx, &this_type, &this_reg));

@@ -7,19 +7,27 @@ public class Kernel
 
     struct Vec2
     {
-        public int X { get; set; }
-        public int Y { get; set; }
+        public int X;
+        public int Y;
+
+        public Vec2(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public Vec2(int scalar)
+        {
+            X = scalar;
+            Y = scalar;
+        }
     }
 
     public static int Main()
     {
-        var vec = new Vec2
-        {
-            X = 1,
-            Y = 2
-        };
-        
-        return vec.X + vec.Y;
+        var first = new Vec2(2, 3);
+        Vec2 second = first;
+        return first.X;
     }
     
 }
