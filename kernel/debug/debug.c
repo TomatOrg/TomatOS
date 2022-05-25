@@ -120,7 +120,7 @@ void debug_disasm_at(void* ptr, int opcodes) {
 //        debug_format_symbol((uintptr_t)code, addr_buffer, sizeof(addr_buffer));
 //
 //        // print it
-//        printf(" %s: %s\n\r", addr_buffer, buffer);
+//        printf(" %s: %s\r\n", addr_buffer, buffer);
 //
 //        // next...
 //        code += instruction.length;

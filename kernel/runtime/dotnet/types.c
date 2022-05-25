@@ -284,6 +284,10 @@ System_Type get_by_ref_type(System_Type Type) {
     // allocate the new ref type
     System_Type ByRefType = GC_NEW(tSystem_Type);
 
+    // this is an array
+    ByRefType->IsByRef = 1;
+    ByRefType->IsFilled = 1;
+
     // set the type information to look as ref Type
     GC_UPDATE(ByRefType, Module, Type->Module);
     GC_UPDATE(ByRefType, Name, string_append_cstr(Type->Name, "&"));
@@ -398,6 +402,12 @@ bool type_is_array_element_compatible_with(System_Type T, System_Type U) {
     }
 }
 
+bool type_is_pointer_element_compatible_with(System_Type T, System_Type U) {
+    System_Type V = type_get_verification_type(T);
+    System_Type W = type_get_verification_type(U);
+    return V == W;
+}
+
 bool type_is_compatible_with(System_Type T, System_Type U) {
     // T is identical to U.
     if (T == U) {
@@ -421,6 +431,12 @@ bool type_is_compatible_with(System_Type T, System_Type U) {
 
     if (T->IsArray && U->IsArray && type_is_array_element_compatible_with(T->ElementType, U->ElementType)) {
         return true;
+    }
+
+    if (T->IsByRef && U->IsByRef) {
+        if (type_is_pointer_element_compatible_with(T, U)) {
+            return true;
+        }
     }
 
     return false;
@@ -474,7 +490,7 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
 
 void type_print_name(System_Type type, FILE* output) {
     if (type->DeclaringType != NULL) {
-        type_print_full_name(type->DeclaringType, output);
+        type_print_name(type->DeclaringType, output);
         fputc('+', output);
     } else {
         if (type->Namespace->Length > 0) {
@@ -551,7 +567,7 @@ void assembly_dump(System_Reflection_Assembly assembly) {
             printf(" : ");
             type_print_full_name(type->BaseType, stdout);
         }
-        printf("\n\r");
+        printf("\r\n");
 
         for (int j = 0; j < type->Fields->Length; j++) {
             TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
@@ -593,7 +609,14 @@ void assembly_dump(System_Reflection_Assembly assembly) {
 
             method_print_full_name(mi, stdout);
 
-            printf("\n\r");
+            printf("\r\n");
+
+            // handle locals
+            for (int li = 0; li < mi->MethodBody->LocalVariables->Length; li++) {
+                printf("[*] \t\t\t");
+                type_print_full_name(mi->MethodBody->LocalVariables->Data[li]->LocalType, stdout);
+                printf(" V_%d\r\n", mi->MethodBody->LocalVariables->Data[li]->LocalIndex);
+            }
 
             if (method_get_code_type(mi) == METHOD_IL) {
                 opcode_disasm_method(mi);

@@ -5,31 +5,21 @@ namespace Pentagon;
 public class Kernel
 {
 
-    class A
+    struct Vec2
     {
-        public virtual int GetNumber()
-        {
-            return 1;
-        }
-    }
-
-    class B : A
-    {
-        public override int GetNumber()
-        {
-            return 5;
-        }        
-    }
-    
-    public static int Test(int a, int b)
-    {
-        return a + b;
+        public int X { get; set; }
+        public int Y { get; set; }
     }
 
     public static int Main()
     {
-        A a = new B();
-        return a.GetNumber();
+        var vec = new Vec2
+        {
+            X = 1,
+            Y = 2
+        };
+        
+        return vec.X + vec.Y;
     }
     
 }

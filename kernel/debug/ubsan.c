@@ -107,7 +107,7 @@ static NO_SANITIZE bool is_negative(const type_descriptor_t* type, size_t val) {
 }
 
 static NO_SANITIZE void print_source_location(source_location_t data) {
-    printf(" at %s:%d:%d\n\r", data.filename, data.line, data.column);
+    printf(" at %s:%d:%d\r\n", data.filename, data.line, data.column);
 }
 
 static NO_SANITIZE void print_value(const type_descriptor_t* type, size_t value) {

@@ -714,7 +714,7 @@ static void heap_dump_callback(System_Object object) {
         }
     }
 
-    printf("\n\r");
+    printf("\r\n");
 }
 
 void heap_dump() {

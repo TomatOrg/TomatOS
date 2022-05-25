@@ -12,6 +12,9 @@
 #include <mir/mir-gen.h>
 #include <mir/mir.h>
 
+#include <stdint.h>
+#include <stddef.h>
+
 /**
  * The global context use for running all the code
  */
@@ -26,6 +29,18 @@ static method_result_t System_Object_GetType(System_Object this) {
     return (method_result_t){ .exception = NULL, .value = (uintptr_t) this->vtable->type};
 }
 
+
+// The flatten attribute causes mem{cpy,set} to be inlined, if possible
+// The wrappers are needed here because the two functions are just macros over __builtin_X
+
+__attribute__((flatten)) void memset_wrapper(void* dest, int c, size_t count) {
+    memset(dest, c, count);
+}
+
+__attribute__((flatten)) void memcpy_wrapper(void* dest, void* src, size_t count) {
+    memcpy(dest, src, count);
+}
+
 err_t init_jit() {
     err_t err = NO_ERROR;
 
@@ -38,6 +53,8 @@ err_t init_jit() {
     MIR_load_external(m_mir_context, "gc_new", gc_new);
     MIR_load_external(m_mir_context, "gc_update", gc_update);
     MIR_load_external(m_mir_context, "get_array_type", get_array_type);
+    MIR_load_external(m_mir_context, "memcpy", memcpy_wrapper);
+    MIR_load_external(m_mir_context, "memset", memset_wrapper);
 
     MIR_load_external(m_mir_context, "[Corelib.dll]System.Object::GetType()", System_Object_GetType);
 
@@ -261,6 +278,12 @@ typedef struct jit_context {
 
     MIR_item_t get_array_type_proto;
     MIR_item_t get_array_type_func;
+
+    MIR_item_t memcpy_proto;
+    MIR_item_t memcpy_func;
+
+    MIR_item_t memset_proto;
+    MIR_item_t memset_func;
 } jit_context_t;
 
 static MIR_reg_t new_reg(jit_context_t* ctx, System_Type type) {
@@ -383,6 +406,48 @@ static err_t stack_merge(jit_context_t* ctx, stack_t* stack, bool allow_change) 
 
 cleanup:
     return err;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Memory helpers
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void emit_memcpy(jit_context_t* ctx, MIR_reg_t dest, MIR_reg_t src, size_t count) {
+    if (count <= 32 && (count % 8) == 0) {
+        for (size_t off = 0; off < count; off += 8) {
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, MIR_MOV,
+                                         MIR_new_mem_op(ctx->context, MIR_T_I64, off, dest, 0, 1),
+                                         MIR_new_mem_op(ctx->context, MIR_T_I64, off, src, 0, 1)));
+        }
+    } else {
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_call_insn(ctx->context, 5,
+                                      MIR_new_ref_op(ctx->context, ctx->memcpy_proto),
+                                      MIR_new_ref_op(ctx->context, ctx->memcpy_func),
+                                      MIR_new_reg_op(ctx->context, dest),
+                                      MIR_new_reg_op(ctx->context, src),
+                                      MIR_new_int_op(ctx->context, count)));
+    }
+}
+
+void emit_zerofill(jit_context_t* ctx, MIR_reg_t dest, size_t count) {
+    if (count <= 32 && (count % 8) == 0) {
+        for (size_t off = 0; off < count; off += 8) {
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, MIR_MOV,
+                                         MIR_new_mem_op(ctx->context, MIR_T_I64, off, dest, 0, 1),
+                                         MIR_new_int_op(ctx->context, 0)));
+        }
+    } else {
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_call_insn(ctx->context, 5,
+                                      MIR_new_ref_op(ctx->context, ctx->memset_proto),
+                                      MIR_new_ref_op(ctx->context, ctx->memset_func),
+                                      MIR_new_reg_op(ctx->context, dest),
+                                      MIR_new_int_op(ctx->context, 0),
+                                      MIR_new_int_op(ctx->context, count)));
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1257,7 +1322,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                 MIR_new_insn(ctx->context, MIR_MOV,
                                              MIR_new_reg_op(ctx->context, reg),
                                              MIR_new_int_op(ctx->context, 0)));
-            } else if (variable->LocalType == tSystem_Single ) {
+            } else if (variable->LocalType == tSystem_Single) {
                 MIR_append_insn(ctx->context, ctx->func,
                                 MIR_new_insn(ctx->context, MIR_FMOV,
                                              MIR_new_reg_op(ctx->context, reg),
@@ -1268,7 +1333,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, reg),
                                              MIR_new_double_op(ctx->context, 0.0)));
             } else {
-                CHECK_FAIL("TODO: memset variable to zero");
+                emit_zerofill(ctx, reg, variable->LocalType->StackSize);
             }
         } else {
             // we can not verify non-initlocals methods, so we are not
@@ -1740,7 +1805,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                  locals[operand_i32],
                                                  MIR_new_reg_op(ctx->context, value_reg)));
                 } else {
-                    CHECK_FAIL("TODO: memcpy to a local");
+                    CHECK(locals[operand_i32].mode == MIR_OP_REG);
+                    emit_memcpy(ctx, locals[operand_i32].u.reg, value_reg, value_type->StackSize);
                 }
             } break;
 
@@ -1782,8 +1848,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                  MIR_new_reg_op(ctx->context, value_reg),
                                                  locals[operand_i32]));
                 } else {
-                    // needs a copy
-                    CHECK_FAIL("TODO: copy from local");
+                    CHECK(locals[operand_i32].mode == MIR_OP_REG);
+                    emit_memcpy(ctx, value_reg, locals[operand_i32].u.reg, value_type->StackSize);
                 }
             } break;
 
@@ -1800,12 +1866,12 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // emit the move
                 if (
-                    type_is_object_ref(value_type) ||
-                    value_type == tSystem_Int32 ||
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr ||
-                    value_type == tSystem_Single ||
-                    value_type == tSystem_Double
+                    type_is_object_ref(variable->LocalType) ||
+                    variable->LocalType == tSystem_Int32 ||
+                    variable->LocalType == tSystem_Int64 ||
+                    variable->LocalType == tSystem_IntPtr ||
+                    variable->LocalType == tSystem_Single ||
+                    variable->LocalType == tSystem_Double
                 ) {
                     if (locals[operand_i32].mode == MIR_OP_REG) {
                         CHECK_FAIL("TODO: spill the value into the stack");
@@ -2425,6 +2491,17 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // insert the skip label
                 MIR_append_insn(ctx->context, ctx->func, label);
+            } break;
+
+            case CEE_INITOBJ: {
+                System_Type dest_type;
+                MIR_reg_t dest_reg;
+                CHECK_AND_RETHROW(stack_pop(ctx, &dest_type, &dest_reg));
+
+                CHECK(dest_type->IsByRef);
+                CHECK(type_is_verifier_assignable_to(operand_type, dest_type->BaseType));
+
+                emit_zerofill(ctx, dest_reg, operand_type->StackSize);
             } break;
 
             case CEE_RET: {
@@ -3085,6 +3162,12 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
 
     ctx.gc_update_proto = MIR_new_proto(ctx.context, "gc_update$proto", 0, NULL, 3, MIR_T_P, "o", MIR_T_U64, "idx", MIR_T_P, "new");
     ctx.gc_update_func = MIR_new_import(ctx.context, "gc_update");
+
+    ctx.memcpy_proto = MIR_new_proto(ctx.context, "memcpy$proto", 0, NULL, 3, MIR_T_P, "dest", MIR_T_U64, "src", MIR_T_P, "count");
+    ctx.memcpy_func = MIR_new_import(ctx.context, "memcpy");
+
+    ctx.memset_proto = MIR_new_proto(ctx.context, "memset$proto", 0, NULL, 3, MIR_T_P, "dest", MIR_T_I32, "c", MIR_T_U64, "count");
+    ctx.memset_func = MIR_new_import(ctx.context, "memset");
 
     res_type = MIR_T_I8;
     ctx.is_instance_proto = MIR_new_proto(ctx.context, "isinstance$proto", 1, &res_type, 2, MIR_T_P, "object", MIR_T_P, "type");
