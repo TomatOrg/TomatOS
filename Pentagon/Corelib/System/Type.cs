@@ -1,5 +1,6 @@
 using System.Reflection;
 using Pentagon;
+using Pentagon.Reflection;
 
 namespace System
 {
@@ -29,6 +30,7 @@ namespace System
         private int _stackSize;
         private int _stackAlignment;
         private unsafe void* _vtable;
+        private InterfaceImpl[] _interfaceImpl;
         
         private Type _arrayType;
         private Type _byRefType;

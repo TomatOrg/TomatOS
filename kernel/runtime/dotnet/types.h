@@ -374,6 +374,14 @@ typedef System_Exception System_OverflowException;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef struct Pentagon_Reflection_InterfaceImpl {
+    struct System_Object;
+    System_Type InterfaceType;
+    System_Reflection_MethodInfo_Array Methods;
+    void** VTable;
+} *Pentagon_Reflection_InterfaceImpl;
+DEFINE_ARRAY(Pentagon_Reflection_InterfaceImpl);
+
 struct System_Type {
     struct System_Reflection_MemberInfo;
     System_Reflection_Assembly Assembly;
@@ -399,6 +407,8 @@ struct System_Type {
     int StackSize;
     int StackAlignment;
     object_vtable_t* VTable;
+
+    Pentagon_Reflection_InterfaceImpl_Array InterfaceImpls;
 
     System_Type ArrayType;
     System_Type ByRefType;
@@ -520,6 +530,8 @@ extern System_Type tSystem_IndexOutOfRangeException;
 extern System_Type tSystem_NullReferenceException;
 extern System_Type tSystem_OutOfMemoryException;
 extern System_Type tSystem_OverflowException;
+
+extern System_Type tPentagon_Reflection_InterfaceImpl;
 
 static inline bool type_is_enum(System_Type type) { return type != NULL && type->BaseType == tSystem_Enum; }
 static inline bool type_is_object_ref(System_Type type) { return type == NULL || !type->IsValueType; }

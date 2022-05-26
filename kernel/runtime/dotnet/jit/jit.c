@@ -137,8 +137,22 @@ static err_t jit_setup_vtables(System_Reflection_Assembly assembly) {
         if (type_is_abstract(type) || type_is_interface(type)) continue;
         if (type->VirtualMethods == NULL) continue;
 
+        // setup the vtable for the whole type
         for (int vi = 0; vi < type->VirtualMethods->Length; vi++) {
             type->VTable->virtual_functions[vi] = type->VirtualMethods->Data[vi]->MirFunc->addr;
+        }
+
+        // setup the vtable for each interface we implemented here
+        // TODO: can we just point into the main vtable instead of allocating a new one?
+        if (type->InterfaceImpls != NULL) {
+            for (int ii = 0; ii < type->InterfaceImpls->Length; ii++) {
+                System_Reflection_MethodInfo_Array methods = type->InterfaceImpls->Data[ii]->Methods;
+                void** vtable = malloc(sizeof(void*) * methods->Length);
+                for (int vi = 0; vi < methods->Length; vi++) {
+                    vtable[vi] = methods->Data[vi]->MirFunc->addr;
+                }
+                type->InterfaceImpls->Data[ii]->VTable = vtable;
+            }
         }
     }
 
@@ -1301,7 +1315,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     // get the return block register, if any
     MIR_reg_t return_block_reg = 0;
     if (res_type[1] == MIR_T_BLK) {
-        return_block_reg = MIR_reg(ctx->context, "return_block", ctx->func->u.func);
+        return_block_reg = MIR_reg(ctx->context, "r", ctx->func->u.func);
     }
 
     // actually create locals
@@ -2445,16 +2459,31 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                  MIR_new_reg_op(ctx->context, temp_reg),
                                                  MIR_new_mem_op(ctx->context, MIR_T_I64, 0, this_reg, 0, 1)));
 
-                    // for interfaces we start directly from the start of the vtable
-                    // while for objects it starts at the offset of the object_vtable_t.virtual_functions
-                    int offset = type_is_interface(operand_method->DeclaringType) ? 0 : offsetof(object_vtable_t, virtual_functions);
+                    // figure offset and the actual method
+                    int offset;
+                    int vtable_index = operand_method->VtableOffset;
+                    if (type_is_interface(this_type)) {
+                        // we are calling on an interface, offset to the vtable is at the start
+                        offset = 0;
+                    } else {
+                        offset = offsetof(object_vtable_t, virtual_functions);
+                        if (type_is_interface(operand_method->DeclaringType)) {
+                            // we are calling on an interface signature, we need
+                            // to actually find the real function in this implementation
+                            for (int ii = 0; ii < this_type->InterfaceImpls->Length; ii++) {
+                                if (this_type->InterfaceImpls->Data[ii]->InterfaceType == operand_method->DeclaringType) {
+                                    vtable_index = this_type->InterfaceImpls->Data[ii]->Methods->Data[operand_method->VtableOffset]->VtableOffset;
+                                }
+                            }
+                        }
+                    }
 
                     // get the address of the function from the vtable
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, MIR_MOV,
                                                  MIR_new_reg_op(ctx->context, temp_reg),
                                                  MIR_new_mem_op(ctx->context, MIR_T_I64,
-                                                                offset + operand_method->VtableOffset * sizeof(void*),
+                                                                offset + vtable_index * sizeof(void*),
                                                                 temp_reg, 0, 1)));
 
                     // indirect call
@@ -2516,7 +2545,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             } break;
 
             case CEE_RET: {
-                // TODO: check
                 System_Type method_ret_type = type_get_underlying_type(method->ReturnType);
 
                 if (method_ret_type == NULL) {
@@ -2539,6 +2567,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     // verify the IL
                     CHECK(type_is_verifier_assignable_to(ret_type, method->ReturnType));
 
+                    // TODO: do we need float->double and double->float implicit casts in here
+
                     // handle it at the IR level
                     if (
                         type_is_object_ref(ret_type) ||
@@ -2548,14 +2578,35 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         ret_type == tSystem_Single ||
                         ret_type == tSystem_Double
                     ) {
-                        // it is stored in a register directly, just return it
-                        MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_ret_insn(ctx->context, 2,
-                                                         MIR_new_int_op(ctx->context, 0),
-                                                         MIR_new_reg_op(ctx->context, ret_arg)));
+                        if (type_is_interface(method_ret_type) && !type_is_interface(ret_type)) {
+                            // we need to cast to an interface from the instance
+                            // just do it directly on the return
+
+                            // set the vtable
+                            // TODO: I am too lazy to have the vtables being an import, I am just gonna put the
+                            //       value inlined, but it should be a vtable
+
+
+                            // set the type
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_MOV,
+                                                             MIR_new_mem_op(ctx->context, MIR_T_I64, 0, return_block_reg, 0, 1),
+                                                             MIR_new_reg_op(ctx->context, ret_arg)));
+
+                            // return the exception
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_ret_insn(ctx->context, 1,
+                                                             MIR_new_int_op(ctx->context, 0)));
+                        } else {
+                            // it is stored in a register directly, just return it
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_ret_insn(ctx->context, 2,
+                                                             MIR_new_int_op(ctx->context, 0),
+                                                             MIR_new_reg_op(ctx->context, ret_arg)));
+                        }
                     } else {
                         // this is a big struct, copy it to the return block
-                        CHECK_FAIL("TODO: copy to RBLK");
+                        emit_memcpy(ctx, return_block_reg, ret_arg, ret_type->StackSize);
                     }
                 }
             } break;
@@ -2683,7 +2734,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     operand_type == tSystem_Single ||
                     operand_type == tSystem_Double
                 ) {
-                    // extend properly depending on sign and type
+                    // extend properly, for unsigned we don't need to
+                    // do anything special, for signed we are going to
+                    // extend to the full integer length (so it will be
+                    // at least 32 bit)
                     MIR_insn_code_t code = MIR_MOV;
                     if (operand_type == tSystem_Single) {
                         code = MIR_FMOV;
@@ -2693,14 +2747,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         code = MIR_EXT8;
                     } else if (operand_type == tSystem_Int16) {
                         code = MIR_EXT16;
-                    } else if (operand_type == tSystem_Int32) {
-                        code = MIR_EXT32;
-                    } else if (operand_type == tSystem_Byte) {
-                        code = MIR_UEXT8;
-                    } else if (operand_type == tSystem_UInt16) {
-                        code = MIR_UEXT16;
-                    } else if (operand_type == tSystem_UInt32) {
-                        code = MIR_UEXT32;
                     }
 
                     // get the actual type as the intermediate type

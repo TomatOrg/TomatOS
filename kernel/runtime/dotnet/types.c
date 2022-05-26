@@ -47,6 +47,8 @@ System_Type tSystem_NullReferenceException = NULL;
 System_Type tSystem_OutOfMemoryException = NULL;
 System_Type tSystem_OverflowException = NULL;
 
+System_Type tPentagon_Reflection_InterfaceImpl = NULL;
+
 bool string_equals_cstr(System_String a, const char* b) {
     if (a->Length != strlen(b)) {
         return false;
@@ -420,6 +422,24 @@ static System_Type type_get_direct_base_class(System_Type T) {
     }
 }
 
+static bool type_is_interface_directly_implemented_by(System_Type I, System_Type T) {
+    if (!type_is_interface(I)) {
+        return false;
+    }
+
+    if (T->InterfaceImpls == NULL) {
+        return false;
+    }
+
+    for (int i = 0; i < T->InterfaceImpls->Length; i++) {
+        if (T->InterfaceImpls->Data[i]->InterfaceType == I) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool type_is_compatible_with(System_Type T, System_Type U) {
     // T is identical to U.
     if (T == U) {
@@ -432,11 +452,13 @@ bool type_is_compatible_with(System_Type T, System_Type U) {
     }
 
     if (type_is_object_ref(T)) {
-        if (U == type_get_direct_base_class(U)) {
+        if (U == type_get_direct_base_class(T)) {
             return true;
         }
 
-
+        if (type_is_interface_directly_implemented_by(U, T)) {
+            return true;
+        }
     }
 
     if (!T->IsValueType) {
@@ -505,6 +527,7 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
         return true;
     }
 
+    TRACE("%U - %U", Q->Name, R->Name);
     return false;
 }
 

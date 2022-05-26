@@ -39,9 +39,14 @@ public class Kernel
         }
     }
 
+    public static INumber GetNumberInterface()
+    {
+        return new A();
+    }
+    
     public static int Main()
     {
-        INumber num = new B();
+        var num = GetNumberInterface();
         return num.GetNumber();
     }
     

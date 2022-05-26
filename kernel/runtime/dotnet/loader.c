@@ -253,6 +253,15 @@ cleanup:
 static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
 
+    struct {
+        System_Type key;
+        System_Type* value;
+    }* interfaces = NULL;
+
+    //
+    // Do the base type init
+    //
+
     int types_count = metadata->tables[METADATA_TYPE_DEF].rows;
     metadata_type_def_t* type_defs = metadata->tables[METADATA_TYPE_DEF].table;
 
@@ -277,7 +286,9 @@ static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Refle
         GC_UPDATE(type, BaseType, assembly_get_type_by_token(assembly, type_def->extends));
     }
 
+    //
     // all the base info is done, now we can do the rest
+    //
     for (int i = 0; i < types_count; i++) {
         metadata_type_def_t* type_def = &type_defs[i];
         System_Type type = assembly->DefinedTypes->Data[i];
@@ -343,7 +354,51 @@ static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Refle
         }
     }
 
+    //
+    // count how many interfaces are implemented in each type
+    //
+
+    metadata_interface_impl_t* interface_impls = metadata->tables[METADATA_INTERFACE_IMPL].table;
+    int interface_impls_count = metadata->tables[METADATA_INTERFACE_IMPL].rows;
+
+    // count interfaces for each type, use stack size as a temp while we do the counting
+    for (int ii = 0; ii < interface_impls_count; ii++) {
+        metadata_interface_impl_t* interface_impl = &interface_impls[ii];
+        System_Type class = assembly_get_type_by_token(assembly, interface_impl->class);
+        System_Type interface = assembly_get_type_by_token(assembly, interface_impl->interface);
+
+        CHECK(class != NULL);
+        CHECK(interface != NULL);
+
+        int i = hmgeti(interfaces, class);
+        if (i == -1) {
+            System_Type* arr = NULL;
+            arrpush(arr, interface);
+            hmput(interfaces, class, arr);
+        } else {
+            arrpush(interfaces[i].value, interface);
+        }
+    }
+
+    // Allocate all the arrays nicely
+    for (int i = 0; i < hmlen(interfaces); i++) {
+        System_Type type = interfaces[i].key;
+        GC_UPDATE(type, InterfaceImpls, GC_NEW_ARRAY(tPentagon_Reflection_InterfaceImpl, arrlen(interfaces[i].value)));
+        for (int j = 0; j < arrlen(interfaces[i].value); j++) {
+            Pentagon_Reflection_InterfaceImpl interfaceImpl = GC_NEW(tPentagon_Reflection_InterfaceImpl);
+            GC_UPDATE(interfaceImpl, InterfaceType, interfaces[i].value[j]);
+            GC_UPDATE_ARRAY(type->InterfaceImpls, j, interfaceImpl);
+        }
+    }
+
 cleanup:
+    if (interfaces != NULL) {
+        for (int i = 0; i < hmlen(interfaces); i++) {
+            arrfree(interfaces[i].value);
+        }
+        hmfree(interfaces);
+    }
+
     return err;
 }
 
@@ -377,9 +432,7 @@ cleanup:
     #define TRACE_FILL_TYPE(...)
 #endif
 
-static err_t override_method(System_Type type, System_Reflection_MethodInfo method) {
-    err_t err = NO_ERROR;
-
+static System_Reflection_MethodInfo find_override_method(System_Type type, System_Reflection_MethodInfo method) {
     while (type != NULL) {
         // TODO: search MethodImpl table
 
@@ -392,7 +445,6 @@ static err_t override_method(System_Type type, System_Reflection_MethodInfo meth
         // Use normal inheritance (I.8.10.4)
         for (int i = 0; i < type->VirtualMethods->Length; i++) {
             System_Reflection_MethodInfo info = type->VirtualMethods->Data[i];
-            if (!method_is_virtual(info)) continue;
 
             // match the name
             if (!string_equals(info->Name, method->Name)) continue;
@@ -419,23 +471,16 @@ static err_t override_method(System_Type type, System_Reflection_MethodInfo meth
                 if (!signatureMatch) continue;
             }
 
-            // found it!
-            CHECK(!method_is_final(info), "Trying to override a final method");
-
             // set the offset
-            method->VtableOffset = info->VtableOffset;
-            goto cleanup;
+            return info;
         }
 
         // get the parent for next iteration
         type = type->BaseType;
     }
 
-    // the vtable slot was not found, we will simply allocate a new slot
-    err = ERROR_NOT_FOUND;
-
-cleanup:
-    return err;
+    // not found
+    return NULL;
 }
 
 /**
@@ -532,13 +577,14 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                     // this is a newslot, always allocate a new slot
                     methodInfo->VtableOffset = virtualOfs++;
                 } else {
-                    err = override_method(type->BaseType, methodInfo);
-                    if (err == ERROR_NOT_FOUND) {
+                    System_Reflection_MethodInfo overriden = find_override_method(type->BaseType, methodInfo);
+                    if (overriden == NULL) {
                         // The base method was not found, just allocate a new slot per the spec.
                         methodInfo->VtableOffset = virtualOfs++;
-                        err = NO_ERROR;
+                    } else {
+                        CHECK(method_is_virtual(overriden));
+                        CHECK(method_is_final(overriden));
                     }
-                    CHECK_AND_RETHROW(err);
                 }
             }
 
@@ -744,10 +790,36 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // TODO: interface handling
+        // interface implementation handling
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+        if (!type_is_abstract(type) && !type_is_interface(type) && type->InterfaceImpls != NULL) {
+            for (int i = 0; i < type->InterfaceImpls->Length; i++) {
+                Pentagon_Reflection_InterfaceImpl interfaceImpl = type->InterfaceImpls->Data[i];
+                System_Type interface = interfaceImpl->InterfaceType;
+                interfaceImpl->Methods = GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, interfaceImpl->InterfaceType->VirtualMethods->Length);
+                for (int vi = 0; vi < interface->VirtualMethods->Length; vi++) {
+                    System_Reflection_MethodInfo overriden = find_override_method(type, interface->VirtualMethods->Data[vi]);
+                    CHECK(overriden != NULL);
+                    CHECK(method_is_virtual(overriden));
+                    CHECK(method_is_final(overriden));
+                    GC_UPDATE_ARRAY(interfaceImpl->Methods, vi, overriden);
+                }
+            }
+        }
 
+        if (type_is_interface(type)) {
+            // make sure we have no fields
+            CHECK(type->Fields->Length == 0);
+
+            // we are going to treat a raw interface type as a
+            // value type that has two pointers in it, for simplicity
+            type->StackSize = sizeof(void*) * 2;
+            type->StackAlignment = alignof(void*);
+            type->ManagedSize = sizeof(void*);
+            type->ManagedAlignment = alignof(void*);
+            type->IsValueType = true;
+        }
 
     } else {
         CHECK_FAIL("TODO: Handle generic definitions");
@@ -905,6 +977,7 @@ static type_init_t m_type_init[] = {
     EXCEPTION_INIT("System", "NullReferenceException", System_NullReferenceException),
     EXCEPTION_INIT("System", "OutOfMemoryException", System_OutOfMemoryException),
     EXCEPTION_INIT("System", "OverflowException", System_OverflowException),
+    TYPE_INIT("Pentagon.Reflection", "InterfaceImpl", Pentagon_Reflection_InterfaceImpl, 3),
 };
 
 static void init_type(metadata_type_def_t* type_def, System_Type type) {
