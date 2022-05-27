@@ -4,6 +4,7 @@
 #include "runtime/dotnet/types.h"
 #include "runtime/dotnet/gc/gc.h"
 #include "kernel.h"
+#include "runtime/dotnet/loader.h"
 
 #include <util/except.h>
 #include <util/stb_ds.h>
@@ -33,11 +34,13 @@ static method_result_t System_Object_GetType(System_Object this) {
 // The flatten attribute causes mem{cpy,set} to be inlined, if possible
 // The wrappers are needed here because the two functions are just macros over __builtin_X
 
-__attribute__((flatten)) void memset_wrapper(void* dest, int c, size_t count) {
+__attribute__((flatten))
+void memset_wrapper(void* dest, int c, size_t count) {
     memset(dest, c, count);
 }
 
-__attribute__((flatten)) void memcpy_wrapper(void* dest, void* src, size_t count) {
+__attribute__((flatten))
+void memcpy_wrapper(void* dest, void* src, size_t count) {
     memcpy(dest, src, count);
 }
 
@@ -72,6 +75,7 @@ cleanup:
 }
 
 void jit_dump_mir(System_Reflection_MethodInfo methodInfo) {
+    if (methodInfo->MirFunc == NULL) return;
     MIR_output_item(m_mir_context, stdout, methodInfo->MirFunc);
 }
 
@@ -143,17 +147,6 @@ static err_t jit_setup_vtables(System_Reflection_Assembly assembly) {
         }
 
         // setup the vtable for each interface we implemented here
-        // TODO: can we just point into the main vtable instead of allocating a new one?
-        if (type->InterfaceImpls != NULL) {
-            for (int ii = 0; ii < type->InterfaceImpls->Length; ii++) {
-                System_Reflection_MethodInfo_Array methods = type->InterfaceImpls->Data[ii]->Methods;
-                void** vtable = malloc(sizeof(void*) * methods->Length);
-                for (int vi = 0; vi < methods->Length; vi++) {
-                    vtable[vi] = methods->Data[vi]->MirFunc->addr;
-                }
-                type->InterfaceImpls->Data[ii]->VTable = vtable;
-            }
-        }
     }
 
 cleanup:
@@ -195,7 +188,7 @@ static MIR_type_t get_mir_type(System_Type type) {
         return MIR_T_F;
     } else if (type == tSystem_Double) {
         return MIR_T_D;
-    } else if (type->IsValueType) {
+    } else if (type->IsValueType || type_is_interface(type)) {
         return MIR_T_BLK;
     } else {
         return MIR_T_P;
@@ -309,8 +302,17 @@ static MIR_reg_t new_reg(jit_context_t* ctx, System_Type type) {
     // create the reg
     MIR_reg_t reg;
     if (type_is_integer(type) || type_is_object_ref(type)) {
-        // This is an integer or a reference type
-        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
+        if (type != NULL && type_is_interface(type)) {
+            // interface is a fat pointer
+            reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
+            MIR_prepend_insn(ctx->context, ctx->func,
+                             MIR_new_insn(ctx->context, MIR_ALLOCA,
+                                          MIR_new_reg_op(ctx->context, reg),
+                                          MIR_new_int_op(ctx->context, type->StackSize)));
+        } else {
+            // This is an integer or a reference type
+            reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
+        }
     } else if (type == tSystem_Single) {
         // This is a float
         reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_F, name);
@@ -495,8 +497,8 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
         if (res_type[1] == MIR_T_BLK) {
             // value type return
             MIR_var_t var = {
-                .name = "rblk",
-                .type = MIR_T_RBLK,
+                .name = "return_block",
+                .type = MIR_T_P, // TODO: do we want to use rblk along size a normal return value
                 .size = method->ReturnType->StackSize
             };
             arrpush(vars, var);
@@ -1079,16 +1081,40 @@ cleanup:
     return err;
 }
 
-static err_t jit_null_check(jit_context_t* ctx, int il_offset, MIR_reg_t reg) {
+static err_t jit_null_check(jit_context_t* ctx, int il_offset, MIR_reg_t reg, System_Type type) {
     err_t err = NO_ERROR;
 
-    MIR_label_t not_null = MIR_new_label(ctx->context);
-    MIR_append_insn(ctx->context, ctx->func,
-                    MIR_new_insn(ctx->context, MIR_BT,
-                                 MIR_new_label_op(ctx->context, not_null),
-                                 MIR_new_reg_op(ctx->context, reg)));
-    CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_NullReferenceException));
-    MIR_append_insn(ctx->context, ctx->func, not_null);
+    if (type == NULL) {
+        // this is a null type, just throw it
+        CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_NullReferenceException));
+    } else {
+        ASSERT(type_is_object_ref(type));
+
+        MIR_label_t not_null = MIR_new_label(ctx->context);
+
+        if (type_is_interface(type)) {
+            // this is an interface, we need to get the object reference in it and check if
+            // that is zero
+            MIR_reg_t temp_reg = new_reg(ctx, tSystem_Object);
+            MIR_append_insn(ctx->context, ctx->func,
+                            MIR_new_insn(ctx->context, MIR_MOV,
+                                         MIR_new_reg_op(ctx->context, temp_reg),
+                                         MIR_new_mem_op(ctx->context, MIR_T_P,
+                                                        sizeof(void*), reg, 0, 1)));
+            reg = temp_reg;
+        }
+
+        // check if reg is null
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_insn(ctx->context, MIR_BT,
+                                     MIR_new_label_op(ctx->context, not_null),
+                                     MIR_new_reg_op(ctx->context, reg)));
+
+        CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_NullReferenceException));
+
+        MIR_append_insn(ctx->context, ctx->func, not_null);
+    }
+
 
 cleanup:
     return err;
@@ -1235,6 +1261,43 @@ static err_t jit_binary_numeric_operation(jit_context_t* ctx, int il_offset, MIR
     return err;
 }
 
+static err_t jit_cast_obj_to_interface(jit_context_t* ctx, MIR_reg_t result, MIR_reg_t this, System_Type from, System_Type to) {
+    err_t err = NO_ERROR;
+
+    Pentagon_Reflection_InterfaceImpl interface = type_get_interface_impl(from, to);
+    CHECK(interface != NULL);
+
+    // &object->vtable[offsetof(vtable, virtual_functions) + vtable_offset]
+    MIR_reg_t vtable_reg = new_reg(ctx, tSystem_IntPtr);
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_MOV,
+                                 MIR_new_reg_op(ctx->context, vtable_reg),
+                                 MIR_new_mem_op(ctx->context, MIR_T_P,
+                                                offsetof(struct System_Object, vtable),
+                                                this, 0, 1)));
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_ADD,
+                                 MIR_new_reg_op(ctx->context, vtable_reg),
+                                 MIR_new_reg_op(ctx->context, vtable_reg),
+                                 MIR_new_int_op(ctx->context, offsetof(object_vtable_t, virtual_functions) + interface->VTableOffset * sizeof(void*))));
+
+    // set the vtable
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_MOV,
+                                 MIR_new_mem_op(ctx->context, MIR_T_P, 0, result, 0, 1),
+                                 MIR_new_reg_op(ctx->context, vtable_reg)));
+
+    // set the type
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, MIR_MOV,
+                                 MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), result, 0, 1),
+                                 MIR_new_reg_op(ctx->context, this)));
+
+
+cleanup:
+    return err;
+}
+
 static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method) {
     err_t err = NO_ERROR;
 
@@ -1268,10 +1331,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     if (method->ReturnType != NULL) {
         res_type[1] = get_mir_type(method->ReturnType);
         if (res_type[1] == MIR_T_BLK) {
-            // we need an RBLK
+            // we need an BLK
             MIR_var_t var = {
-                .name = "r",
-                .type = MIR_T_RBLK,
+                .name = "return_block",
+                .type = MIR_T_P, // TODO: do we want to use rblk along size a normal return value
                 .size = method->ReturnType->StackSize
             };
             arrpush(vars, var);
@@ -1315,7 +1378,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     // get the return block register, if any
     MIR_reg_t return_block_reg = 0;
     if (res_type[1] == MIR_T_BLK) {
-        return_block_reg = MIR_reg(ctx->context, "r", ctx->func->u.func);
+        return_block_reg = MIR_reg(ctx->context, "return_block", ctx->func->u.func);
     }
 
     // actually create locals
@@ -1977,7 +2040,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                  MIR_new_reg_op(ctx->context, value_reg),
                                                  MIR_new_reg_op(ctx->context, arg_reg)));
                 } else {
-                    CHECK_FAIL("TODO: copy arg to stack");
+                    emit_memcpy(ctx, value_reg, arg_reg, arg_stack_type->StackSize);
                 }
             } break;
 
@@ -2131,7 +2194,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
 
                 // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg));
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
 
                 if (
                     type_is_object_ref(field_stack_type) ||
@@ -2207,7 +2270,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(!field_is_static(operand_field));
 
                 // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg));
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
 
                 // validate the assignability
                 CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
@@ -2287,8 +2350,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // 1st is the prototype
                 // 2nd is the reference
                 // 3rd is exception return
-                // 4rd is return type optionally
-                // 5th is this type optionally
+                // 4rd is return type (optionally)
+                // 5th is this type (optionally)
                 // Rest are the arguments
                 size_t other_args = 3;
                 if (ret_type != NULL) other_args++;
@@ -2432,7 +2495,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                 type_get_verification_type(this_type), thisType));
 
                         // make sure that the object is not null
-                        CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, this_reg));
+                        CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, this_reg, this_type));
                     }
 
                     arg_ops[i] = MIR_new_reg_op(ctx->context, this_reg);
@@ -2461,20 +2524,24 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                     // figure offset and the actual method
                     int offset;
-                    int vtable_index = operand_method->VtableOffset;
+                    int vtable_index;
                     if (type_is_interface(this_type)) {
-                        // we are calling on an interface, offset to the vtable is at the start
+                        // we have an interface on the stack, the vtable is the first element
+                        // and the vtable index is exactly as given in the operand
                         offset = 0;
+                        vtable_index = operand_method->VTableOffset;
                     } else {
+                        // we have an object reference on the stack, the vtable is at offset
+                        // of the virtual functions in the object vtable
                         offset = offsetof(object_vtable_t, virtual_functions);
+
                         if (type_is_interface(operand_method->DeclaringType)) {
-                            // we are calling on an interface signature, we need
-                            // to actually find the real function in this implementation
-                            for (int ii = 0; ii < this_type->InterfaceImpls->Length; ii++) {
-                                if (this_type->InterfaceImpls->Data[ii]->InterfaceType == operand_method->DeclaringType) {
-                                    vtable_index = this_type->InterfaceImpls->Data[ii]->Methods->Data[operand_method->VtableOffset]->VtableOffset;
-                                }
-                            }
+                            // we want to call an interface method on the object, so resolve it and get the
+                            // object inside the object's vtable instead
+                            vtable_index = type_get_interface_method_impl(this_type, operand_method)->VTableOffset;
+                        } else {
+                            // this is a normal virtual method, nothing to resolve
+                            vtable_index = operand_method->VTableOffset;
                         }
                     }
 
@@ -2482,7 +2549,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, MIR_MOV,
                                                  MIR_new_reg_op(ctx->context, temp_reg),
-                                                 MIR_new_mem_op(ctx->context, MIR_T_I64,
+                                                 MIR_new_mem_op(ctx->context, MIR_T_P,
                                                                 offset + vtable_index * sizeof(void*),
                                                                 temp_reg, 0, 1)));
 
@@ -2578,25 +2645,21 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         ret_type == tSystem_Single ||
                         ret_type == tSystem_Double
                     ) {
-                        if (type_is_interface(method_ret_type) && !type_is_interface(ret_type)) {
-                            // we need to cast to an interface from the instance
-                            // just do it directly on the return
+                        if (type_is_interface(method_ret_type)) {
+                            // we need to return an interface
 
-                            // set the vtable
-                            // TODO: I am too lazy to have the vtables being an import, I am just gonna put the
-                            //       value inlined, but it should be a vtable
+                            if (!type_is_interface(ret_type)) {
+                                // cast from an object instance to an interface
+                                CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx, return_block_reg, ret_arg, ret_type, method_ret_type));
 
-
-                            // set the type
-                            MIR_append_insn(ctx->context, ctx->func,
-                                            MIR_new_insn(ctx->context, MIR_MOV,
-                                                             MIR_new_mem_op(ctx->context, MIR_T_I64, 0, return_block_reg, 0, 1),
-                                                             MIR_new_reg_op(ctx->context, ret_arg)));
-
-                            // return the exception
-                            MIR_append_insn(ctx->context, ctx->func,
-                                            MIR_new_ret_insn(ctx->context, 1,
-                                                             MIR_new_int_op(ctx->context, 0)));
+                                // return the exception
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_ret_insn(ctx->context, 1,
+                                                                 MIR_new_int_op(ctx->context, 0)));
+                            } else {
+                                // return an interface from an interface
+                                emit_memcpy(ctx, return_block_reg, ret_arg, ret_type->StackSize);
+                            }
                         } else {
                             // it is stored in a register directly, just return it
                             MIR_append_insn(ctx->context, ctx->func,
@@ -2716,7 +2779,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(index_type == tSystem_Int32);
 
                 // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg));
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
 
                 // check the array indexes
                 CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
@@ -2808,7 +2871,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(index_type == tSystem_Int32);
 
                 // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg));
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
 
                 // check the array indexes
                 CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
@@ -2987,7 +3050,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 arrfree(ctx->stack.entries);
 
                 // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg));
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
 
                 // append the instruction itself
                 MIR_append_insn(ctx->context, ctx->func,

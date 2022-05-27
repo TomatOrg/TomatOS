@@ -298,7 +298,7 @@ struct System_Reflection_MethodInfo {
     System_Type ReturnType;
 
     bool IsFilled;
-    int VtableOffset;
+    int VTableOffset;
 
     MIR_item_t MirFunc;
 };
@@ -377,8 +377,7 @@ typedef System_Exception System_OverflowException;
 typedef struct Pentagon_Reflection_InterfaceImpl {
     struct System_Object;
     System_Type InterfaceType;
-    System_Reflection_MethodInfo_Array Methods;
-    void** VTable;
+    int VTableOffset;
 } *Pentagon_Reflection_InterfaceImpl;
 DEFINE_ARRAY(Pentagon_Reflection_InterfaceImpl);
 
@@ -487,6 +486,16 @@ System_Reflection_FieldInfo type_get_field_cstr(System_Type type, const char* na
  * @param index     [IN] The index from which to continue
  */
 System_Reflection_MethodInfo type_iterate_methods_cstr(System_Type type, const char* name, int* index);
+
+/**
+ * Get the implementation of the given interface method
+ */
+System_Reflection_MethodInfo type_get_interface_method_impl(System_Type targetType, System_Reflection_MethodInfo targetMethod);
+
+/**
+ * Get the interface implementation of the given type
+ */
+Pentagon_Reflection_InterfaceImpl type_get_interface_impl(System_Type targetType, System_Type interfaceType);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

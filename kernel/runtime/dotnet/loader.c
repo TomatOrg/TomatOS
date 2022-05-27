@@ -575,12 +575,12 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
 
                 if (method_is_new_slot(methodInfo)) {
                     // this is a newslot, always allocate a new slot
-                    methodInfo->VtableOffset = virtualOfs++;
+                    methodInfo->VTableOffset = virtualOfs++;
                 } else {
                     System_Reflection_MethodInfo overriden = find_override_method(type->BaseType, methodInfo);
                     if (overriden == NULL) {
                         // The base method was not found, just allocate a new slot per the spec.
-                        methodInfo->VtableOffset = virtualOfs++;
+                        methodInfo->VTableOffset = virtualOfs++;
                     } else {
                         CHECK(method_is_virtual(overriden));
                         CHECK(method_is_final(overriden));
@@ -630,7 +630,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             System_Reflection_MethodInfo methodInfo = type->Methods->Data[i];
 
             if (method_is_virtual(methodInfo)) {
-                GC_UPDATE_ARRAY(type->VirtualMethods, methodInfo->VtableOffset, methodInfo);
+                GC_UPDATE_ARRAY(type->VirtualMethods, methodInfo->VTableOffset, methodInfo);
             }
         }
 
@@ -797,13 +797,22 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             for (int i = 0; i < type->InterfaceImpls->Length; i++) {
                 Pentagon_Reflection_InterfaceImpl interfaceImpl = type->InterfaceImpls->Data[i];
                 System_Type interface = interfaceImpl->InterfaceType;
-                interfaceImpl->Methods = GC_NEW_ARRAY(tSystem_Reflection_MethodInfo, interfaceImpl->InterfaceType->VirtualMethods->Length);
+
+                int lastOffset = -1;
                 for (int vi = 0; vi < interface->VirtualMethods->Length; vi++) {
                     System_Reflection_MethodInfo overriden = find_override_method(type, interface->VirtualMethods->Data[vi]);
                     CHECK(overriden != NULL);
                     CHECK(method_is_virtual(overriden));
                     CHECK(method_is_final(overriden));
-                    GC_UPDATE_ARRAY(interfaceImpl->Methods, vi, overriden);
+
+                    // resolve/verify the offset is sequential
+                    if (lastOffset == -1) {
+                        lastOffset = overriden->VTableOffset;
+                        interfaceImpl->VTableOffset = lastOffset;
+                    } else {
+                        CHECK(lastOffset == overriden->VTableOffset - 1);
+                    }
+                    lastOffset = overriden->VTableOffset;
                 }
             }
         }
@@ -818,7 +827,6 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             type->StackAlignment = alignof(void*);
             type->ManagedSize = sizeof(void*);
             type->ManagedAlignment = alignof(void*);
-            type->IsValueType = true;
         }
 
     } else {
@@ -1312,8 +1320,6 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
     // all the last setup
     CHECK_AND_RETHROW(connect_nested_types(assembly, &metadata));
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
-
-    assembly_dump(assembly);
 
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));

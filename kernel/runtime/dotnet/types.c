@@ -588,6 +588,27 @@ System_Reflection_MethodInfo type_iterate_methods_cstr(System_Type type, const c
     return NULL;
 }
 
+System_Reflection_MethodInfo type_get_interface_method_impl(System_Type targetType, System_Reflection_MethodInfo targetMethod) {
+    Pentagon_Reflection_InterfaceImpl interface = type_get_interface_impl(targetType, targetMethod->DeclaringType);
+    if (interface == NULL) {
+        return NULL;
+    }
+    return targetType->VirtualMethods->Data[interface->VTableOffset + targetMethod->VTableOffset];
+}
+
+Pentagon_Reflection_InterfaceImpl type_get_interface_impl(System_Type targetType, System_Type interfaceType) {
+    if (targetType->InterfaceImpls == NULL) {
+        return NULL;
+    }
+
+    for (int i = 0; i < targetType->InterfaceImpls->Length; i++) {
+        if (targetType->InterfaceImpls->Data[i]->InterfaceType == interfaceType) {
+            return targetType->InterfaceImpls->Data[i];
+        }
+    }
+    return NULL;
+}
+
 bool isinstance(System_Object object, System_Type type) {
     System_Type objectType = object->vtable->type;
     while (objectType != NULL) {
@@ -640,7 +661,7 @@ void assembly_dump(System_Reflection_Assembly assembly) {
             }
 
             if (method_is_virtual(mi)) {
-                printf("virtual[%d] ", mi->VtableOffset);
+                printf("virtual[%d] ", mi->VTableOffset);
             }
 
             if (mi->ReturnType == NULL) {

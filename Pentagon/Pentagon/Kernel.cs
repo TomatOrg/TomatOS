@@ -41,7 +41,7 @@ public class Kernel
 
     public static INumber GetNumberInterface()
     {
-        return new A();
+        return new B();
     }
     
     public static int Main()
