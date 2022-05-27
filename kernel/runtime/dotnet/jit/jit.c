@@ -2929,6 +2929,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                  MIR_new_reg_op(ctx->context, index_reg),
                                                  MIR_new_int_op(ctx->context, tSystem_Array->ManagedSize)));
 
+                    if (type_is_interface(operand_type)) {
+                        CHECK_FAIL("store to interface array");
+                    }
+
                     // use gc_update because we are storing a managed reference in a managed object
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_call_insn(ctx->context, 5,
