@@ -1877,11 +1877,25 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     value_type == tSystem_Single ||
                     value_type == tSystem_Double
                 ) {
-                    // simple move
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code,
-                                                 locals[operand_i32],
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
+                    if (type_is_interface(type)) {
+                        // saving to interface
+                        if (type_is_interface(value_type)) {
+                            // from an interface, just memcpy
+                            CHECK(locals[operand_i32].mode == MIR_OP_REG);
+                            emit_memcpy(ctx, locals[operand_i32].u.reg, value_reg, value_type->StackSize);
+                        } else {
+                            // from an object, we need to do it properly
+                            CHECK(locals[operand_i32].mode == MIR_OP_REG);
+                            CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx, locals[operand_i32].u.reg, value_reg,
+                                                                        value_type, type));
+                        }
+                    } else {
+                        // simple move
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     locals[operand_i32],
+                                                     MIR_new_reg_op(ctx->context, value_reg)));
+                    }
                 } else {
                     CHECK(locals[operand_i32].mode == MIR_OP_REG);
                     emit_memcpy(ctx, locals[operand_i32].u.reg, value_reg, value_type->StackSize);
@@ -2276,13 +2290,29 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
 
                 if (type_is_object_ref(value_type)) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_call_insn(ctx->context, 5,
-                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
-                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_func),
-                                                      MIR_new_reg_op(ctx->context, obj_reg),
-                                                      MIR_new_int_op(ctx->context, operand_field->MemoryOffset),
-                                                      MIR_new_reg_op(ctx->context, value_reg)));
+                    if (type_is_interface(field_type)) {
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_ADD,
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_int_op(ctx->context, operand_field->MemoryOffset)));
+                        if (type_is_interface(value_type)) {
+                            // storing interface in interface, copy
+                            emit_memcpy(ctx, obj_reg, value_reg, value_type->StackSize);
+                        } else {
+                            // need to cast from object to an interface
+                            CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx, obj_reg, value_reg, value_type, field_type));
+                        }
+                    } else {
+                        // normal object
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_call_insn(ctx->context, 5,
+                                                          MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
+                                                          MIR_new_ref_op(ctx->context, ctx->gc_update_func),
+                                                          MIR_new_reg_op(ctx->context, obj_reg),
+                                                          MIR_new_int_op(ctx->context, operand_field->MemoryOffset),
+                                                          MIR_new_reg_op(ctx->context, value_reg)));
+                    }
                 } else if (
                     value_type == tSystem_Int32 ||
                     value_type == tSystem_Int64 ||
@@ -2313,7 +2343,14 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                                 obj_reg, 0, 1),
                                                  MIR_new_reg_op(ctx->context, value_reg)));
                 } else {
-                    CHECK_FAIL("memcpy field");
+
+                    // get the offset as a reg
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_ADD,
+                                                 MIR_new_reg_op(ctx->context, obj_reg),
+                                                 MIR_new_reg_op(ctx->context, obj_reg),
+                                                 MIR_new_int_op(ctx->context, operand_field->MemoryOffset)));
+                    emit_memcpy(ctx, obj_reg, value_reg, value_type->StackSize);
                 }
             } break;
 

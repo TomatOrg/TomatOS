@@ -300,15 +300,19 @@ static void gc_mark_global_roots() {
 }
 
 static void gc_mark_black(System_Object object) {
+    System_Type type = object->vtable->type;
+
     // mark all the children as gray
-    if (object->vtable->type->IsArray && !object->vtable->type->ElementType->IsValueType) {
+    if (type->IsArray && !type->ElementType->IsValueType) {
         // array object, mark all the items
-        System_Array array = (System_Array)object;
+        System_Array array = (System_Array) object;
         for (int i = 0; i < array->Length; i++) {
-            size_t offset = sizeof(struct System_Array) + i * sizeof(void*);
-            System_Object o = read_field(object, offset);
-            gc_mark_gray(o);
+            size_t offset = sizeof(struct System_Array) + i * sizeof(void *);
+            gc_mark_gray(read_field(object, offset));
         }
+    } else if (type_is_interface(type)) {
+        // interface object, mark the target
+        gc_mark_gray(read_field(object, sizeof(void*)));
     } else {
         // for normal objects iterate
         for (int i = 0; i < arrlen(object->vtable->type->ManagedPointersOffsets); i++) {
@@ -317,7 +321,7 @@ static void gc_mark_black(System_Object object) {
     }
 
     // don't forget about the Type object
-    gc_mark_gray((System_Object)object->vtable->type);
+    gc_mark_gray((System_Object)type);
 
     // mark this as black
     object->color = COLOR_BLACK;
