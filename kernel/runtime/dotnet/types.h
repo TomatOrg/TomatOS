@@ -381,6 +381,19 @@ typedef struct Pentagon_Reflection_InterfaceImpl {
 } *Pentagon_Reflection_InterfaceImpl;
 DEFINE_ARRAY(Pentagon_Reflection_InterfaceImpl);
 
+// TODO: should we maybe have this more customized for our needs
+//       so for example differentiate Object and interface, and have
+//       two float types (32 and 64)
+typedef enum stack_type {
+    STACK_TYPE_O,
+    STACK_TYPE_INT32,
+    STACK_TYPE_INT64,
+    STACK_TYPE_INTPTR,
+    STACK_TYPE_VALUE_TYPE,
+    STACK_TYPE_FLOAT,
+    STACK_TYPE_REF,
+} stack_type_t;
+
 struct System_Type {
     struct System_Reflection_MemberInfo;
     System_Reflection_Assembly Assembly;
@@ -406,6 +419,7 @@ struct System_Type {
     int StackSize;
     int StackAlignment;
     object_vtable_t* VTable;
+    stack_type_t StackType;
 
     Pentagon_Reflection_InterfaceImpl_Array InterfaceImpls;
 
@@ -413,6 +427,8 @@ struct System_Type {
     System_Type ByRefType;
     mutex_t TypeMutex;
 };
+
+static inline stack_type_t type_get_stack_type(System_Type type) { return type == NULL ? STACK_TYPE_O : type->StackType; }
 
 static inline bool type_is_generic_definition(System_Type type) { return type->GenericTypeParameters != NULL; }
 static inline bool type_is_generic_type(System_Type type) { return type_is_generic_definition(type) || type->GenericTypeArguments != NULL; }
@@ -438,7 +454,7 @@ static inline type_visibility_t type_visibility(System_Type type) { return type-
 static inline type_layout_t type_layout(System_Type type) { return (type->Attributes >> 3) & 0b11; }
 static inline bool type_is_abstract(System_Type type) { return type->Attributes & 0x00000080; }
 static inline bool type_is_sealed(System_Type type) { return type->Attributes & 0x00000100; }
-static inline bool type_is_interface(System_Type type) { return type->Attributes & 0x00000020; }
+static inline bool type_is_interface(System_Type type) { return type != NULL && type->Attributes & 0x00000020; }
 
 const char* type_visibility_str(type_visibility_t visibility);
 
@@ -544,6 +560,7 @@ extern System_Type tPentagon_Reflection_InterfaceImpl;
 
 static inline bool type_is_enum(System_Type type) { return type != NULL && type->BaseType == tSystem_Enum; }
 static inline bool type_is_object_ref(System_Type type) { return type == NULL || !type->IsValueType; }
+static inline bool type_is_value_type(System_Type type) { return type != NULL && type->IsValueType; }
 bool type_is_integer(System_Type type);
 
 System_Type type_get_underlying_type(System_Type T);

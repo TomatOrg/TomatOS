@@ -15,11 +15,11 @@ Right now the main work is on the runtime itself, the main features of the runti
 - Full support for reference types
   - With abstract/virtual methods support
 - Full support for integer and floating point types
-- Full support for struct types
+- Mostly full support for struct types
+- Mostly full support for interface types
 - Most common CIL instructions implemented
 
 ### Main missing features
-- Interfaces (WIP)
 - Delegates
 - Generics
 - Boxing/Unboxing

@@ -243,6 +243,7 @@ System_Type get_array_type(System_Type Type) {
     // this is an array
     ArrayType->IsArray = true;
     ArrayType->IsFilled = true;
+    ArrayType->StackType = STACK_TYPE_O;
 
     // set the sizes properly
     ArrayType->StackSize = tSystem_Array->StackSize;
@@ -289,6 +290,7 @@ System_Type get_by_ref_type(System_Type Type) {
     // this is an array
     ByRefType->IsByRef = 1;
     ByRefType->IsFilled = 1;
+    ByRefType->StackType = STACK_TYPE_REF;
 
     // set the type information to look as ref Type
     GC_UPDATE(ByRefType, Module, Type->Module);
@@ -397,7 +399,10 @@ bool type_is_array_element_compatible_with(System_Type T, System_Type U) {
 
     if (type_is_compatible_with(V, W)) {
         return true;
-    } else if (type_get_reduced_type(V) == type_get_reduced_type(W)) {
+
+    } else if (type_get_verification_type(V) == type_get_verification_type(W)) {
+        // spec says it should be reduced-type, but then bool and int8 are not the same
+        // and there is valid code where this happens...
         return true;
     } else {
         return false;
@@ -527,7 +532,6 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
         return true;
     }
 
-    TRACE("%U - %U", Q->Name, R->Name);
     return false;
 }
 

@@ -310,11 +310,10 @@ static void gc_mark_black(System_Object object) {
             size_t offset = sizeof(struct System_Array) + i * sizeof(void *);
             gc_mark_gray(read_field(object, offset));
         }
-    } else if (type_is_interface(type)) {
-        // interface object, mark the target
-        gc_mark_gray(read_field(object, sizeof(void*)));
     } else {
-        // for normal objects iterate
+        // for normal objects iterate the managed pointer offsets, which
+        // essentially contains all the offsets for all the pointers in
+        // the object
         for (int i = 0; i < arrlen(object->vtable->type->ManagedPointersOffsets); i++) {
             gc_mark_gray(read_field(object, object->vtable->type->ManagedPointersOffsets[i]));
         }

@@ -30,6 +30,8 @@ namespace System
         private int _stackSize;
         private int _stackAlignment;
         private unsafe void* _vtable;
+        private int _stackType;
+        
         private InterfaceImpl[] _interfaceImpl;
         
         private Type _arrayType;

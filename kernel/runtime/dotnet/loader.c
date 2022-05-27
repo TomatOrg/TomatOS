@@ -512,6 +512,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
     // important specifically for ValueType class
     if (type == tSystem_ValueType) {
         type->IsValueType = true;
+        type->StackType = STACK_TYPE_VALUE_TYPE;
         goto cleanup;
     }
 
@@ -557,6 +558,9 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
     // Set the value type
     if (type->BaseType != NULL && type->BaseType->IsValueType) {
         type->IsValueType = true;
+        if (type->StackType == STACK_TYPE_O) {
+            type->StackType = STACK_TYPE_VALUE_TYPE;
+        }
     }
 
     // make sure this was primed already
@@ -699,6 +703,15 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                     // must be an integer type
                     CHECK(type_is_integer(fieldInfo->FieldType));
                     type->ElementType = fieldInfo->FieldType;
+                    if (fieldInfo->FieldType == tSystem_IntPtr || fieldInfo->FieldType == tSystem_UIntPtr) {
+                        type ->StackType = STACK_TYPE_INTPTR;
+                    } else if (fieldInfo->FieldType == tSystem_Int64 || fieldInfo->FieldType == tSystem_UInt64) {
+                        type ->StackType = STACK_TYPE_INT64;
+                    } else {
+                        type ->StackType = STACK_TYPE_INT32;
+                    }
+                } else {
+                    CHECK_FAIL("enum should only have a single instance field named value__");
                 }
             }
         }
@@ -821,12 +834,22 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             // make sure we have no fields
             CHECK(type->Fields->Length == 0);
 
+            // all interfaces have a single managed pointer which
+            // is the instance field, no need to create this per
+            // type so create this once
+            static int* interface_pointers = NULL;
+            if (interface_pointers) {
+                arrsetlen(interface_pointers, 1);
+                interface_pointers[0] = sizeof(void*);
+            }
+
             // we are going to treat a raw interface type as a
             // value type that has two pointers in it, for simplicity
             type->StackSize = sizeof(void*) * 2;
             type->StackAlignment = alignof(void*);
             type->ManagedSize = sizeof(void*);
             type->ManagedAlignment = alignof(void*);
+            type->ManagedPointersOffsets = interface_pointers;
         }
 
     } else {
@@ -935,39 +958,69 @@ typedef struct type_init {
     int managed_size;
     int managed_alignment;
     int vtable_size;
+    stack_type_t stack_type;
 } type_init_t;
 
-#define TYPE_INIT(_namespace, _name, code, _vtable_size) \
-    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct code), alignof(struct code), .vtable_size = (_vtable_size) }
+#define TYPE_INIT(_namespace, _name, code, _vtable_size)        \
+    {                                                           \
+        .namespace = (_namespace),                              \
+        .name = (_name),                                        \
+        .global = &t##code,                                     \
+        .stack_size = sizeof(code),                             \
+        .stack_alignment = alignof(code),                       \
+        .managed_size = sizeof(struct code),                    \
+        .managed_alignment = alignof(struct code),              \
+        .vtable_size = (_vtable_size),                          \
+        .stack_type = STACK_TYPE_O,                             \
+    }
 
-#define EXCEPTION_INIT(_namespace, _name, code) \
-    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(struct System_Exception), alignof(struct System_Exception), .vtable_size = 5 }
+#define EXCEPTION_INIT(_namespace, _name, code)                 \
+    {                                                           \
+        .namespace = (_namespace),                              \
+        .name = (_name),                                        \
+        .global = &t##code,                                     \
+        .stack_size = sizeof(code),                             \
+        .stack_alignment = alignof(code),                       \
+        .managed_size = sizeof(struct System_Exception),        \
+        .managed_alignment = alignof(struct System_Exception),  \
+        .vtable_size = 5                                        \
+    }
 
-#define VALUE_TYPE_INIT(_namespace, _name, code) \
-    { .namespace = (_namespace), .name = (_name), &t##code, sizeof(code), alignof(code), sizeof(code), alignof(code) }
+#define VALUE_TYPE_INIT(_namespace, _name, code, stype)         \
+    {                                                           \
+        .namespace = (_namespace),                              \
+        .name = (_name),                                        \
+        .global = &t##code,                                     \
+        .stack_size = sizeof(code),                             \
+        .stack_alignment = alignof(code),                       \
+        .managed_size = sizeof(code),                           \
+        .managed_alignment = alignof(code),                     \
+        .vtable_size = 0,                                       \
+        .stack_type = (stype)                                   \
+    }
 
 static type_init_t m_type_init[] = {
     TYPE_INIT("System", "Exception", System_Exception, 5),
-    VALUE_TYPE_INIT("System", "Enum", System_Enum),
-    VALUE_TYPE_INIT("System", "ValueType", System_ValueType),
+    VALUE_TYPE_INIT("System", "Enum", System_Enum, STACK_TYPE_VALUE_TYPE),
+    VALUE_TYPE_INIT("System", "ValueType", System_ValueType, STACK_TYPE_VALUE_TYPE),
     TYPE_INIT("System", "Object", System_Object, 3),
     TYPE_INIT("System", "Type", System_Type, 3),
     TYPE_INIT("System", "Array", System_Array, 3),
     TYPE_INIT("System", "String", System_String, 3),
-    VALUE_TYPE_INIT("System", "Boolean", System_Boolean),
-    VALUE_TYPE_INIT("System", "Char", System_Char),
-    VALUE_TYPE_INIT("System", "SByte", System_SByte),
-    VALUE_TYPE_INIT("System", "Byte", System_Byte),
-    VALUE_TYPE_INIT("System", "Int16", System_Int16),
-    VALUE_TYPE_INIT("System", "UInt16", System_UInt16),
-    VALUE_TYPE_INIT("System", "Int32", System_Int32),
-    VALUE_TYPE_INIT("System", "UInt32", System_UInt32),
-    VALUE_TYPE_INIT("System", "Int64", System_Int64),
-    VALUE_TYPE_INIT("System", "UInt64", System_UInt64),
-    VALUE_TYPE_INIT("System", "Single", System_Single),
-    VALUE_TYPE_INIT("System", "Double", System_Double),
-    VALUE_TYPE_INIT("System", "IntPtr", System_IntPtr),
-    VALUE_TYPE_INIT("System", "UIntPtr", System_UIntPtr),
+    VALUE_TYPE_INIT("System", "Boolean", System_Boolean, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "Char", System_Char, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "SByte", System_SByte, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "Byte", System_Byte, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "Int16", System_Int16, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "UInt16", System_UInt16, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "Int32", System_Int32, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "UInt32", System_UInt32, STACK_TYPE_INT32),
+    VALUE_TYPE_INIT("System", "Int64", System_Int64, STACK_TYPE_INT64),
+    VALUE_TYPE_INIT("System", "UInt64", System_UInt64, STACK_TYPE_INT64),
+    VALUE_TYPE_INIT("System", "Single", System_Single, STACK_TYPE_FLOAT),
+    VALUE_TYPE_INIT("System", "Double", System_Double, STACK_TYPE_FLOAT),
+    VALUE_TYPE_INIT("System", "IntPtr", System_IntPtr, STACK_TYPE_INTPTR),
+    VALUE_TYPE_INIT("System", "UIntPtr", System_UIntPtr, STACK_TYPE_INTPTR),
     TYPE_INIT("System.Reflection", "Module", System_Reflection_Module, 3),
     TYPE_INIT("System.Reflection", "Assembly", System_Reflection_Assembly, 3),
     TYPE_INIT("System.Reflection", "FieldInfo", System_Reflection_FieldInfo, 3),
@@ -1000,8 +1053,10 @@ static void init_type(metadata_type_def_t* type_def, System_Type type) {
             type->StackSize = bt->stack_size;
             type->ManagedAlignment = bt->managed_alignment;
             type->StackAlignment = bt->stack_alignment;
+            type->StackType = bt->stack_type;
             if (bt->vtable_size != 0) {
                 type->VTable = malloc(sizeof(object_vtable_t) + sizeof(void*) * bt->vtable_size);
+                ASSERT(type->VTable != NULL);
                 type->VTable->type = type;
             }
             *bt->global = type;

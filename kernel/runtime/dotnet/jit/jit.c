@@ -44,6 +44,36 @@ void memcpy_wrapper(void* dest, void* src, size_t count) {
     memcpy(dest, src, count);
 }
 
+/**
+ * memcpy a struct to an heap object, taking care of any memory barrier that should happen
+ * while we are copying it
+ */
+static void managed_memcpy(System_Object this, System_Type struct_type, int offset, void* from) {
+    uint8_t* this_base = (uint8_t*)this;
+
+    int last_offset = 0;
+    for (int i = 0; i < arrlen(struct_type->ManagedPointersOffsets); i++) {
+        int current_offset = struct_type->ManagedPointersOffsets[i];
+
+        // check if we have some unmanaged bytes to copy, if so copy them
+        if (last_offset != current_offset) {
+            memcpy(this_base + offset + last_offset, from + last_offset, current_offset - last_offset);
+        }
+
+        // copy the managed reference
+        gc_update(this, offset + current_offset, *((System_Object*)from + current_offset));
+
+        // update the last offset
+        last_offset = current_offset;
+    }
+
+    // if we have more bytes at the end, copy them, in the case of an unmanaged
+    // struct this is going to just copy all of the bytes
+    if (last_offset != struct_type->StackSize) {
+        memcpy(this_base + offset + last_offset, from + last_offset, struct_type->StackSize - last_offset);
+    }
+}
+
 err_t init_jit() {
     err_t err = NO_ERROR;
 
@@ -58,6 +88,7 @@ err_t init_jit() {
     MIR_load_external(m_mir_context, "get_array_type", get_array_type);
     MIR_load_external(m_mir_context, "memcpy", memcpy_wrapper);
     MIR_load_external(m_mir_context, "memset", memset_wrapper);
+    MIR_load_external(m_mir_context, "managed_memcpy", managed_memcpy);
 
     MIR_load_external(m_mir_context, "[Corelib.dll]System.Object::GetType()", System_Object_GetType);
 
@@ -159,7 +190,6 @@ cleanup:
 
 static MIR_type_t get_mir_type(System_Type type) {
     type = type_get_underlying_type(type);
-
     if (type == tSystem_Byte) {
         return MIR_T_U8;
     } else if (type == tSystem_SByte) {
@@ -191,6 +221,7 @@ static MIR_type_t get_mir_type(System_Type type) {
     } else if (type->IsValueType || type_is_interface(type)) {
         return MIR_T_BLK;
     } else {
+        ASSERT(type == NULL || type_is_object_ref(type) || type->IsByRef);
         return MIR_T_P;
     }
 }
@@ -284,6 +315,9 @@ typedef struct jit_context {
     MIR_item_t gc_update_proto;
     MIR_item_t gc_update_func;
 
+    MIR_item_t managed_memcpy_proto;
+    MIR_item_t managed_memcpy_func;
+
     MIR_item_t get_array_type_proto;
     MIR_item_t get_array_type_func;
 
@@ -301,31 +335,51 @@ static MIR_reg_t new_reg(jit_context_t* ctx, System_Type type) {
 
     // create the reg
     MIR_reg_t reg;
-    if (type_is_integer(type) || type_is_object_ref(type)) {
-        if (type != NULL && type_is_interface(type)) {
-            // interface is a fat pointer
-            reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
-            MIR_prepend_insn(ctx->context, ctx->func,
-                             MIR_new_insn(ctx->context, MIR_ALLOCA,
-                                          MIR_new_reg_op(ctx->context, reg),
-                                          MIR_new_int_op(ctx->context, type->StackSize)));
-        } else {
-            // This is an integer or a reference type
-            reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
-        }
-    } else if (type == tSystem_Single) {
-        // This is a float
-        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_F, name);
-    } else if (type == tSystem_Double) {
-        // This is a double
-        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_D, name);
+
+    // choose the type
+    MIR_type_t mir_type = MIR_T_UNDEF;
+    if (type == NULL) {
+        // NULL reference probably
+        mir_type = MIR_T_I64;
     } else {
-        // This is a value type, allocate a big enough space for it at the start
+        switch (type_get_stack_type(type)) {
+            case STACK_TYPE_INT64:
+            case STACK_TYPE_INT32:
+            case STACK_TYPE_INTPTR:
+            case STACK_TYPE_O:
+            case STACK_TYPE_REF: {
+                if (type_is_interface(type)) {
+                    mir_type = MIR_T_BLK;
+                } else {
+                    mir_type = MIR_T_I64;
+                }
+            } break;
+
+            case STACK_TYPE_FLOAT: {
+                if (type == tSystem_Single) {
+                    mir_type = MIR_T_F;
+                } else {
+                    ASSERT(type == tSystem_Double);
+                    mir_type = MIR_T_D;
+                }
+            } break;
+
+            case STACK_TYPE_VALUE_TYPE: {
+                mir_type = MIR_T_BLK;
+            } break;
+        }
+    }
+
+    if (mir_type == MIR_T_BLK) {
+        // special case, value type that needs alloca
         reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, MIR_T_I64, name);
         MIR_prepend_insn(ctx->context, ctx->func,
                          MIR_new_insn(ctx->context, MIR_ALLOCA,
                                       MIR_new_reg_op(ctx->context, reg),
                                       MIR_new_int_op(ctx->context, type->StackSize)));
+    } else {
+        // create the reg
+        reg = MIR_new_func_reg(ctx->context, ctx->func->u.func, mir_type, name);
     }
 
     return reg;
@@ -429,7 +483,7 @@ cleanup:
 // Memory helpers
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void emit_memcpy(jit_context_t* ctx, MIR_reg_t dest, MIR_reg_t src, size_t count) {
+void jit_emit_memcpy(jit_context_t* ctx, MIR_reg_t dest, MIR_reg_t src, size_t count) {
     if (count <= 32 && (count % 8) == 0) {
         for (size_t off = 0; off < count; off += 8) {
             MIR_append_insn(ctx->context, ctx->func,
@@ -585,91 +639,75 @@ static err_t jit_compare(jit_context_t* ctx, MIR_insn_code_t code) {
     MIR_reg_t result_reg;
     CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int32, &result_reg));
 
-    if (value1_type == tSystem_Int32) {
-        if (value2_type == tSystem_Int32) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 1,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else if (value2_type == tSystem_IntPtr) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
+    switch (type_get_stack_type(value1_type)) {
+        case STACK_TYPE_INT32: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT32);
+            code += 1;
+        } break;
+
+        case STACK_TYPE_INT64: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT64);
+        } break;
+
+        case STACK_TYPE_INTPTR: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+        } break;
+
+        case STACK_TYPE_FLOAT: {
+            CHECK(value2_type == tSystem_Double || value2_type == tSystem_Single);
+
+            if (value1_type == tSystem_Single) {
+                if (value2_type == tSystem_Single) {
+                    // need to do float math
+                    code += 2;
+                } else if (value2_type == tSystem_Double) {
+                    // need to do double math
+                    code += 3;
+
+                    // implicit conversion float->double
+                    MIR_reg_t value1_double_reg = new_reg(ctx, tSystem_Double);
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_F2D,
+                                                 MIR_new_reg_op(ctx->context, value1_double_reg),
+                                                 MIR_new_reg_op(ctx->context, value1_reg)));
+                }
+            } else if (value1_type == tSystem_Double) {
+                // always double math
+                code += 3;
+
+                if (value2_type == tSystem_Single) {
+                    // implicit conversion float->double
+                    MIR_reg_t value2_double_reg = new_reg(ctx, tSystem_Double);
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_F2D,
+                                                 MIR_new_reg_op(ctx->context, value2_double_reg),
+                                                 MIR_new_reg_op(ctx->context, value2_reg)));
+                }
+            }
+        } break;
+
+        case STACK_TYPE_O: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_O);
+
+            CHECK(code == MIR_EQ);
+
+            // TODO: handle interface comparison
+            if (type_is_interface(value1_type)) CHECK_FAIL();
+            if (type_is_interface(value2_type)) CHECK_FAIL();
+        } break;
+
+        // invalid comparisons
+        case STACK_TYPE_VALUE_TYPE:
+        case STACK_TYPE_REF:
             CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_Int64) {
-        CHECK(value2_type == tSystem_Int64);
-        MIR_append_insn(ctx->context, ctx->func,
-                        MIR_new_insn(ctx->context, code,
-                                     MIR_new_reg_op(ctx->context, result_reg),
-                                     MIR_new_reg_op(ctx->context, value1_reg),
-                                     MIR_new_reg_op(ctx->context, value2_reg)));
-    } else if (value1_type == tSystem_IntPtr) {
-        CHECK(value2_type == tSystem_Int32 || value2_type == tSystem_IntPtr);
-        MIR_append_insn(ctx->context, ctx->func,
-                        MIR_new_insn(ctx->context, code,
-                                     MIR_new_reg_op(ctx->context, result_reg),
-                                     MIR_new_reg_op(ctx->context, value1_reg),
-                                     MIR_new_reg_op(ctx->context, value2_reg)));
-    } else if (value1_type == tSystem_Single) {
-        if (value2_type == tSystem_Single) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 2,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else if (value2_type == tSystem_Double) {
-            // implicit conversion float->double
-            MIR_reg_t value1_double_reg = new_reg(ctx, tSystem_Double);
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, MIR_F2D,
-                                         MIR_new_reg_op(ctx->context, value1_double_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg)));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_double_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_Double) {
-        if (value2_type == tSystem_Single) {
-            // implicit conversion float->double
-            MIR_reg_t value2_double_reg = new_reg(ctx, tSystem_Double);
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, MIR_F2D,
-                                         MIR_new_reg_op(ctx->context, value2_double_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_double_reg)));
-        } else if (value2_type == tSystem_Double) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (type_is_object_ref(value1_type)) {
-        CHECK(type_is_object_ref(value2_type));
-        MIR_append_insn(ctx->context, ctx->func,
-                        MIR_new_insn(ctx->context, code,
-                                     MIR_new_reg_op(ctx->context, result_reg),
-                                     MIR_new_reg_op(ctx->context, value1_reg),
-                                     MIR_new_reg_op(ctx->context, value2_reg)));
-    } else {
-        // this is an invalid conversion
-        CHECK_FAIL();
     }
+
+    // emit common code
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, code,
+                                 MIR_new_reg_op(ctx->context, result_reg),
+                                 MIR_new_reg_op(ctx->context, value1_reg),
+                                 MIR_new_reg_op(ctx->context, value2_reg)));
 
 cleanup:
     return err;
@@ -772,91 +810,82 @@ static err_t jit_compare_branch(jit_context_t* ctx, MIR_insn_code_t code, int il
     MIR_label_t label;
     CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, il_target, &label));
 
-    if (value1_type == tSystem_Int32) {
-        if (value2_type == tSystem_Int32) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 1,
-                                         MIR_new_label_op(ctx->context, label),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else if (value2_type == tSystem_IntPtr) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code,
-                                         MIR_new_label_op(ctx->context, label),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
+    switch (type_get_stack_type(value1_type)) {
+        case STACK_TYPE_INT32: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT32);
+            code += 1;
+        } break;
+
+        case STACK_TYPE_INT64: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT64);
+            // nothing else to do
+        } break;
+
+        case STACK_TYPE_INTPTR: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+            // nothing else to do
+        } break;
+
+        case STACK_TYPE_FLOAT: {
+            CHECK(value2_type == tSystem_Single || value2_type == tSystem_Double);
+
+            if (value1_type == tSystem_Single) {
+                if (value2_type == tSystem_Single) {
+                    // promote to float x float math
+                    code += 2;
+                } else if (value2_type == tSystem_Double) {
+                    // implicit conversion float->double
+                    MIR_reg_t value1_double_reg = new_reg(ctx, tSystem_Double);
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_F2D,
+                                                 MIR_new_reg_op(ctx->context, value1_double_reg),
+                                                 MIR_new_reg_op(ctx->context, value1_reg)));
+                    value1_reg = value1_double_reg;
+
+                    // promote to double x double math
+                    code += 3;
+                } else {
+                    CHECK_FAIL();
+                }
+            } else if (value1_type == tSystem_Double) {
+
+                // in this case we are always going to do double x double math
+                code += 3;
+
+                if (value2_type == tSystem_Single) {
+                    // implicit conversion float->double
+                    MIR_reg_t value2_double_reg = new_reg(ctx, tSystem_Double);
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_F2D,
+                                                 MIR_new_reg_op(ctx->context, value2_double_reg),
+                                                 MIR_new_reg_op(ctx->context, value2_reg)));
+                }
+            }
+        } break;
+
+        case STACK_TYPE_O: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_O);
+
+            // only allowed types
+            CHECK(code == MIR_BEQ || code == MIR_BNE);
+
+            // TODO: handle interface implicit cast
+            if (type_is_interface(value2_type)) CHECK_FAIL("TODO: compare object to interface");
+            if (type_is_interface(value1_type)) CHECK_FAIL("TODO: compare object to interface");
+        } break;
+
+        // compare not allowed on these types
+        case STACK_TYPE_REF:
+        case STACK_TYPE_VALUE_TYPE:
             CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_Int64) {
-        CHECK(value2_type == tSystem_Int64);
-        MIR_append_insn(ctx->context, ctx->func,
-                        MIR_new_insn(ctx->context, code,
-                                     MIR_new_label_op(ctx->context, label),
-                                     MIR_new_reg_op(ctx->context, value1_reg),
-                                     MIR_new_reg_op(ctx->context, value2_reg)));
-    } else if (value1_type == tSystem_IntPtr) {
-        CHECK(value2_type == tSystem_Int32 || value2_type == tSystem_IntPtr);
-        MIR_append_insn(ctx->context, ctx->func,
-                        MIR_new_insn(ctx->context, code,
-                                     MIR_new_label_op(ctx->context, label),
-                                     MIR_new_reg_op(ctx->context, value1_reg),
-                                     MIR_new_reg_op(ctx->context, value2_reg)));
-    } else if (value1_type == tSystem_Single) {
-        if (value2_type == tSystem_Single) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 2,
-                                         MIR_new_label_op(ctx->context, label),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else if (value2_type == tSystem_Double) {
-            // implicit conversion float->double
-            MIR_reg_t value1_double_reg = new_reg(ctx, tSystem_Double);
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, MIR_F2D,
-                                         MIR_new_reg_op(ctx->context, value1_double_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg)));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_label_op(ctx->context, label),
-                                         MIR_new_reg_op(ctx->context, value1_double_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_Double) {
-        if (value2_type == tSystem_Single) {
-            // implicit conversion float->double
-            MIR_reg_t value2_double_reg = new_reg(ctx, tSystem_Double);
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, MIR_F2D,
-                                         MIR_new_reg_op(ctx->context, value2_double_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_label_op(ctx->context, label),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_double_reg)));
-        } else if (value2_type == tSystem_Double) {
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_label_op(ctx->context, label),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (type_is_object_ref(value1_type)) {
-        CHECK(type_is_object_ref(value2_type));
-        MIR_append_insn(ctx->context, ctx->func,
-                        MIR_new_insn(ctx->context, code,
-                                     MIR_new_label_op(ctx->context, label),
-                                     MIR_new_reg_op(ctx->context, value1_reg),
-                                     MIR_new_reg_op(ctx->context, value2_reg)));
-    } else {
-        // this is an invalid conversion
-        CHECK_FAIL();
     }
+
+    // emit the common code
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, code,
+                                 MIR_new_label_op(ctx->context, label),
+                                 MIR_new_reg_op(ctx->context, value1_reg),
+                                 MIR_new_reg_op(ctx->context, value2_reg)));
 
 cleanup:
     return err;
@@ -1168,103 +1197,112 @@ static err_t jit_binary_numeric_operation(jit_context_t* ctx, int il_offset, MIR
 
     MIR_reg_t result_reg;
 
-    if (value1_type == tSystem_Int32) {
-        if (value2_type == tSystem_Int32) {
+    switch (type_get_stack_type(value1_type)) {
+        case STACK_TYPE_INT32: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT32);
             CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int32, &result_reg));
             MIR_append_insn(ctx->context, ctx->func,
                             MIR_new_insn(ctx->context, code + 1,
                                          MIR_new_reg_op(ctx->context, result_reg),
                                          MIR_new_reg_op(ctx->context, value1_reg),
                                          MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_Int64) {
-        if (value2_type == tSystem_Int64) {
+        } break;
+
+        case STACK_TYPE_INT64: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT64);
             CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int64, &result_reg));
             MIR_append_insn(ctx->context, ctx->func,
                             MIR_new_insn(ctx->context, code,
                                          MIR_new_reg_op(ctx->context, result_reg),
                                          MIR_new_reg_op(ctx->context, value1_reg),
                                          MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_IntPtr) {
-        if (value2_type == tSystem_IntPtr) {
+        } break;
+
+        case STACK_TYPE_INTPTR: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
             CHECK_AND_RETHROW(stack_push(ctx, tSystem_IntPtr, &result_reg));
             MIR_append_insn(ctx->context, ctx->func,
                             MIR_new_insn(ctx->context, code,
                                          MIR_new_reg_op(ctx->context, result_reg),
                                          MIR_new_reg_op(ctx->context, value1_reg),
                                          MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_Single) {
-        CHECK(!integer);
+        } break;
 
-        if (value2_type == tSystem_Single) {
-            // float x float -> float
-            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 2,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else if (value2_type == tSystem_Double) {
-            // (double)float x double -> double
-            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, MIR_F2D,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg)));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
-            CHECK_FAIL();
-        }
-    } else if (value1_type == tSystem_Double) {
-        CHECK(!integer);
+        case STACK_TYPE_FLOAT: {
+            if (value1_type == tSystem_Single) {
+                CHECK(!integer);
 
-        if (value2_type == tSystem_Single) {
-            // double x (double)float -> double
-            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, MIR_F2D,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, result_reg)));
-        } else if (value2_type == tSystem_Double) {
-            // double x double -> double
-            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 3,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
-        } else {
+                if (value2_type == tSystem_Single) {
+                    // float x float -> float
+                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, code + 2,
+                                                 MIR_new_reg_op(ctx->context, result_reg),
+                                                 MIR_new_reg_op(ctx->context, value1_reg),
+                                                 MIR_new_reg_op(ctx->context, value2_reg)));
+                } else if (value2_type == tSystem_Double) {
+                    // (double)float x double -> double
+                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_F2D,
+                                                 MIR_new_reg_op(ctx->context, result_reg),
+                                                 MIR_new_reg_op(ctx->context, value1_reg)));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, code + 3,
+                                                 MIR_new_reg_op(ctx->context, result_reg),
+                                                 MIR_new_reg_op(ctx->context, result_reg),
+                                                 MIR_new_reg_op(ctx->context, value2_reg)));
+                } else {
+                    CHECK_FAIL();
+                }
+            } else if (value1_type == tSystem_Double) {
+                CHECK(!integer);
+
+                if (value2_type == tSystem_Single) {
+                    // double x (double)float -> double
+                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_F2D,
+                                                 MIR_new_reg_op(ctx->context, result_reg),
+                                                 MIR_new_reg_op(ctx->context, value2_reg)));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, code + 3,
+                                                 MIR_new_reg_op(ctx->context, result_reg),
+                                                 MIR_new_reg_op(ctx->context, value1_reg),
+                                                 MIR_new_reg_op(ctx->context, result_reg)));
+                } else if (value2_type == tSystem_Double) {
+                    // double x double -> double
+                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, code + 3,
+                                                 MIR_new_reg_op(ctx->context, result_reg),
+                                                 MIR_new_reg_op(ctx->context, value1_reg),
+                                                 MIR_new_reg_op(ctx->context, value2_reg)));
+                } else {
+                    CHECK_FAIL();
+                }
+            }
+        } break;
+
+        // not allowed to do math on these
+        case STACK_TYPE_VALUE_TYPE:
+        case STACK_TYPE_O:
+        case STACK_TYPE_REF:
             CHECK_FAIL();
-        }
-    } else {
-        CHECK_FAIL();
     }
 
-    cleanup:
+cleanup:
     return err;
 }
 
-static err_t jit_cast_obj_to_interface(jit_context_t* ctx, MIR_reg_t result, MIR_reg_t this, System_Type from, System_Type to) {
+static err_t jit_cast_obj_to_interface(jit_context_t* ctx,
+                                       MIR_reg_t result_reg, MIR_reg_t from_reg,
+                                       System_Type from_type, System_Type to_type,
+                                       MIR_reg_t this_reg
+) {
     err_t err = NO_ERROR;
 
-    Pentagon_Reflection_InterfaceImpl interface = type_get_interface_impl(from, to);
+    Pentagon_Reflection_InterfaceImpl interface = type_get_interface_impl(from_type, to_type);
     CHECK(interface != NULL);
 
     // &object->vtable[offsetof(vtable, virtual_functions) + vtable_offset]
@@ -1274,7 +1312,7 @@ static err_t jit_cast_obj_to_interface(jit_context_t* ctx, MIR_reg_t result, MIR
                                  MIR_new_reg_op(ctx->context, vtable_reg),
                                  MIR_new_mem_op(ctx->context, MIR_T_P,
                                                 offsetof(struct System_Object, vtable),
-                                                this, 0, 1)));
+                                                from_reg, 0, 1)));
     MIR_append_insn(ctx->context, ctx->func,
                     MIR_new_insn(ctx->context, MIR_ADD,
                                  MIR_new_reg_op(ctx->context, vtable_reg),
@@ -1284,14 +1322,26 @@ static err_t jit_cast_obj_to_interface(jit_context_t* ctx, MIR_reg_t result, MIR
     // set the vtable
     MIR_append_insn(ctx->context, ctx->func,
                     MIR_new_insn(ctx->context, MIR_MOV,
-                                 MIR_new_mem_op(ctx->context, MIR_T_P, 0, result, 0, 1),
+                                 MIR_new_mem_op(ctx->context, MIR_T_P, 0, result_reg, 0, 1),
                                  MIR_new_reg_op(ctx->context, vtable_reg)));
 
     // set the type
-    MIR_append_insn(ctx->context, ctx->func,
-                    MIR_new_insn(ctx->context, MIR_MOV,
-                                 MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), result, 0, 1),
-                                 MIR_new_reg_op(ctx->context, this)));
+    if (this_reg != 0) {
+        // we need a write barrier
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_call_insn(ctx->context, 5,
+                                          MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
+                                          MIR_new_ref_op(ctx->context, ctx->gc_update_func),
+                                          MIR_new_reg_op(ctx->context, this_reg),
+                                          MIR_new_int_op(ctx->context, sizeof(void*)),
+                                          MIR_new_reg_op(ctx->context, from_reg)));
+    } else {
+        // we don't need a write barrier
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_insn(ctx->context, MIR_MOV,
+                                     MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), result_reg, 0, 1),
+                                     MIR_new_reg_op(ctx->context, from_reg)));
+    }
 
 
 cleanup:
@@ -1669,16 +1719,30 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, value_type, &result_reg));
 
                 MIR_insn_code_t code;
-                if (value_type == tSystem_Int32) {
-                    code = MIR_NEGS;
-                } else if (value_type == tSystem_Int64 || value_type == tSystem_IntPtr) {
-                    code = MIR_NEG;
-                } else if (value_type == tSystem_Single) {
-                    code = MIR_FNEG;
-                } else if (value_type == tSystem_Double) {
-                    code = MIR_DNEG;
-                } else {
-                    CHECK_FAIL();
+                switch (type_get_stack_type(value_type)) {
+                    case STACK_TYPE_INT32: {
+                        code = MIR_NEGS;
+                    } break;
+
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR: {
+                        code = MIR_NEG;
+                    } break;
+
+                    case STACK_TYPE_FLOAT: {
+                        if (value_type == tSystem_Single) {
+                            code = MIR_FNEG;
+                        } else if (value_type == tSystem_Double) {
+                            code = MIR_DNEG;
+                        } else {
+                            CHECK_FAIL();
+                        }
+                    } break;
+
+                    case STACK_TYPE_O:
+                    case STACK_TYPE_REF:
+                    case STACK_TYPE_VALUE_TYPE:
+                        CHECK_FAIL();
                 }
 
                 MIR_append_insn(ctx->context, ctx->func,
@@ -1696,12 +1760,21 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, value_type, &result_reg));
 
                 MIR_insn_code_t code;
-                if (value_type == tSystem_Int32) {
-                    code = MIR_XORS;
-                } else if (value_type == tSystem_Int64 || value_type == tSystem_IntPtr) {
-                    code = MIR_XOR;
-                } else {
-                    CHECK_FAIL();
+                switch (type_get_stack_type(value_type)) {
+                    case STACK_TYPE_INT32: {
+                        code = MIR_XORS;
+                    } break;
+
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR: {
+                        code = MIR_XOR;
+                    } break;
+
+                    case STACK_TYPE_FLOAT:
+                    case STACK_TYPE_O:
+                    case STACK_TYPE_REF:
+                    case STACK_TYPE_VALUE_TYPE:
+                        CHECK_FAIL();
                 }
 
                 // ~value == value ^ -1
@@ -1753,69 +1826,78 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, result_type, &result_reg));
 
                 MIR_insn_code_t code = MIR_INVALID_INSN;
-                if (type == tSystem_Int32) {
-                    switch (opcode) {
-                        case CEE_CONV_I1: code = MIR_EXT8; break;
-                        case CEE_CONV_U1: code = MIR_UEXT8; break;
-                        case CEE_CONV_I2: code = MIR_EXT16; break;
-                        case CEE_CONV_U2: code = MIR_UEXT16; break;
-                        case CEE_CONV_I4: code = MIR_MOV; break;
-                        case CEE_CONV_U4: code = MIR_MOV; break;
-                        case CEE_CONV_I8: code = MIR_EXT32; break;
-                        case CEE_CONV_U8: code = MIR_UEXT32; break;
-                        case CEE_CONV_I: code = MIR_EXT32; break;
-                        case CEE_CONV_U: code = MIR_UEXT32; break;
-                        case CEE_CONV_R4: code = MIR_I2F; break;
-                        case CEE_CONV_R8: code = MIR_I2D; break;
-                        default: CHECK_FAIL();
-                    }
-                } else if (type == tSystem_Int64 || type == tSystem_IntPtr) {
-                    switch (opcode) {
-                        case CEE_CONV_I1: code = MIR_EXT8; break;
-                        case CEE_CONV_U1: code = MIR_UEXT8; break;
-                        case CEE_CONV_I2: code = MIR_EXT16; break;
-                        case CEE_CONV_U2: code = MIR_UEXT16; break;
-                        case CEE_CONV_I4: code = MIR_EXT32; break;
-                        case CEE_CONV_U4: code = MIR_UEXT32; break;
-                        case CEE_CONV_I8: code = MIR_MOV; break;
-                        case CEE_CONV_U8: code = MIR_MOV; break;
-                        case CEE_CONV_I: code = MIR_MOV; break;
-                        case CEE_CONV_U: code = MIR_MOV; break;
-                        case CEE_CONV_R4: code = MIR_I2F; break;
-                        case CEE_CONV_R8: code = MIR_I2D; break;
-                        default: CHECK_FAIL();
-                    }
-                } else if (type == tSystem_Single || type == tSystem_Double) {
-                    if (result_type == tSystem_Int32) {
-                        // we are converting from float to small
-                        // type, first convert to native int and
-                        // only then do a truncation
-                        MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_insn(ctx->context, type == tSystem_Single ? MIR_F2I : MIR_D2I,
-                                                     MIR_new_reg_op(ctx->context, result_reg),
-                                                     MIR_new_reg_op(ctx->context, reg)));
+                switch (type_get_stack_type(type)) {
+                    case STACK_TYPE_INT32: {
+                        switch (opcode) {
+                            case CEE_CONV_I1: code = MIR_EXT8; break;
+                            case CEE_CONV_U1: code = MIR_UEXT8; break;
+                            case CEE_CONV_I2: code = MIR_EXT16; break;
+                            case CEE_CONV_U2: code = MIR_UEXT16; break;
+                            case CEE_CONV_I4: code = MIR_MOV; break;
+                            case CEE_CONV_U4: code = MIR_MOV; break;
+                            case CEE_CONV_I8: code = MIR_EXT32; break;
+                            case CEE_CONV_U8: code = MIR_UEXT32; break;
+                            case CEE_CONV_I: code = MIR_EXT32; break;
+                            case CEE_CONV_U: code = MIR_UEXT32; break;
+                            case CEE_CONV_R4: code = MIR_I2F; break;
+                            case CEE_CONV_R8: code = MIR_I2D; break;
+                            default: CHECK_FAIL();
+                        }
+                    } break;
 
-                        // now our input is the result reg as well
-                        reg = result_reg;
-                    }
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_INT64: {
+                        switch (opcode) {
+                            case CEE_CONV_I1: code = MIR_EXT8; break;
+                            case CEE_CONV_U1: code = MIR_UEXT8; break;
+                            case CEE_CONV_I2: code = MIR_EXT16; break;
+                            case CEE_CONV_U2: code = MIR_UEXT16; break;
+                            case CEE_CONV_I4: code = MIR_EXT32; break;
+                            case CEE_CONV_U4: code = MIR_UEXT32; break;
+                            case CEE_CONV_I8: code = MIR_MOV; break;
+                            case CEE_CONV_U8: code = MIR_MOV; break;
+                            case CEE_CONV_I: code = MIR_MOV; break;
+                            case CEE_CONV_U: code = MIR_MOV; break;
+                            case CEE_CONV_R4: code = MIR_I2F; break;
+                            case CEE_CONV_R8: code = MIR_I2D; break;
+                            default: CHECK_FAIL();
+                        }
+                    } break;
 
-                    switch (opcode) {
-                        case CEE_CONV_I1: code = MIR_EXT8; break;
-                        case CEE_CONV_U1: code = MIR_UEXT8; break;
-                        case CEE_CONV_I2: code = MIR_EXT16; break;
-                        case CEE_CONV_U2: code = MIR_UEXT16; break;
-                        case CEE_CONV_I4: code = MIR_EXT32; break;
-                        case CEE_CONV_U4: code = MIR_UEXT32; break;
-                        case CEE_CONV_I8: code = MIR_F2I; break;
-                        case CEE_CONV_U8: code = MIR_F2I; break;
-                        case CEE_CONV_I: code = MIR_F2I; break;
-                        case CEE_CONV_U: code = MIR_F2I; break;
-                        case CEE_CONV_R4: code = type == tSystem_Single ? MIR_FMOV : MIR_D2F; break;
-                        case CEE_CONV_R8: code = type == tSystem_Single ? MIR_F2D : MIR_DMOV; break;
-                        default: CHECK_FAIL();
-                    }
-                } else {
-                    CHECK_FAIL();
+                    case STACK_TYPE_FLOAT: {
+                        if (type_get_stack_type(result_type) == STACK_TYPE_INT32) {
+                            // we are converting from float to small
+                            // type, first convert to native int and
+                            // only then do a truncation
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, type == tSystem_Single ? MIR_F2I : MIR_D2I,
+                                                         MIR_new_reg_op(ctx->context, result_reg),
+                                                         MIR_new_reg_op(ctx->context, reg)));
+
+                            // now our input is the result reg as well
+                            reg = result_reg;
+                        }
+                        switch (opcode) {
+                            case CEE_CONV_I1: code = MIR_EXT8; break;
+                            case CEE_CONV_U1: code = MIR_UEXT8; break;
+                            case CEE_CONV_I2: code = MIR_EXT16; break;
+                            case CEE_CONV_U2: code = MIR_UEXT16; break;
+                            case CEE_CONV_I4: code = MIR_EXT32; break;
+                            case CEE_CONV_U4: code = MIR_UEXT32; break;
+                            case CEE_CONV_I8: code = MIR_F2I; break;
+                            case CEE_CONV_U8: code = MIR_F2I; break;
+                            case CEE_CONV_I: code = MIR_F2I; break;
+                            case CEE_CONV_U: code = MIR_F2I; break;
+                            case CEE_CONV_R4: code = type == tSystem_Single ? MIR_FMOV : MIR_D2F; break;
+                            case CEE_CONV_R8: code = type == tSystem_Single ? MIR_F2D : MIR_DMOV; break;
+                            default: CHECK_FAIL();
+                        }
+                    } break;
+
+                    case STACK_TYPE_O:
+                    case STACK_TYPE_VALUE_TYPE:
+                    case STACK_TYPE_REF:
+                        CHECK_FAIL();
                 }
 
                 MIR_append_insn(ctx->context, ctx->func,
@@ -1823,6 +1905,13 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, result_reg),
                                              MIR_new_reg_op(ctx->context, reg)));
             } break;
+
+            // comparisons
+            case CEE_CEQ: CHECK_AND_RETHROW(jit_compare(ctx, MIR_EQ)); break;
+            case CEE_CGT: CHECK_AND_RETHROW(jit_compare(ctx, MIR_GT)); break;
+            case CEE_CGT_UN: CHECK_AND_RETHROW(jit_compare(ctx, MIR_UGT)); break;
+            case CEE_CLT: CHECK_AND_RETHROW(jit_compare(ctx, MIR_LT)); break;
+            case CEE_CLT_UN: CHECK_AND_RETHROW(jit_compare(ctx, MIR_ULT)); break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Variables
@@ -1842,63 +1931,69 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // get the variable
                 CHECK(operand_i32 < body->LocalVariables->Length);
                 System_Reflection_LocalVariableInfo variable = body->LocalVariables->Data[operand_i32];
-                System_Type type = type_get_intermediate_type(variable->LocalType);
-
-                // handle implicit float casts, if it is invalid and doesn't
-                // go to any of these it will simply fail in the verifier
-                MIR_insn_code_t code = MIR_MOV;
-                if (value_type == tSystem_Single) {
-                    if (type == tSystem_Double) {
-                        // float->double
-                        code = MIR_F2D;
-                        value_type = type;
-                    } else if (type == tSystem_Single) {
-                        code = MIR_FMOV;
-                    }
-                } else if (value_type == tSystem_Double) {
-                    if (type == tSystem_Single) {
-                        // double->float
-                        code = MIR_D2F;
-                        value_type = type;
-                    } else if (type == tSystem_Double) {
-                        code = MIR_DMOV;
-                    }
-                }
+                System_Type variable_type = type_get_intermediate_type(variable->LocalType);
 
                 // check the type is valid
-                CHECK(type_is_verifier_assignable_to(value_type, type));
+                CHECK(type_is_verifier_assignable_to(value_type, variable_type));
 
-                // emit a move
-                if (
-                    type_is_object_ref(value_type) ||
-                    value_type == tSystem_Int32 ||
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr ||
-                    value_type == tSystem_Single ||
-                    value_type == tSystem_Double
-                ) {
-                    if (type_is_interface(type)) {
-                        // saving to interface
-                        if (type_is_interface(value_type)) {
-                            // from an interface, just memcpy
-                            CHECK(locals[operand_i32].mode == MIR_OP_REG);
-                            emit_memcpy(ctx, locals[operand_i32].u.reg, value_reg, value_type->StackSize);
+                switch (type_get_stack_type(value_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(variable_type)) {
+                            // storing to interface
+                            if (type_is_interface(value_type)) {
+                                // from interface, simple memcpy
+                                goto stloc_value_type;
+                            } else {
+                                // from an object, need to do a cast
+                                // from an object, we need to do it properly
+                                CHECK(locals[operand_i32].mode == MIR_OP_REG);
+                                CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
+                                                                            locals[operand_i32].u.reg, value_reg,
+                                                                            value_type, variable_type, 0));
+                            }
                         } else {
-                            // from an object, we need to do it properly
-                            CHECK(locals[operand_i32].mode == MIR_OP_REG);
-                            CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx, locals[operand_i32].u.reg, value_reg,
-                                                                        value_type, type));
+                            goto stloc_primitive_type;
                         }
-                    } else {
-                        // simple move
+                    } break;
+
+                    stloc_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT:
+                    case STACK_TYPE_REF: {
+                        // handle implicit float casts, if it is invalid and doesn't
+                        // go to any of these it will simply fail in the verifier
+                        MIR_insn_code_t code = MIR_MOV;
+                        if (value_type == tSystem_Single) {
+                            if (variable_type == tSystem_Double) {
+                                // float->double
+                                code = MIR_F2D;
+                                value_type = variable_type;
+                            } else if (variable_type == tSystem_Single) {
+                                code = MIR_FMOV;
+                            }
+                        } else if (value_type == tSystem_Double) {
+                            if (variable_type == tSystem_Single) {
+                                // double->float
+                                code = MIR_D2F;
+                                value_type = variable_type;
+                            } else if (variable_type == tSystem_Double) {
+                                code = MIR_DMOV;
+                            }
+                        }
+
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, code,
                                                      locals[operand_i32],
                                                      MIR_new_reg_op(ctx->context, value_reg)));
-                    }
-                } else {
-                    CHECK(locals[operand_i32].mode == MIR_OP_REG);
-                    emit_memcpy(ctx, locals[operand_i32].u.reg, value_reg, value_type->StackSize);
+                    } break;
+
+                    stloc_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        CHECK(locals[operand_i32].mode == MIR_OP_REG);
+                        jit_emit_memcpy(ctx, locals[operand_i32].u.reg, value_reg, value_type->StackSize);
+                    } break;
                 }
             } break;
 
@@ -1913,35 +2008,46 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 System_Reflection_LocalVariableInfo variable = body->LocalVariables->Data[operand_i32];
                 System_Type value_type = type_get_intermediate_type(variable->LocalType);
 
-                // choose the mov operation
-                MIR_insn_code_t code = MIR_MOV;
-                if (value_type == tSystem_Single) {
-                    code = MIR_FMOV;
-                } else if (value_type == tSystem_Double) {
-                    code = MIR_DMOV;
-                }
-
                 // push it
                 MIR_reg_t value_reg;
                 CHECK_AND_RETHROW(stack_push(ctx, value_type, &value_reg));
 
-                // emit the move
-                if (
-                    type_is_object_ref(value_type) ||
-                    value_type == tSystem_Int32 ||
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr ||
-                    value_type == tSystem_Single ||
-                    value_type == tSystem_Double
-                ) {
-                    // simple move
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 locals[operand_i32]));
-                } else {
-                    CHECK(locals[operand_i32].mode == MIR_OP_REG);
-                    emit_memcpy(ctx, value_reg, locals[operand_i32].u.reg, value_type->StackSize);
+                switch (type_get_stack_type(value_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(value_type)) {
+                            // interface type, copy it
+                            goto ldloc_value_type;
+                        } else {
+                            // primitive type, move it
+                            goto ldloc_primitive_type;
+                        }
+                    } break;
+
+                    ldloc_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT:
+                    case STACK_TYPE_REF: {
+                        // choose the mov operation
+                        MIR_insn_code_t code = MIR_MOV;
+                        if (value_type == tSystem_Single) {
+                            code = MIR_FMOV;
+                        } else if (value_type == tSystem_Double) {
+                            code = MIR_DMOV;
+                        }
+
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_reg_op(ctx->context, value_reg),
+                                                     locals[operand_i32]));
+                    } break;
+
+                    ldloc_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        CHECK(locals[operand_i32].mode == MIR_OP_REG);
+                        jit_emit_memcpy(ctx, value_reg, locals[operand_i32].u.reg, value_type->StackSize);
+                    } break;
                 }
             } break;
 
@@ -1956,37 +2062,48 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 MIR_reg_t value_reg;
                 CHECK_AND_RETHROW(stack_push(ctx, value_type, &value_reg));
 
-                // emit the move
-                if (
-                    type_is_object_ref(variable->LocalType) ||
-                    variable->LocalType == tSystem_Int32 ||
-                    variable->LocalType == tSystem_Int64 ||
-                    variable->LocalType == tSystem_IntPtr ||
-                    variable->LocalType == tSystem_Single ||
-                    variable->LocalType == tSystem_Double
-                ) {
-                    if (locals[operand_i32].mode == MIR_OP_REG) {
-                        CHECK_FAIL("TODO: spill the value into the stack");
-                    } else {
-                        // already spilled, get the base register
-                        CHECK(locals[operand_i32].mode == MIR_OP_MEM);
+                switch (type_get_stack_type(variable->LocalType)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(variable->LocalType)) {
+                            goto ldloca_value_type;
+                        } else {
+                            goto ldloca_primitive_type;
+                        }
+                    } break;
+
+                    ldloca_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT:
+                    case STACK_TYPE_REF: {
+                        if (locals[operand_i32].mode == MIR_OP_REG) {
+                            CHECK_FAIL("TODO: spill the value into the stack");
+                        } else {
+                            // already spilled, get the base register
+                            CHECK(locals[operand_i32].mode == MIR_OP_MEM);
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_MOV,
+                                                         MIR_new_reg_op(ctx->context, value_reg),
+                                                         MIR_new_reg_op(ctx->context, locals[operand_i32].u.mem.base)));
+                        }
+                    } break;
+
+                    ldloca_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, MIR_MOV,
                                                      MIR_new_reg_op(ctx->context, value_reg),
-                                                     MIR_new_reg_op(ctx->context, locals[operand_i32].u.mem.base)));
-                    }
-                } else {
-                    // just a move
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 locals[operand_i32]));
+                                                     locals[operand_i32]));
+                    } break;
                 }
             } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Arguments
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            // TODO: STLOC
 
             case CEE_LDARG_0:
             case CEE_LDARG_1:
@@ -2032,31 +2149,45 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 MIR_reg_t value_reg;
                 CHECK_AND_RETHROW(stack_push(ctx, arg_stack_type, &value_reg));
 
-                // for register and reference types we can just copy it
-                if (
-                    type_is_object_ref(arg_stack_type) ||
-                    arg_stack_type == tSystem_Int32 ||
-                    arg_stack_type == tSystem_Int64 ||
-                    arg_stack_type == tSystem_IntPtr
-                ) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_reg_op(ctx->context, arg_reg)));
-                } else if (arg_stack_type == tSystem_Single) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_FMOV,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_reg_op(ctx->context, arg_reg)));
-                } else if (arg_stack_type == tSystem_Double) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_DMOV,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_reg_op(ctx->context, arg_reg)));
-                } else {
-                    emit_memcpy(ctx, value_reg, arg_reg, arg_stack_type->StackSize);
+                switch (type_get_stack_type(arg_stack_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(arg_stack_type)) {
+                            // interface type, copy it
+                            goto ldarg_value_type;
+                        } else {
+                            // primitive type, move it
+                            goto ldarg_primitive_type;
+                        }
+                    } break;
+
+                    ldarg_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT:
+                    case STACK_TYPE_REF: {
+                        // choose the mov operation
+                        MIR_insn_code_t code = MIR_MOV;
+                        if (arg_stack_type == tSystem_Single) {
+                            code = MIR_FMOV;
+                        } else if (arg_stack_type == tSystem_Double) {
+                            code = MIR_DMOV;
+                        }
+
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_reg_op(ctx->context, value_reg),
+                                                     MIR_new_reg_op(ctx->context, arg_reg)));
+                    } break;
+
+                    ldarg_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        jit_emit_memcpy(ctx, value_reg, arg_reg, arg_stack_type->StackSize);
+                    } break;
                 }
             } break;
+
+            // TODO: LDARGA
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Basic stack manipulation
@@ -2141,32 +2272,52 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, top_type, &value_1));
                 CHECK_AND_RETHROW(stack_push(ctx, top_type, &value_2));
 
-                if (
-                    type_is_object_ref(top_type) ||
-                    type_is_integer(top_type) ||
-                    top_type == tSystem_Single ||
-                    top_type == tSystem_Double
-                ) {
-                    // normal value, copy the two regs
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_1),
-                                                 MIR_new_reg_op(ctx->context, top_reg)));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_2),
-                                                 MIR_new_reg_op(ctx->context, top_reg)));
-                } else {
-                    // only copy the second value, we can move the pointer
-                    // to the second one because we are essentially SSA
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_1),
-                                                 MIR_new_reg_op(ctx->context, top_reg)));
+                switch (type_get_stack_type(top_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(top_type)) {
+                            goto dup_value_type;
+                        } else {
+                            goto dup_primitive_type;
+                        }
+                    } break;
 
-                    CHECK_FAIL("TODO: copy the stack value");
+                    dup_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT:
+                    case STACK_TYPE_REF: {
+                        // choose the mov operation
+                        MIR_insn_code_t code = MIR_MOV;
+                        if (top_type == tSystem_Single) {
+                            code = MIR_FMOV;
+                        } else if (top_type == tSystem_Double) {
+                            code = MIR_DMOV;
+                        }
+
+                        // normal value, copy the two regs
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_reg_op(ctx->context, value_1),
+                                                     MIR_new_reg_op(ctx->context, top_reg)));
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_reg_op(ctx->context, value_2),
+                                                     MIR_new_reg_op(ctx->context, top_reg)));
+                    } break;
+
+                    dup_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        // only copy the second value, we can move the pointer
+                        // to the second one because we are essentially SSA
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_MOV,
+                                                     MIR_new_reg_op(ctx->context, value_1),
+                                                     MIR_new_reg_op(ctx->context, top_reg)));
+
+                        jit_emit_memcpy(ctx, value_2, value_1, top_type->StackSize);
+                    } break;
                 }
-
             } break;
 
             case CEE_POP: {
@@ -2177,7 +2328,120 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             // Field access
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            // TODO: NullReferenceException
+            case CEE_STFLD: {
+                // get the values
+                MIR_reg_t obj_reg;
+                MIR_reg_t value_reg;
+                System_Type obj_type;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+                CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
+
+                // validate the field is part of the object
+                System_Type base = obj_type;
+                while (base != NULL && base != operand_field->DeclaringType) {
+                    base = base->BaseType;
+                }
+                CHECK(base != NULL);
+
+                System_Type field_type = type_get_underlying_type(operand_field->FieldType);
+
+                // TODO: check field access
+
+                // TODO: does the runtime actually use ldfld for static fields?
+                //       in theory CIL allows that, but I think I won't for simplicity
+                CHECK(!field_is_static(operand_field));
+
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
+
+                // validate the assignability
+                CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
+
+                switch (type_get_stack_type(value_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(field_type)) {
+                            // storing to interface
+
+                            if (type_is_interface(value_type)) {
+                                // from an interface, copy with a write barrier
+                                goto stfld_value_type;
+                            } else {
+                                // from an object, cast required, need a write barrier
+                                CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
+                                                                            obj_reg, value_reg,
+                                                                            value_type, field_type,
+                                                                            obj_reg));
+                            }
+                        } else {
+                            // storing to an object from an object
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_call_insn(ctx->context, 5,
+                                                              MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
+                                                              MIR_new_ref_op(ctx->context, ctx->gc_update_func),
+                                                              MIR_new_reg_op(ctx->context, obj_reg),
+                                                              MIR_new_int_op(ctx->context, operand_field->MemoryOffset),
+                                                              MIR_new_reg_op(ctx->context, value_reg)));
+                        }
+                    } break;
+
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT: {
+                        // handle explicit float->double and double->float casts
+                        MIR_insn_code_t code = MIR_MOV;
+                        if (value_type == tSystem_Single) {
+                            if (field_type == tSystem_Double) {
+                                // float->double
+                                code = MIR_F2D;
+                                value_type = field_type;
+                            } else if (field_type == tSystem_Single) {
+                                code = MIR_FMOV;
+                            }
+                        } else if (value_type == tSystem_Double) {
+                            if (field_type == tSystem_Single) {
+                                // double->float
+                                code = MIR_D2F;
+                                value_type = field_type;
+                            } else if (field_type == tSystem_Double) {
+                                code = MIR_DMOV;
+                            }
+                        }
+
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_mem_op(ctx->context,
+                                                                    get_mir_type(operand_field->FieldType),
+                                                                    (int)operand_field->MemoryOffset,
+                                                                    obj_reg, 0, 1),
+                                                     MIR_new_reg_op(ctx->context, value_reg)));
+                    } break;
+
+                    stfld_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        // get the type reference
+                        int typei = hmgeti(ctx->types, field_type);
+                        CHECK(typei != -1);
+                        MIR_item_t type_item = ctx->types[typei].value;
+
+                        // we are going to do a managed memcpy
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_call_insn(ctx->context, 5,
+                                                          MIR_new_ref_op(ctx->context, ctx->managed_memcpy_proto),
+                                                          MIR_new_ref_op(ctx->context, ctx->managed_memcpy_func),
+                                                          MIR_new_reg_op(ctx->context, obj_reg),
+                                                          MIR_new_ref_op(ctx->context, type_item),
+                                                          MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset),
+                                                          MIR_new_reg_op(ctx->context, value_reg)));
+                    } break;
+
+                    case STACK_TYPE_REF: {
+                        CHECK_FAIL("TODO: wtf");
+                    } break;
+                }
+            } break;
+
             case CEE_LDFLD: {
                 // get the object instance
                 System_Type obj_type;
@@ -2210,149 +2474,63 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // check the object is not null
                 CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
 
-                if (
-                    type_is_object_ref(field_stack_type) ||
-                    field_stack_type == tSystem_Int32 ||
-                    field_stack_type == tSystem_Int64 ||
-                    field_stack_type == tSystem_IntPtr
-                ) {
-                    // we need to extend this properly if the field is smaller
-                    // than an int32 (because we are going to load into an int32
-                    // essentially)
-                    MIR_insn_code_t insn = MIR_MOV;
-                    if (field_type == tSystem_SByte || field_type == tSystem_Boolean) {
-                        insn = MIR_EXT8;
-                    } else if (field_type == tSystem_Byte) {
-                        insn = MIR_UEXT8;
-                    } else if (field_type == tSystem_Int16) {
-                        insn = MIR_EXT16;
-                    } else if (field_type == tSystem_UInt16 || field_type == tSystem_Char) {
-                        insn = MIR_UEXT16;
-                    }
+                switch (type_get_stack_type(field_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(field_type)) {
+                            goto ldfld_value_type;
+                        } else {
+                            goto ldfld_primitive_type;
+                        }
+                    } break;
 
-                    // integer type
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, insn,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_mem_op(ctx->context,
-                                                                get_mir_type(operand_field->FieldType),
-                                                                (int)operand_field->MemoryOffset,
-                                                                obj_reg, 0, 1)));
-                } else if (field_stack_type == tSystem_Single) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_FMOV,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_mem_op(ctx->context,
-                                                                MIR_T_F,
-                                                                (int)operand_field->MemoryOffset,
-                                                                obj_reg, 0, 1)));
-                } else if (field_stack_type == tSystem_Double) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_DMOV,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_mem_op(ctx->context,
-                                                                MIR_T_D,
-                                                                (int)operand_field->MemoryOffset,
-                                                                obj_reg, 0, 1)));
-                } else {
-                    CHECK_FAIL("memcpy field");
-                }
-            } break;
+                    ldfld_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT: {
+                        // we need to extend this properly if the field is smaller
+                        // than an int32 (because we are going to load into an int32
+                        // essentially)
+                        MIR_insn_code_t insn = MIR_MOV;
+                        if (field_type == tSystem_SByte || field_type == tSystem_Boolean) {
+                            insn = MIR_EXT8;
+                        } else if (field_type == tSystem_Byte) {
+                            insn = MIR_UEXT8;
+                        } else if (field_type == tSystem_Int16) {
+                            insn = MIR_EXT16;
+                        } else if (field_type == tSystem_UInt16 || field_type == tSystem_Char) {
+                            insn = MIR_UEXT16;
+                        } else if (field_type == tSystem_Single) {
+                            insn = MIR_FMOV;
+                        } else if (field_type == tSystem_Single) {
+                            insn = MIR_DMOV;
+                        }
 
-            case CEE_STFLD: {
-                // get the values
-                MIR_reg_t obj_reg;
-                MIR_reg_t value_reg;
-                System_Type obj_type;
-                System_Type value_type;
-                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
-                CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, insn,
+                                                     MIR_new_reg_op(ctx->context, value_reg),
+                                                     MIR_new_mem_op(ctx->context,
+                                                                    get_mir_type(operand_field->FieldType),
+                                                                    (int)operand_field->MemoryOffset,
+                                                                    obj_reg, 0, 1)));
+                    } break;
 
-                // validate the field is part of the object
-                System_Type base = obj_type;
-                while (base != NULL && base != operand_field->DeclaringType) {
-                    base = base->BaseType;
-                }
-                CHECK(base != NULL);
-
-                System_Type field_type = type_get_underlying_type(operand_field->FieldType);
-
-                // TODO: check field access
-
-                // TODO: does the runtime actually use ldfld for static fields?
-                //       in theory CIL allows that, but I think I won't for simplicity
-                CHECK(!field_is_static(operand_field));
-
-                // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
-
-                // validate the assignability
-                CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
-
-                if (type_is_object_ref(value_type)) {
-                    if (type_is_interface(field_type)) {
+                    ldfld_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        // take the offset and copy it
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, MIR_ADD,
                                                      MIR_new_reg_op(ctx->context, obj_reg),
-                                                     MIR_new_reg_op(ctx->context, obj_reg),
-                                                     MIR_new_int_op(ctx->context, operand_field->MemoryOffset)));
-                        if (type_is_interface(value_type)) {
-                            // storing interface in interface, copy
-                            emit_memcpy(ctx, obj_reg, value_reg, value_type->StackSize);
-                        } else {
-                            // need to cast from object to an interface
-                            CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx, obj_reg, value_reg, value_type, field_type));
-                        }
-                    } else {
-                        // normal object
-                        MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_call_insn(ctx->context, 5,
-                                                          MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
-                                                          MIR_new_ref_op(ctx->context, ctx->gc_update_func),
-                                                          MIR_new_reg_op(ctx->context, obj_reg),
-                                                          MIR_new_int_op(ctx->context, operand_field->MemoryOffset),
-                                                          MIR_new_reg_op(ctx->context, value_reg)));
-                    }
-                } else if (
-                    value_type == tSystem_Int32 ||
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr
-                ) {
-                    // integer type
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_mem_op(ctx->context,
-                                                                get_mir_type(operand_field->FieldType),
-                                                                (int)operand_field->MemoryOffset,
-                                                                obj_reg, 0, 1),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (value_type == tSystem_Single) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_FMOV,
-                                                 MIR_new_mem_op(ctx->context,
-                                                                MIR_T_F,
-                                                                (int)operand_field->MemoryOffset,
-                                                                obj_reg, 0, 1),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (value_type == tSystem_Double) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_DMOV,
-                                                 MIR_new_mem_op(ctx->context,
-                                                                MIR_T_D,
-                                                                (int)operand_field->MemoryOffset,
-                                                                obj_reg, 0, 1),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else {
+                                                     MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset)));
+                        jit_emit_memcpy(ctx, value_reg, obj_reg, field_type->StackSize);
+                    } break;
 
-                    // get the offset as a reg
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_ADD,
-                                                 MIR_new_reg_op(ctx->context, obj_reg),
-                                                 MIR_new_reg_op(ctx->context, obj_reg),
-                                                 MIR_new_int_op(ctx->context, operand_field->MemoryOffset)));
-                    emit_memcpy(ctx, obj_reg, value_reg, value_type->StackSize);
+                    case STACK_TYPE_REF:
+                        CHECK_FAIL("wtf");
                 }
             } break;
+
+            // TODO: ldflda
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Calls and Returns
@@ -2671,42 +2849,53 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     // verify the IL
                     CHECK(type_is_verifier_assignable_to(ret_type, method->ReturnType));
 
-                    // TODO: do we need float->double and double->float implicit casts in here
-
-                    // handle it at the IR level
-                    if (
-                        type_is_object_ref(ret_type) ||
-                        ret_type == tSystem_Int32 ||
-                        ret_type == tSystem_Int64 ||
-                        ret_type == tSystem_IntPtr ||
-                        ret_type == tSystem_Single ||
-                        ret_type == tSystem_Double
-                    ) {
-                        if (type_is_interface(method_ret_type)) {
-                            // we need to return an interface
-
-                            if (!type_is_interface(ret_type)) {
-                                // cast from an object instance to an interface
-                                CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx, return_block_reg, ret_arg, ret_type, method_ret_type));
-
-                                // return the exception
-                                MIR_append_insn(ctx->context, ctx->func,
-                                                MIR_new_ret_insn(ctx->context, 1,
-                                                                 MIR_new_int_op(ctx->context, 0)));
+                    switch (type_get_stack_type(ret_type)) {
+                        case STACK_TYPE_O: {
+                            if (type_is_interface(method_ret_type)) {
+                                // returning an interface
+                                if (type_is_interface(ret_type)) {
+                                    // from an interface
+                                    goto ret_value_type;
+                                } else {
+                                    // from an object, cast to the float
+                                    CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
+                                                                                return_block_reg, ret_arg,
+                                                                                ret_type, method_ret_type,
+                                                                                0));
+                                }
                             } else {
-                                // return an interface from an interface
-                                emit_memcpy(ctx, return_block_reg, ret_arg, ret_type->StackSize);
+                                // just a normal object
+                                goto ret_primitive_type;
                             }
-                        } else {
+                        } break;
+
+                        ret_primitive_type:
+                        case STACK_TYPE_INT32:
+                        case STACK_TYPE_INT64:
+                        case STACK_TYPE_INTPTR:
+                        case STACK_TYPE_FLOAT: {
+                            // TODO: do we need to do float conversion in this case?
+
                             // it is stored in a register directly, just return it
                             MIR_append_insn(ctx->context, ctx->func,
                                             MIR_new_ret_insn(ctx->context, 2,
                                                              MIR_new_int_op(ctx->context, 0),
                                                              MIR_new_reg_op(ctx->context, ret_arg)));
-                        }
-                    } else {
-                        // this is a big struct, copy it to the return block
-                        emit_memcpy(ctx, return_block_reg, ret_arg, ret_type->StackSize);
+                        } break;
+
+                        ret_value_type:
+                        case STACK_TYPE_VALUE_TYPE: {
+                            // this is a big struct, copy it to the return block
+                            jit_emit_memcpy(ctx, return_block_reg, ret_arg, ret_type->StackSize);
+
+                            // return the exception
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_ret_insn(ctx->context, 1,
+                                                             MIR_new_int_op(ctx->context, 0)));
+                        } break;
+
+                        case STACK_TYPE_REF:
+                            CHECK_FAIL();
                     }
                 }
             } break;
@@ -2777,6 +2966,145 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, num_elems_reg)));
             } break;
 
+            case CEE_STELEM_I1: operand_type = tSystem_SByte; goto cee_stelem;
+            case CEE_STELEM_I2: operand_type = tSystem_Int16; goto cee_stelem;
+            case CEE_STELEM_I4: operand_type = tSystem_Int32; goto cee_stelem;
+            case CEE_STELEM_I8: operand_type = tSystem_Int64; goto cee_stelem;
+            case CEE_STELEM_R4: operand_type = tSystem_Single; goto cee_stelem;
+            case CEE_STELEM_R8: operand_type = tSystem_Double; goto cee_stelem;
+            case CEE_STELEM_I: operand_type = tSystem_IntPtr; goto cee_stelem;
+            case CEE_STELEM_REF:
+            case CEE_STELEM:
+            cee_stelem: {
+                // pop all the values from the stack
+                MIR_reg_t value_reg;
+                MIR_reg_t index_reg;
+                MIR_reg_t array_reg;
+                System_Type value_type;
+                System_Type index_type;
+                System_Type array_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+                CHECK_AND_RETHROW(stack_pop(ctx, &index_type, &index_reg));
+                CHECK_AND_RETHROW(stack_pop(ctx, &array_type, &array_reg));
+
+                // this must be an array
+                CHECK(array_type->IsArray);
+
+                // for stelem.ref the operand type is the same as the
+                // array itself
+                if (operand_type == NULL) {
+                    operand_type = array_type->ElementType;
+                }
+
+                // TODO: handle double->float and float->double implicit conversion
+
+                // validate all the type stuff
+                CHECK(type_is_array_element_compatible_with(value_type, type_get_intermediate_type(operand_type)));
+                CHECK(type_is_array_element_compatible_with(operand_type, array_type->ElementType));
+                CHECK(index_type == tSystem_Int32);
+
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
+
+                // check the array indexes
+                CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
+
+                switch (type_get_stack_type(value_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(operand_type)) {
+                            // storing to interface
+
+                            if (type_is_interface(value_type)) {
+                                // from an interface, copy with a write barrier
+                                goto stelem_value_type;
+                            } else {
+                                // from an object, implicit cast it
+
+                                // calculate the offset as `index_reg * sizeof(operand_type) + sizeof(System.Array)`
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_insn(ctx->context, MIR_MUL,
+                                                             MIR_new_reg_op(ctx->context, index_reg),
+                                                             MIR_new_reg_op(ctx->context, index_reg),
+                                                             MIR_new_int_op(ctx->context, operand_type->StackSize)));
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_insn(ctx->context, MIR_ADD,
+                                                             MIR_new_reg_op(ctx->context, index_reg),
+                                                             MIR_new_reg_op(ctx->context, index_reg),
+                                                             MIR_new_int_op(ctx->context, tSystem_Array->ManagedSize)));
+
+
+                                // from an object, cast required, need a write barrier
+                                CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
+                                                                            index_reg, value_reg,
+                                                                            value_type, operand_type,
+                                                                            array_reg));
+                            }
+                        } else {
+                            // calculate the offset as `index_reg * sizeof(operand_type) + sizeof(System.Array)`
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_MUL,
+                                                         MIR_new_reg_op(ctx->context, index_reg),
+                                                         MIR_new_reg_op(ctx->context, index_reg),
+                                                         MIR_new_int_op(ctx->context, operand_type->StackSize)));
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_ADD,
+                                                         MIR_new_reg_op(ctx->context, index_reg),
+                                                         MIR_new_reg_op(ctx->context, index_reg),
+                                                         MIR_new_int_op(ctx->context, tSystem_Array->ManagedSize)));
+
+                            // storing to an object from an object
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_call_insn(ctx->context, 5,
+                                                              MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
+                                                              MIR_new_ref_op(ctx->context, ctx->gc_update_func),
+                                                              MIR_new_reg_op(ctx->context, array_reg),
+                                                              MIR_new_int_op(ctx->context, index_reg),
+                                                              MIR_new_reg_op(ctx->context, value_reg)));
+                        }
+                    } break;
+
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT: {
+                        // handle explicit float->double and double->float casts
+                        MIR_insn_code_t code = MIR_MOV;
+                        if (value_type == tSystem_Single) {
+                            if (operand_type == tSystem_Double) {
+                                // float->double
+                                code = MIR_F2D;
+                                value_type = operand_type;
+                            } else if (operand_type == tSystem_Single) {
+                                code = MIR_FMOV;
+                            }
+                        } else if (value_type == tSystem_Double) {
+                            if (operand_type == tSystem_Single) {
+                                // double->float
+                                code = MIR_D2F;
+                                value_type = operand_type;
+                            } else if (operand_type == tSystem_Double) {
+                                code = MIR_DMOV;
+                            }
+                        }
+
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
+                                                                    tSystem_Array->ManagedSize,
+                                                                    array_reg, index_reg, operand_type->StackSize),
+                                                     MIR_new_reg_op(ctx->context, value_reg)));
+                    } break;
+
+                    stelem_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        CHECK_FAIL("TODO: struct value store in array");
+                    } break;
+
+                    case STACK_TYPE_REF:
+                        CHECK_FAIL("wtf");
+                }
+            } break;
+
             case CEE_LDELEM_I1: operand_type = tSystem_SByte; goto cee_ldelem;
             case CEE_LDELEM_I2: operand_type = tSystem_Int16; goto cee_ldelem;
             case CEE_LDELEM_I4: operand_type = tSystem_Int32; goto cee_ldelem;
@@ -2801,15 +3129,14 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // this must be an array
                 CHECK(array_type->IsArray);
-                System_Type T = array_type->ElementType;
 
                 // for anything which is not ldelem.ref we know the operand_type
                 // from the array
                 if (operand_type != NULL) {
-                    CHECK(type_is_array_element_compatible_with(T, operand_type));
+                    CHECK(type_is_array_element_compatible_with(array_type->ElementType, operand_type));
                 } else {
                     // the type is gotten from the array
-                    operand_type = T;
+                    operand_type = array_type->ElementType;
                 }
 
                 // check the array type
@@ -2821,158 +3148,67 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // check the array indexes
                 CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
 
-                if (type_is_object_ref(operand_type)) {
-                    CHECK_AND_RETHROW(stack_push(ctx, T, &value_reg));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
-                                                                tSystem_Array->ManagedSize,
-                                                                array_reg, index_reg, T->StackSize)));
-                } else if (
-                    type_is_integer(operand_type) ||
-                    operand_type == tSystem_Single ||
-                    operand_type == tSystem_Double
-                ) {
-                    // extend properly, for unsigned we don't need to
-                    // do anything special, for signed we are going to
-                    // extend to the full integer length (so it will be
-                    // at least 32 bit)
-                    MIR_insn_code_t code = MIR_MOV;
-                    if (operand_type == tSystem_Single) {
-                        code = MIR_FMOV;
-                    } else if (operand_type == tSystem_Double) {
-                        code = MIR_DMOV;
-                    } else if (operand_type == tSystem_SByte) {
-                        code = MIR_EXT8;
-                    } else if (operand_type == tSystem_Int16) {
-                        code = MIR_EXT16;
-                    }
+                // push to the stack
+                CHECK_AND_RETHROW(stack_push(ctx, type_get_intermediate_type(operand_type), &value_reg));
 
-                    // get the actual type as the intermediate type
-                    CHECK_AND_RETHROW(stack_push(ctx, type_get_intermediate_type(operand_type), &value_reg));
+                switch (type_get_stack_type(operand_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(operand_type)) {
+                            goto ldelem_value_type;
+                        } else {
+                            goto ldelem_primitive_type;
+                        }
+                    } break;
 
-                    // we can copy this in a single mov
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code,
-                                                 MIR_new_reg_op(ctx->context, value_reg),
-                                                 MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
-                                                                tSystem_Array->ManagedSize,
-                                                                array_reg, index_reg, T->StackSize)));
+                    ldelem_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT: {
+                        // we need to extend this properly if the field is smaller
+                        // than an int32 (because we are going to load into an int32
+                        // essentially)
+                        MIR_insn_code_t code = MIR_MOV;
+                        if (operand_type == tSystem_SByte || operand_type == tSystem_Boolean) {
+                            code = MIR_EXT8;
+                        } else if (operand_type == tSystem_Byte) {
+                            code = MIR_UEXT8;
+                        } else if (operand_type == tSystem_Int16) {
+                            code = MIR_EXT16;
+                        } else if (operand_type == tSystem_UInt16 || operand_type == tSystem_Char) {
+                            code = MIR_UEXT16;
+                        } else if (operand_type == tSystem_Single) {
+                            code = MIR_FMOV;
+                        } else if (operand_type == tSystem_Single) {
+                            code = MIR_DMOV;
+                        }
 
-                } else {
-                    CHECK_FAIL("TODO: memcpy array element");
+                        // we can copy this in a single mov
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_reg_op(ctx->context, value_reg),
+                                                     MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
+                                                                    tSystem_Array->ManagedSize,
+                                                                    array_reg, index_reg, operand_type->StackSize)));
+                    } break;
+
+                    ldelem_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        CHECK_FAIL("TODO: struct value load from array");
+                    } break;
+
+                    case STACK_TYPE_REF:
+                        CHECK_FAIL();
                 }
             } break;
 
-            case CEE_STELEM_I1: operand_type = tSystem_SByte; goto cee_stelem;
-            case CEE_STELEM_I2: operand_type = tSystem_Int16; goto cee_stelem;
-            case CEE_STELEM_I4: operand_type = tSystem_Int32; goto cee_stelem;
-            case CEE_STELEM_I8: operand_type = tSystem_Int64; goto cee_stelem;
-            case CEE_STELEM_R4: operand_type = tSystem_Single; goto cee_stelem;
-            case CEE_STELEM_R8: operand_type = tSystem_Double; goto cee_stelem;
-            case CEE_STELEM_I: operand_type = tSystem_IntPtr; goto cee_stelem;
-            case CEE_STELEM_REF:
-            case CEE_STELEM:
-            cee_stelem: {
-                // pop all the values from the stack
-                MIR_reg_t value_reg;
-                MIR_reg_t index_reg;
-                MIR_reg_t array_reg;
-                System_Type value_type;
-                System_Type index_type;
-                System_Type array_type;
-                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
-                CHECK_AND_RETHROW(stack_pop(ctx, &index_type, &index_reg));
-                CHECK_AND_RETHROW(stack_pop(ctx, &array_type, &array_reg));
-
-                // this must be an array
-                CHECK(array_type->IsArray);
-                System_Type T = array_type->ElementType;
-
-                // for stelem.ref the operand type is the same as T
-                if (operand_type == NULL) {
-                    operand_type = T;
-                }
-
-                // we need to implicitly truncate
-                if (type_get_intermediate_type(T) == tSystem_Int32) {
-                    value_type = operand_type;
-                }
-
-                // TODO: handle double->float and float->double implicit conversion
-
-                // validate all the type stuff
-                CHECK(type_is_array_element_compatible_with(value_type, operand_type));
-                CHECK(type_is_array_element_compatible_with(operand_type, type_get_verification_type(T)));
-                CHECK(index_type == tSystem_Int32);
-
-                // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
-
-                // check the array indexes
-                CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
-
-                if (type_is_object_ref(T)) {
-                    // we need to use gc_update routine because this
-                    // is a managed pointer
-
-                    // calculate the offset as `index_reg * sizeof(void*) + sizeof(System.Array)`
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MUL,
-                                                 MIR_new_reg_op(ctx->context, index_reg),
-                                                 MIR_new_reg_op(ctx->context, index_reg),
-                                                 MIR_new_int_op(ctx->context, sizeof(void*))));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_ADD,
-                                                 MIR_new_reg_op(ctx->context, index_reg),
-                                                 MIR_new_reg_op(ctx->context, index_reg),
-                                                 MIR_new_int_op(ctx->context, tSystem_Array->ManagedSize)));
-
-                    if (type_is_interface(operand_type)) {
-                        CHECK_FAIL("store to interface array");
-                    }
-
-                    // use gc_update because we are storing a managed reference in a managed object
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_call_insn(ctx->context, 5,
-                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
-                                                      MIR_new_ref_op(ctx->context, ctx->gc_update_func),
-                                                      MIR_new_reg_op(ctx->context, array_reg),
-                                                      MIR_new_reg_op(ctx->context, index_reg),
-                                                      MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (
-                    type_is_integer(value_type) ||
-                    value_type == tSystem_Single ||
-                    value_type == tSystem_Double
-                ) {
-                    MIR_insn_code_t code = MIR_MOV;
-                    if (value_type == tSystem_Single) {
-                        code = MIR_FMOV;
-                    } else if (value_type == tSystem_Double) {
-                        code = MIR_DMOV;
-                    }
-
-                    // we can copy this in a single mov
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code,
-                                                 MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
-                                                                tSystem_Array->ManagedSize,
-                                                                array_reg, index_reg, T->StackSize),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else {
-                    CHECK_FAIL("TODO: memcpy array element");
-                }
-            } break;
+            // TODO: ldelema
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // Compares and Branches
+            // Branches
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-            case CEE_CEQ: {
-                CHECK_AND_RETHROW(jit_compare(ctx, MIR_EQ));
-            } break;
-
+            // unconditional branch
             case CEE_BR:
             case CEE_BR_S: {
                 // get the label
@@ -2983,37 +3219,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_label_op(ctx->context, label)));
             } break;
 
+            // branch false/true
             case CEE_BRFALSE:
-            case CEE_BRFALSE_S: {
-                // get the value
-                MIR_reg_t value_reg;
-                System_Type value_type;
-                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
-
-                // get the label
-                MIR_label_t label;
-                CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, operand_i32, &label));
-
-                // emit it properly
-                if (value_type == tSystem_Int32) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BFS,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr ||
-                    type_is_object_ref(value_type)
-                ) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BF,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else {
-                    CHECK_FAIL();
-                }
-            } break;
-
+            case CEE_BRFALSE_S:
             case CEE_BRTRUE:
             case CEE_BRTRUE_S: {
                 // get the value
@@ -3026,54 +3234,89 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, operand_i32, &label));
 
                 // emit it properly
-                if (value_type == tSystem_Int32) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BTS,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
-                } else if (
-                    value_type == tSystem_Int64 ||
-                    value_type == tSystem_IntPtr ||
-                    type_is_object_ref(value_type)
-                ) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_BT,
-                                                 MIR_new_label_op(ctx->context, label),
-                                                 MIR_new_reg_op(ctx->context, value_reg)));
+                MIR_insn_code_t code;
+                if (opcode == CEE_BRFALSE || opcode == CEE_BRFALSE_S) {
+                    code = MIR_BF;
                 } else {
-                    CHECK_FAIL();
+                    code = MIR_BT;
+                }
+
+                switch (type_get_stack_type(value_type)) {
+                    // for 32bit we want the 32bit op
+                    case STACK_TYPE_INT32:
+                        code += 1;
+
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_REF:
+                    case STACK_TYPE_O: {
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     MIR_new_label_op(ctx->context, label),
+                                                     MIR_new_reg_op(ctx->context, value_reg)));
+                    } break;
+
+                    case STACK_TYPE_VALUE_TYPE:
+                    case STACK_TYPE_FLOAT:
+                        CHECK_FAIL();
                 }
             } break;
 
+            // all the different compare and branch instructions
             case CEE_BEQ:
-            case CEE_BEQ_S: {
-                CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32));
-            } break;
-
+            case CEE_BEQ_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
+            case CEE_BGE:
+            case CEE_BGE_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
+            case CEE_BLE:
+            case CEE_BLE_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
+            case CEE_BLT:
+            case CEE_BLT_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
             case CEE_BNE_UN:
-            case CEE_BNE_UN_S: {
-                CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BNE, il_offset, operand_i32));
-            } break;
+            case CEE_BNE_UN_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BNE, il_offset, operand_i32)); break;
+            case CEE_BGE_UN:
+            case CEE_BGE_UN_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_UBGE, il_offset, operand_i32)); break;
+            case CEE_BGT_UN:
+            case CEE_BGT_UN_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_UBGT, il_offset, operand_i32)); break;
+            case CEE_BLE_UN:
+            case CEE_BLE_UN_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_UBLE, il_offset, operand_i32)); break;
+            case CEE_BLT_UN:
+            case CEE_BLT_UN_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_UBLT, il_offset, operand_i32)); break;
 
+            // switch
             case CEE_SWITCH: {
                 MIR_reg_t value_reg;
                 System_Type value_type;
                 CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
 
-                switch_ops = realloc(switch_ops, (operand_switch_n+1) * sizeof(MIR_op_t));
+                // allocate enough space for the ops
+                switch_ops = realloc(switch_ops, (operand_switch_n + 1) * sizeof(MIR_op_t));
+
+                // branch selector
                 switch_ops[0] = MIR_new_reg_op(ctx->context, value_reg);
+
+                // all the locations
                 for (int i = 0; i < operand_switch_n; i++) {
                     MIR_label_t label;
                     CHECK_AND_RETHROW(jit_branch_point(ctx, il_offset, il_ptr + operand_switch_dests[i], &label));
-                    switch_ops[i+1] = MIR_new_label_op(ctx->context, label); // remember that ops[0] is the branch selector
+                    switch_ops[i + 1] = MIR_new_label_op(ctx->context, label);
                 }
+
+                // setup the not taken label
                 MIR_label_t not_taken = MIR_new_label(ctx->context);
+
+                // if the value is invalid then don't take the route and
+                // go to the default case
                 MIR_append_insn(ctx->context, ctx->func,
                                 MIR_new_insn(ctx->context, MIR_BGE,
                                              MIR_new_label_op(ctx->context, not_taken),
                                              MIR_new_reg_op(ctx->context, value_reg),
                                              MIR_new_int_op(ctx->context, operand_switch_n)));
-                MIR_append_insn(ctx->context, ctx->func, MIR_new_insn_arr(ctx->context, MIR_SWITCH, operand_switch_n+1, switch_ops));
+
+                // do the switch itself
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn_arr(ctx->context, MIR_SWITCH,
+                                                 operand_switch_n + 1, switch_ops));
+
                 MIR_append_insn(ctx->context, ctx->func, not_taken);
             } break;
 
@@ -3324,7 +3567,10 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     ctx.gc_update_proto = MIR_new_proto(ctx.context, "gc_update$proto", 0, NULL, 3, MIR_T_P, "o", MIR_T_U64, "idx", MIR_T_P, "new");
     ctx.gc_update_func = MIR_new_import(ctx.context, "gc_update");
 
-    ctx.memcpy_proto = MIR_new_proto(ctx.context, "memcpy$proto", 0, NULL, 3, MIR_T_P, "dest", MIR_T_U64, "src", MIR_T_P, "count");
+    ctx.managed_memcpy_proto = MIR_new_proto(ctx.context, "managed_memcpy$proto", 0, NULL, 3, MIR_T_P, "this", MIR_T_P, "struct_type", MIR_T_I32, "offset", MIR_T_P, "from");
+    ctx.managed_memcpy_func = MIR_new_import(ctx.context, "managed_memcpy");
+
+    ctx.memcpy_proto = MIR_new_proto(ctx.context, "memcpy$proto", 0, NULL, 3, MIR_T_P, "dest", MIR_T_P, "src", MIR_T_U64, "count");
     ctx.memcpy_func = MIR_new_import(ctx.context, "memcpy");
 
     ctx.memset_proto = MIR_new_proto(ctx.context, "memset$proto", 0, NULL, 3, MIR_T_P, "dest", MIR_T_I32, "c", MIR_T_U64, "count");
