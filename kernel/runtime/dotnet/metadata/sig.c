@@ -133,8 +133,6 @@ static err_t parse_type(System_Reflection_Assembly assembly, blob_entry_t* sig, 
             *out_type = get_array_type(elementType);
         } break;
 
-        // TODO: ELEMENT_TYPE_VALUETYPE: make sure the given type actually is value type
-
         // TODO: var
 
         default: CHECK_FAIL("Got invalid element type: 0x%02x", element_type);
@@ -171,7 +169,14 @@ static err_t parse_ret_type(System_Reflection_Assembly assembly, blob_entry_t* s
         // we got void, let it fall down
         case ELEMENT_TYPE_VOID:
         default: {
-            CHECK_AND_RETHROW(parse_type(assembly, sig, out_type, true));
+            System_Type type;
+            CHECK_AND_RETHROW(parse_type(assembly, sig, &type, true));
+
+            if (is_by_ref) {
+                type = get_by_ref_type(type);
+            }
+
+            gc_update_ref(out_type, type);
         } break;
     }
 
@@ -203,9 +208,13 @@ static err_t parse_param(System_Reflection_Assembly assembly, blob_entry_t* sig,
             is_by_ref = true;
 
         default: {
-            CHECK(!is_by_ref, "TODO: byref support");
             System_Type type;
             CHECK_AND_RETHROW(parse_type(assembly, sig, &type, false));
+
+            if (is_by_ref) {
+                type = get_by_ref_type(type);
+            }
+
             GC_UPDATE(parameter, ParameterType, type);
         } break;
     }
@@ -319,9 +328,13 @@ err_t parse_stand_alone_local_var_sig(blob_entry_t _sig, System_Reflection_Metho
                 is_by_ref = true;
 
             default: {
-                CHECK(!is_by_ref, "TODO: byref support");
                 System_Type type;
                 CHECK_AND_RETHROW(parse_type(method->Module->Assembly, sig, &type, false));
+
+                if (is_by_ref) {
+                    type = get_by_ref_type(type);
+                }
+
                 GC_UPDATE(variable, LocalType, type);
             } break;
         }

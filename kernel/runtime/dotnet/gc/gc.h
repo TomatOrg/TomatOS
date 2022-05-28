@@ -84,6 +84,15 @@ void* gc_new(System_Type type, size_t size);
 void gc_update(void* o, size_t offset, void* new);
 
 /**
+ * Update a pointer that is possibly on the heap
+ *
+ * @param ptr       [IN] The pointer to the base of the struct
+ * @param offset    [IN] The offset to the field to update
+ * @param new       [IN] The new object we are updating
+ */
+void gc_update_ref(void* ptr, void* new);
+
+/**
  * Update a pointer on the heap
  *
  * This is a wrapper around gc_update that takes a field name instead of raw offset

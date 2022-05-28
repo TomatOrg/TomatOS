@@ -134,6 +134,15 @@ void gc_update(void* o, size_t offset, void* new) {
     scheduler_preempt_enable();
 }
 
+void gc_update_ref(void* ptr, void* new) {
+    System_Object object = heap_find((uintptr_t)ptr);
+    if (object != NULL) {
+        gc_update(object, (uintptr_t)ptr - (uintptr_t)object, new);
+    } else {
+        *((void**)ptr) = new;
+    }
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // Handshaking with all the threads, async to the main collector
 //----------------------------------------------------------------------------------------------------------------------

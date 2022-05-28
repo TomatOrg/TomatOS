@@ -85,6 +85,7 @@ err_t init_jit() {
     MIR_load_external(m_mir_context, "isinstance", isinstance);
     MIR_load_external(m_mir_context, "gc_new", gc_new);
     MIR_load_external(m_mir_context, "gc_update", gc_update);
+    MIR_load_external(m_mir_context, "gc_update_ref", gc_update_ref);
     MIR_load_external(m_mir_context, "get_array_type", get_array_type);
     MIR_load_external(m_mir_context, "memcpy", memcpy_wrapper);
     MIR_load_external(m_mir_context, "memset", memset_wrapper);
@@ -314,6 +315,9 @@ typedef struct jit_context {
 
     MIR_item_t gc_update_proto;
     MIR_item_t gc_update_func;
+
+    MIR_item_t gc_update_ref_proto;
+    MIR_item_t gc_update_ref_func;
 
     MIR_item_t managed_memcpy_proto;
     MIR_item_t managed_memcpy_func;
@@ -1117,7 +1121,7 @@ static err_t jit_null_check(jit_context_t* ctx, int il_offset, MIR_reg_t reg, Sy
         // this is a null type, just throw it
         CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_NullReferenceException));
     } else {
-        ASSERT(type_is_object_ref(type));
+        CHECK(type_is_object_ref(type));
 
         MIR_label_t not_null = MIR_new_label(ctx->context);
 
@@ -2337,6 +2341,16 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
                 CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
 
+                // validate that the object type is a valid one for stfld
+                if (obj_type->StackType == STACK_TYPE_REF) {
+                    // this is a reference, so it has to be a reference to a value type
+                    // note that we can't know if the value type is part of another class
+                    // or not so we have to use gc_update_ref
+                    CHECK(obj_type->BaseType->StackType == STACK_TYPE_VALUE_TYPE);
+                } else {
+                    CHECK(obj_type->StackType == STACK_TYPE_O);
+                }
+
                 // validate the field is part of the object
                 System_Type base = obj_type;
                 while (base != NULL && base != operand_field->DeclaringType) {
@@ -2344,6 +2358,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
                 CHECK(base != NULL);
 
+                // get the field type, ignoring stuff like enums
                 System_Type field_type = type_get_underlying_type(operand_field->FieldType);
 
                 // TODO: check field access
@@ -2353,35 +2368,58 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(!field_is_static(operand_field));
 
                 // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
+                if (obj_type->StackType == STACK_TYPE_O) {
+                    CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
+                }
 
                 // validate the assignability
                 CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
 
+                // check how we should assign the given item
                 switch (type_get_stack_type(value_type)) {
                     case STACK_TYPE_O: {
                         if (type_is_interface(field_type)) {
                             // storing to interface
 
                             if (type_is_interface(value_type)) {
-                                // from an interface, copy with a write barrier
+                                // from an interface, copy with a write-barrier
                                 goto stfld_value_type;
                             } else {
-                                // from an object, cast required, need a write barrier
+                                // from an object, cast required, need a write-barrier
                                 CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
                                                                             obj_reg, value_reg,
                                                                             value_type, field_type,
                                                                             obj_reg));
                             }
                         } else {
-                            // storing to an object from an object
-                            MIR_append_insn(ctx->context, ctx->func,
-                                            MIR_new_call_insn(ctx->context, 5,
-                                                              MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
-                                                              MIR_new_ref_op(ctx->context, ctx->gc_update_func),
-                                                              MIR_new_reg_op(ctx->context, obj_reg),
-                                                              MIR_new_int_op(ctx->context, operand_field->MemoryOffset),
-                                                              MIR_new_reg_op(ctx->context, value_reg)));
+                            // storing to an object from an object, use a write-barrier
+                            if (obj_type->StackType == STACK_TYPE_O) {
+                                // the base is an object, call the gc_update write barrier
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_call_insn(ctx->context, 5,
+                                                                  MIR_new_ref_op(ctx->context, ctx->gc_update_proto),
+                                                                  MIR_new_ref_op(ctx->context, ctx->gc_update_func),
+                                                                  MIR_new_reg_op(ctx->context, obj_reg),
+                                                                  MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset),
+                                                                  MIR_new_reg_op(ctx->context, value_reg)));
+                            } else {
+                                // the base is a struct
+
+                                // add the offset to the object base
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_insn(ctx->context, MIR_ADD,
+                                                             MIR_new_reg_op(ctx->context, obj_reg),
+                                                             MIR_new_reg_op(ctx->context, obj_reg),
+                                                             MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset)));
+
+                                // call the gc_update_ref write-barrier
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_call_insn(ctx->context, 5,
+                                                                  MIR_new_ref_op(ctx->context, ctx->gc_update_ref_proto),
+                                                                  MIR_new_ref_op(ctx->context, ctx->gc_update_ref_func),
+                                                                  MIR_new_reg_op(ctx->context, obj_reg),
+                                                                  MIR_new_reg_op(ctx->context, value_reg)));
+                            }
                         }
                     } break;
 
@@ -2420,24 +2458,44 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                     stfld_value_type:
                     case STACK_TYPE_VALUE_TYPE: {
-                        // get the type reference
-                        int typei = hmgeti(ctx->types, field_type);
-                        CHECK(typei != -1);
-                        MIR_item_t type_item = ctx->types[typei].value;
+                        if (arrlen(value_type->ManagedPointersOffsets) == 0) {
+                            // there are no managed pointers in the value type we are storing, so
+                            // we can do a normal memcpy no matter what
 
-                        // we are going to do a managed memcpy
-                        MIR_append_insn(ctx->context, ctx->func,
-                                        MIR_new_call_insn(ctx->context, 5,
-                                                          MIR_new_ref_op(ctx->context, ctx->managed_memcpy_proto),
-                                                          MIR_new_ref_op(ctx->context, ctx->managed_memcpy_func),
-                                                          MIR_new_reg_op(ctx->context, obj_reg),
-                                                          MIR_new_ref_op(ctx->context, type_item),
-                                                          MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset),
-                                                          MIR_new_reg_op(ctx->context, value_reg)));
+                            // add the offset to the object base
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_ADD,
+                                                         MIR_new_reg_op(ctx->context, obj_reg),
+                                                         MIR_new_reg_op(ctx->context, obj_reg),
+                                                         MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset)));
+
+                            // emit a memcpy
+                            jit_emit_memcpy(ctx, obj_reg, value_reg, value_type->StackSize);
+                        } else {
+                            // get the type reference
+                            int typei = hmgeti(ctx->types, field_type);
+                            CHECK(typei != -1);
+                            MIR_item_t type_item = ctx->types[typei].value;
+
+                            if (obj_type->StackType == STACK_TYPE_O) {
+                                // copying into a class, use the managed memcpy
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_call_insn(ctx->context, 5,
+                                                                  MIR_new_ref_op(ctx->context, ctx->managed_memcpy_proto),
+                                                                  MIR_new_ref_op(ctx->context, ctx->managed_memcpy_func),
+                                                                  MIR_new_reg_op(ctx->context, obj_reg),
+                                                                  MIR_new_ref_op(ctx->context, type_item),
+                                                                  MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset),
+                                                                  MIR_new_reg_op(ctx->context, value_reg)));
+                            } else {
+                                // copying into a managed pointer, use the managed ref memcpy
+                                CHECK_FAIL("TODO: managed_ref_memcpy");
+                            }
+                        }
                     } break;
 
                     case STACK_TYPE_REF: {
-                        CHECK_FAIL("TODO: wtf");
+                        CHECK_FAIL("There is no such thing as a ref-field");
                     } break;
                 }
             } break;
@@ -2447,6 +2505,14 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 System_Type obj_type;
                 MIR_reg_t obj_reg;
                 CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
+
+                // validate that the object type is a valid one for stfld
+                if (obj_type->StackType == STACK_TYPE_REF) {
+                    // this is a reference, so it has to be a reference to a value type
+                    CHECK(obj_type->BaseType->StackType == STACK_TYPE_VALUE_TYPE);
+                } else {
+                    CHECK(obj_type->StackType == STACK_TYPE_O || obj_type->StackType == STACK_TYPE_VALUE_TYPE);
+                }
 
                 // validate the field is part of the object
                 System_Type base = obj_type;
@@ -2472,7 +2538,9 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
 
                 // check the object is not null
-                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
+                if (obj_type->StackType == STACK_TYPE_O) {
+                    CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
+                }
 
                 switch (type_get_stack_type(field_type)) {
                     case STACK_TYPE_O: {
@@ -2530,7 +2598,50 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
-            // TODO: ldflda
+            case CEE_LDFLDA: {
+                // get the object instance
+                System_Type obj_type;
+                MIR_reg_t obj_reg;
+                CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
+
+                // validate that the object type is a valid one for ldfld
+                CHECK(obj_type->StackType == STACK_TYPE_O || obj_type->StackType == STACK_TYPE_REF);
+
+                // validate the field is part of the object
+                System_Type base = obj_type;
+                while (base != NULL && base != operand_field->DeclaringType) {
+                    base = base->BaseType;
+                }
+                CHECK(base != NULL);
+
+                // TODO: check accessibility
+
+                // TODO: does the runtime actually use ldfld for static fields?
+                CHECK(!field_is_static(operand_field));
+
+                // make sure the field is compatible
+                CHECK(type_is_compatible_with(obj_type, operand_field->DeclaringType));
+
+                // Get the field type
+                System_Type field_stack_type = get_by_ref_type(type_get_verification_type(operand_field->FieldType));
+                System_Type field_type = type_get_underlying_type(operand_field->FieldType);
+
+                // push it
+                MIR_reg_t value_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
+
+                // check the object is not null
+                if (obj_type->StackType == STACK_TYPE_O) {
+                    CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
+                }
+
+                // very simple, just add to the object the field offset
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_ADD,
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_reg_op(ctx->context, obj_reg),
+                                             MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset)));
+            } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Calls and Returns
@@ -2821,6 +2932,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_pop(ctx, &dest_type, &dest_reg));
 
                 CHECK(dest_type->IsByRef);
+                CHECK(dest_type->BaseType->StackType == STACK_TYPE_VALUE_TYPE);
                 CHECK(type_is_verifier_assignable_to(operand_type, dest_type->BaseType));
 
                 emit_zerofill(ctx, dest_reg, operand_type->StackSize);
@@ -3546,6 +3658,8 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
     jit_context_t ctx = {};
 
+    assembly_dump(assembly);
+
     // setup mir context
     ctx.context = MIR_init();
     CHECK(ctx.context != NULL);
@@ -3567,7 +3681,10 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     ctx.gc_update_proto = MIR_new_proto(ctx.context, "gc_update$proto", 0, NULL, 3, MIR_T_P, "o", MIR_T_U64, "idx", MIR_T_P, "new");
     ctx.gc_update_func = MIR_new_import(ctx.context, "gc_update");
 
-    ctx.managed_memcpy_proto = MIR_new_proto(ctx.context, "managed_memcpy$proto", 0, NULL, 3, MIR_T_P, "this", MIR_T_P, "struct_type", MIR_T_I32, "offset", MIR_T_P, "from");
+    ctx.gc_update_ref_proto = MIR_new_proto(ctx.context, "gc_update_ref$proto", 0, NULL, 2, MIR_T_P, "o", MIR_T_P, "new");
+    ctx.gc_update_ref_func = MIR_new_import(ctx.context, "gc_update_ref");
+
+    ctx.managed_memcpy_proto = MIR_new_proto(ctx.context, "managed_memcpy$proto", 0, NULL, 4, MIR_T_P, "this", MIR_T_P, "struct_type", MIR_T_I32, "offset", MIR_T_P, "from");
     ctx.managed_memcpy_func = MIR_new_import(ctx.context, "managed_memcpy");
 
     ctx.memcpy_proto = MIR_new_proto(ctx.context, "memcpy$proto", 0, NULL, 3, MIR_T_P, "dest", MIR_T_P, "src", MIR_T_U64, "count");

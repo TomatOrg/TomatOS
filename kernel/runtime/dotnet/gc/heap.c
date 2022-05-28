@@ -142,6 +142,14 @@ System_Object heap_find(uintptr_t ptr) {
     return NULL;
 }
 
+System_Object heap_find_fast(void* ptr) {
+    if (OBJECT_HEAP_START <= (uintptr_t)ptr && (uintptr_t)ptr < OBJECT_HEAP_END) {
+        size_t size = calc_object_size((uintptr_t)ptr);
+        return (System_Object)ALIGN_DOWN(ptr, size);
+    }
+    return NULL;
+}
+
 System_Object heap_alloc(size_t size, int color) {
     // check if we support this allocation
     if (size > SIZE_512MB) {
