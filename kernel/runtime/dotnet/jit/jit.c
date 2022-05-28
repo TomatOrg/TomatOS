@@ -127,7 +127,6 @@ void jit_dump_mir(System_Reflection_MethodInfo methodInfo) {
 static err_t jit_load_assembly(MIR_context_t old_context, MIR_module_t module, System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
 
-
     // we have finished the module, move it to the global context
     // load it, and jit it
     mutex_lock(&m_mir_mutex);
@@ -661,8 +660,17 @@ static err_t jit_compare(jit_context_t* ctx, MIR_insn_code_t code) {
 
     switch (type_get_stack_type(value1_type)) {
         case STACK_TYPE_INT32: {
-            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT32);
-            code += 1;
+            if (type_get_stack_type(value2_type) == STACK_TYPE_INT32) {
+                code += 1;
+            } else {
+                CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+
+                // sign extend to intptr
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_UEXT32,
+                                             MIR_new_reg_op(ctx->context, value1_reg),
+                                             MIR_new_reg_op(ctx->context, value1_reg)));
+            }
         } break;
 
         case STACK_TYPE_INT64: {
@@ -670,7 +678,15 @@ static err_t jit_compare(jit_context_t* ctx, MIR_insn_code_t code) {
         } break;
 
         case STACK_TYPE_INTPTR: {
-            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+            if (type_get_stack_type(value2_type) == STACK_TYPE_INT32) {
+                // sign extend to intptr
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_UEXT32,
+                                             MIR_new_reg_op(ctx->context, value2_reg),
+                                             MIR_new_reg_op(ctx->context, value2_reg)));
+            } else {
+                CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+            }
         } break;
 
         case STACK_TYPE_FLOAT: {
@@ -716,9 +732,12 @@ static err_t jit_compare(jit_context_t* ctx, MIR_insn_code_t code) {
             if (type_is_interface(value2_type)) CHECK_FAIL();
         } break;
 
+        case STACK_TYPE_REF: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_REF);
+        } break;
+
         // invalid comparisons
         case STACK_TYPE_VALUE_TYPE:
-        case STACK_TYPE_REF:
             CHECK_FAIL();
     }
 
@@ -832,18 +851,33 @@ static err_t jit_compare_branch(jit_context_t* ctx, MIR_insn_code_t code, int il
 
     switch (type_get_stack_type(value1_type)) {
         case STACK_TYPE_INT32: {
-            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT32);
-            code += 1;
+            if (type_get_stack_type(value2_type) == STACK_TYPE_INT32) {
+                code += 1;
+            } else {
+                CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+
+                // sign extend to intptr
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_UEXT32,
+                                             MIR_new_reg_op(ctx->context, value1_reg),
+                                             MIR_new_reg_op(ctx->context, value1_reg)));
+            }
         } break;
 
         case STACK_TYPE_INT64: {
             CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT64);
-            // nothing else to do
         } break;
 
         case STACK_TYPE_INTPTR: {
-            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
-            // nothing else to do
+            if (type_get_stack_type(value2_type) == STACK_TYPE_INT32) {
+                // sign extend to intptr
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_UEXT32,
+                                             MIR_new_reg_op(ctx->context, value2_reg),
+                                             MIR_new_reg_op(ctx->context, value2_reg)));
+            } else {
+                CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+            }
         } break;
 
         case STACK_TYPE_FLOAT: {
@@ -894,8 +928,11 @@ static err_t jit_compare_branch(jit_context_t* ctx, MIR_insn_code_t code, int il
             if (type_is_interface(value1_type)) CHECK_FAIL("TODO: compare object to interface");
         } break;
 
+        case STACK_TYPE_REF: {
+            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_REF);
+        } break;
+
         // compare not allowed on these types
-        case STACK_TYPE_REF:
         case STACK_TYPE_VALUE_TYPE:
             CHECK_FAIL();
     }
@@ -1174,7 +1211,7 @@ static err_t jit_oob_check(jit_context_t* ctx, int il_offset, MIR_reg_t array_re
 
     MIR_label_t not_oob = MIR_new_label(ctx->context);
     MIR_append_insn(ctx->context, ctx->func,
-                    MIR_new_insn(ctx->context, MIR_BLT,
+                    MIR_new_insn(ctx->context, MIR_UBLT,
                                  MIR_new_label_op(ctx->context, not_oob),
                                  MIR_new_reg_op(ctx->context, index_reg),
                                  MIR_new_mem_op(ctx->context, MIR_T_I32,
@@ -1187,7 +1224,7 @@ cleanup:
     return err;
 }
 
-static err_t jit_binary_numeric_operation(jit_context_t* ctx, int il_offset, MIR_insn_code_t code, bool integer) {
+static err_t jit_binary_numeric_operation(jit_context_t* ctx, int il_offset, MIR_insn_code_t code, bool integer_only) {
     err_t err = NO_ERROR;
 
     MIR_reg_t value2_reg;
@@ -1216,90 +1253,86 @@ static err_t jit_binary_numeric_operation(jit_context_t* ctx, int il_offset, MIR
     }
 
     MIR_reg_t result_reg;
-
     switch (type_get_stack_type(value1_type)) {
         case STACK_TYPE_INT32: {
-            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT32);
-            CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int32, &result_reg));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code + 1,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
+            if (type_get_stack_type(value2_type) == STACK_TYPE_INT32) {
+                // int32 x int32
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int32, &result_reg));
+                code += 1;
+            } else {
+                // int32 x intptr
+                CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_IntPtr, &result_reg));
+
+                // sign extend the int32 to intptr
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_UEXT32,
+                                             MIR_new_reg_op(ctx->context, value1_reg),
+                                             MIR_new_reg_op(ctx->context, value1_reg)));
+            }
         } break;
 
         case STACK_TYPE_INT64: {
+            // int64 x int64
             CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INT64);
             CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int64, &result_reg));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
         } break;
 
         case STACK_TYPE_INTPTR: {
-            CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
             CHECK_AND_RETHROW(stack_push(ctx, tSystem_IntPtr, &result_reg));
-            MIR_append_insn(ctx->context, ctx->func,
-                            MIR_new_insn(ctx->context, code,
-                                         MIR_new_reg_op(ctx->context, result_reg),
-                                         MIR_new_reg_op(ctx->context, value1_reg),
-                                         MIR_new_reg_op(ctx->context, value2_reg)));
+
+            if (type_get_stack_type(value2_type) == STACK_TYPE_INT32) {
+                // intptr x int32
+                // sign extend
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_UEXT32,
+                                             MIR_new_reg_op(ctx->context, value2_reg),
+                                             MIR_new_reg_op(ctx->context, value2_reg)));
+            } else {
+                // intptr x intptr
+                CHECK(type_get_stack_type(value2_type) == STACK_TYPE_INTPTR);
+            }
         } break;
 
         case STACK_TYPE_FLOAT: {
-            if (value1_type == tSystem_Single) {
-                CHECK(!integer);
+            // make sure this is not an integer only operation
+            CHECK(!integer_only);
 
+            if (value1_type == tSystem_Single) {
                 if (value2_type == tSystem_Single) {
                     // float x float -> float
                     CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code + 2,
-                                                 MIR_new_reg_op(ctx->context, result_reg),
-                                                 MIR_new_reg_op(ctx->context, value1_reg),
-                                                 MIR_new_reg_op(ctx->context, value2_reg)));
-                } else if (value2_type == tSystem_Double) {
-                    // (double)float x double -> double
+                    code += 2;
+                } else {
+                    CHECK(value2_type == tSystem_Double);
+
+                    // float x double
+                    // convert the float to a double
                     CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, MIR_F2D,
                                                  MIR_new_reg_op(ctx->context, result_reg),
                                                  MIR_new_reg_op(ctx->context, value1_reg)));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code + 3,
-                                                 MIR_new_reg_op(ctx->context, result_reg),
-                                                 MIR_new_reg_op(ctx->context, result_reg),
-                                                 MIR_new_reg_op(ctx->context, value2_reg)));
-                } else {
-                    CHECK_FAIL();
+                    value1_reg = result_reg;
+                    code += 3;
                 }
-            } else if (value1_type == tSystem_Double) {
-                CHECK(!integer);
+            } else {
+                CHECK(value1_type == tSystem_Double);
+
+                // this always results in a double math
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
+                code += 3;
 
                 if (value2_type == tSystem_Single) {
-                    // double x (double)float -> double
-                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &result_reg));
+                    // double x float
+                    // convert the float to a double
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, MIR_F2D,
                                                  MIR_new_reg_op(ctx->context, result_reg),
                                                  MIR_new_reg_op(ctx->context, value2_reg)));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code + 3,
-                                                 MIR_new_reg_op(ctx->context, result_reg),
-                                                 MIR_new_reg_op(ctx->context, value1_reg),
-                                                 MIR_new_reg_op(ctx->context, result_reg)));
-                } else if (value2_type == tSystem_Double) {
-                    // double x double -> double
-                    CHECK_AND_RETHROW(stack_push(ctx, tSystem_Double, &result_reg));
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, code + 3,
-                                                 MIR_new_reg_op(ctx->context, result_reg),
-                                                 MIR_new_reg_op(ctx->context, value1_reg),
-                                                 MIR_new_reg_op(ctx->context, value2_reg)));
+                    value2_reg = result_reg;
                 } else {
-                    CHECK_FAIL();
+                    CHECK(value2_type == tSystem_Double);
                 }
             }
         } break;
@@ -1310,6 +1343,12 @@ static err_t jit_binary_numeric_operation(jit_context_t* ctx, int il_offset, MIR
         case STACK_TYPE_REF:
             CHECK_FAIL();
     }
+
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_insn(ctx->context, code,
+                                 MIR_new_reg_op(ctx->context, result_reg),
+                                 MIR_new_reg_op(ctx->context, value1_reg),
+                                 MIR_new_reg_op(ctx->context, value2_reg)));
 
 cleanup:
     return err;
@@ -2358,13 +2397,13 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
 
                 // validate that the object type is a valid one for stfld
-                if (obj_type->StackType == STACK_TYPE_REF) {
+                if (type_get_stack_type(obj_type) == STACK_TYPE_REF) {
                     // this is a reference, so it has to be a reference to a value type
                     // note that we can't know if the value type is part of another class
                     // or not so we have to use gc_update_ref
-                    CHECK(obj_type->BaseType->StackType == STACK_TYPE_VALUE_TYPE);
+                    CHECK(type_get_stack_type(obj_type->BaseType) == STACK_TYPE_VALUE_TYPE);
                 } else {
-                    CHECK(obj_type->StackType == STACK_TYPE_O);
+                    CHECK(type_get_stack_type(obj_type) == STACK_TYPE_O);
                 }
 
                 // validate the field is part of the object
@@ -2384,7 +2423,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(!field_is_static(operand_field));
 
                 // check the object is not null
-                if (obj_type->StackType == STACK_TYPE_O) {
+                if (type_get_stack_type(obj_type) == STACK_TYPE_O) {
                     CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
                 }
 
@@ -2409,7 +2448,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                             }
                         } else {
                             // storing to an object from an object, use a write-barrier
-                            if (obj_type->StackType == STACK_TYPE_O) {
+                            if (type_get_stack_type(obj_type) == STACK_TYPE_O) {
                                 // the base is an object, call the gc_update write barrier
                                 MIR_append_insn(ctx->context, ctx->func,
                                                 MIR_new_call_insn(ctx->context, 5,
@@ -2493,7 +2532,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                             CHECK(typei != -1);
                             MIR_item_t type_item = ctx->types[typei].value;
 
-                            if (obj_type->StackType == STACK_TYPE_O) {
+                            if (type_get_stack_type(obj_type) == STACK_TYPE_O) {
                                 // copying into a class, use the managed memcpy
                                 MIR_append_insn(ctx->context, ctx->func,
                                                 MIR_new_call_insn(ctx->context, 5,
@@ -2537,11 +2576,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
 
                 // validate that the object type is a valid one for stfld
-                if (obj_type->StackType == STACK_TYPE_REF) {
+                if (type_get_stack_type(obj_type) == STACK_TYPE_REF) {
                     // this is a reference, so it has to be a reference to a value type
-                    CHECK(obj_type->BaseType->StackType == STACK_TYPE_VALUE_TYPE);
+                    CHECK(type_get_stack_type(obj_type->BaseType) == STACK_TYPE_VALUE_TYPE);
                 } else {
-                    CHECK(obj_type->StackType == STACK_TYPE_O || obj_type->StackType == STACK_TYPE_VALUE_TYPE);
+                    CHECK(type_get_stack_type(obj_type) == STACK_TYPE_O || type_get_stack_type(obj_type) == STACK_TYPE_VALUE_TYPE);
                 }
 
                 // validate the field is part of the object
@@ -2568,7 +2607,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
 
                 // check the object is not null
-                if (obj_type->StackType == STACK_TYPE_O) {
+                if (type_get_stack_type(obj_type) == STACK_TYPE_O) {
                     CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
                 }
 
@@ -2635,7 +2674,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
 
                 // validate that the object type is a valid one for ldfld
-                CHECK(obj_type->StackType == STACK_TYPE_O || obj_type->StackType == STACK_TYPE_REF);
+                CHECK(type_get_stack_type(obj_type) == STACK_TYPE_O || type_get_stack_type(obj_type) == STACK_TYPE_REF);
 
                 // validate the field is part of the object
                 System_Type base = obj_type;
@@ -2661,7 +2700,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
 
                 // check the object is not null
-                if (obj_type->StackType == STACK_TYPE_O) {
+                if (type_get_stack_type(obj_type) == STACK_TYPE_O) {
                     CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
                 }
 
@@ -2962,7 +3001,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK_AND_RETHROW(stack_pop(ctx, &dest_type, &dest_reg));
 
                 CHECK(dest_type->IsByRef);
-                CHECK(dest_type->BaseType->StackType == STACK_TYPE_VALUE_TYPE);
+                CHECK(type_get_stack_type(dest_type->BaseType) == STACK_TYPE_VALUE_TYPE);
                 CHECK(type_is_verifier_assignable_to(operand_type, dest_type->BaseType));
 
                 emit_zerofill(ctx, dest_reg, operand_type->StackSize);
@@ -3108,6 +3147,31 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, num_elems_reg)));
             } break;
 
+            case CEE_LDLEN: {
+                // get the number of elements
+                MIR_reg_t array_reg;
+                System_Type array_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &array_type, &array_reg));
+
+                // this must be an array
+                CHECK(array_type->IsArray);
+
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
+
+                // push the length
+                MIR_reg_t length_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_IntPtr, &length_reg));
+
+                // simply read the array's length
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, length_reg),
+                                             MIR_new_mem_op(ctx->context, MIR_T_I32,
+                                                            offsetof(struct System_Array, Length),
+                                                                    array_reg, 0, 1)));
+            } break;
+
             case CEE_STELEM_I1: operand_type = tSystem_SByte; goto cee_stelem;
             case CEE_STELEM_I2: operand_type = tSystem_Int16; goto cee_stelem;
             case CEE_STELEM_I4: operand_type = tSystem_Int32; goto cee_stelem;
@@ -3138,12 +3202,20 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     operand_type = array_type->ElementType;
                 }
 
-                // TODO: handle double->float and float->double implicit conversion
-
                 // validate all the type stuff
                 CHECK(type_is_array_element_compatible_with(value_type, type_get_intermediate_type(operand_type)));
                 CHECK(type_is_array_element_compatible_with(operand_type, array_type->ElementType));
-                CHECK(index_type == tSystem_Int32);
+
+                // only int32 and intptr are allowed
+                if (type_get_stack_type(index_type) == STACK_TYPE_INT32) {
+                    // sign extend to int64
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_EXT32,
+                                                 MIR_new_reg_op(ctx->context, index_reg),
+                                                 MIR_new_reg_op(ctx->context, index_reg)));
+                } else {
+                    CHECK(type_get_stack_type(index_type) == STACK_TYPE_INTPTR);
+                }
 
                 // check the object is not null
                 CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
@@ -3281,8 +3353,16 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     operand_type = array_type->ElementType;
                 }
 
-                // check the array type
-                CHECK(index_type == tSystem_Int32);
+                // only int32 and intptr are allowed
+                if (type_get_stack_type(index_type) == STACK_TYPE_INT32) {
+                    // sign extend to int64
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_EXT32,
+                                                 MIR_new_reg_op(ctx->context, index_reg),
+                                                 MIR_new_reg_op(ctx->context, index_reg)));
+                } else {
+                    CHECK(type_get_stack_type(index_type) == STACK_TYPE_INTPTR);
+                }
 
                 // check the object is not null
                 CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
@@ -3344,7 +3424,62 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
             } break;
 
-            // TODO: ldelema
+            case CEE_LDELEMA: {
+                // pop all the values from the stack
+                MIR_reg_t value_reg;
+                MIR_reg_t index_reg;
+                MIR_reg_t array_reg;
+                System_Type index_type;
+                System_Type array_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &index_type, &index_reg));
+                CHECK_AND_RETHROW(stack_pop(ctx, &array_type, &array_reg));
+
+                // this must be an array
+                CHECK(array_type->IsArray);
+
+                // for anything which is not ldelem.ref we know the operand_type
+                // from the array
+                CHECK(type_is_array_element_compatible_with(array_type->ElementType, operand_type));
+
+                // only int32 and intptr are allowed
+                if (type_get_stack_type(index_type) == STACK_TYPE_INT32) {
+                    // sign extend to int64
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_EXT32,
+                                                 MIR_new_reg_op(ctx->context, index_reg),
+                                                 MIR_new_reg_op(ctx->context, index_reg)));
+                } else {
+                    CHECK(type_get_stack_type(index_type) == STACK_TYPE_INTPTR);
+                }
+
+                // check the object is not null
+                CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, array_reg, array_type));
+
+                // check the array indexes
+                CHECK_AND_RETHROW(jit_oob_check(ctx, il_offset, array_reg, index_reg));
+
+                // push to the stack
+                CHECK_AND_RETHROW(stack_push(ctx, get_by_ref_type(type_get_intermediate_type(operand_type)), &value_reg));
+
+                // calculate the element reference offset
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MUL,
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_reg_op(ctx->context, index_reg),
+                                             MIR_new_int_op(ctx->context, operand_type->StackSize)));
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_ADD,
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_int_op(ctx->context, tSystem_Array->ManagedSize)));
+
+                // add the object base to the offset
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_ADD,
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_reg_op(ctx->context, value_reg),
+                                             MIR_new_reg_op(ctx->context, array_reg)));
+            } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
             // Branches
@@ -3408,11 +3543,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             case CEE_BEQ:
             case CEE_BEQ_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
             case CEE_BGE:
-            case CEE_BGE_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
+            case CEE_BGE_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BGE, il_offset, operand_i32)); break;
             case CEE_BLE:
-            case CEE_BLE_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
+            case CEE_BLE_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BLE, il_offset, operand_i32)); break;
             case CEE_BLT:
-            case CEE_BLT_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BEQ, il_offset, operand_i32)); break;
+            case CEE_BLT_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BLT, il_offset, operand_i32)); break;
             case CEE_BNE_UN:
             case CEE_BNE_UN_S: CHECK_AND_RETHROW(jit_compare_branch(ctx, MIR_BNE, il_offset, operand_i32)); break;
             case CEE_BGE_UN:
@@ -3687,8 +3822,6 @@ static void jit_import_type(jit_context_t* ctx, System_Type type) {
 err_t jit_assembly(System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
     jit_context_t ctx = {};
-
-    assembly_dump(assembly);
 
     // setup mir context
     ctx.context = MIR_init();
