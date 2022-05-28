@@ -5,34 +5,24 @@ namespace Pentagon;
 public class Kernel
 {
 
-    public struct A
+    public class A
     {
-        public int a;
-        public int b;
 
-        public int GetSum()
+        public A a;
+        
+        ~A()
         {
-            return a + b;
+            throw new Exception("Hello world!");
         }
+        
     }
     
     public static int Main()
     {
-        var arr = new A[10];
-
-        for (int i = 0; i < arr.Length; i++)
-        {
-            arr[i].a = i;
-            arr[i].b = i;
-        }
-
-        var sum = 0;
-        for (int i = 0; i < arr.Length; i++)
-        {
-            sum += arr[i].GetSum();
-        }
-
-        return sum;
+        var a = new A();
+        var b = new A();
+        a.a = b;
+        return 1;
     }
     
 }

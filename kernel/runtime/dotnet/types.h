@@ -78,7 +78,7 @@ struct System_Object {
 #define COLOR_GRAY      2   /* object that has been traced, but its children have not been traced yet */
 #define COLOR_BLACK     3   /* object that has been traced, and its children have been traced as well */
 #define COLOR_YELLOW    4   /* object that has not been traced (for color switching) */
-#define COLOR_GREEN     5   /* object that should be registered for finalization */
+#define COLOR_GREEN     5   /* object that should be finalized */
 #define COLOR_RESERVED0 6   /* reserved for future use */
 #define COLOR_RESERVED1 7   /* reserved for future use */
 

@@ -647,7 +647,13 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         // It needs to be done here as non-static fields in non-value types can point to
         // the containing type.
         if (type->StackSize == 0 && !type->IsValueType) {
-            type->StackSize = sizeof(void*);
+            if (type_is_interface(type)) {
+                type->StackSize = sizeof(void*) * 2;
+                type->StackAlignment = alignof(void*);
+            } else {
+                type->StackSize = sizeof(void*);
+                type->StackAlignment = alignof(void*);
+            }
         }
 
         // for non-static we have two steps, first resolve all the stack sizes, for ref types
@@ -666,7 +672,13 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                 CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
                 CHECK(fieldInfo->FieldType->StackSize != 0);
             } else {
-                fieldInfo->FieldType->StackSize = sizeof(void*);
+                if (type_is_interface(fieldInfo->FieldType)) {
+                    fieldInfo->FieldType->StackSize = sizeof(void*) * 2;
+                    fieldInfo->FieldType->StackAlignment = alignof(void*);
+                } else {
+                    fieldInfo->FieldType->StackSize = sizeof(void*);
+                    fieldInfo->FieldType->StackAlignment = alignof(void*);
+                }
             }
 
             if (field_is_literal(fieldInfo)) {

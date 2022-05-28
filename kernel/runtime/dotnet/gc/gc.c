@@ -106,10 +106,6 @@ static void gc_mark_gray(System_Object object) {
     ) {
         object->color = COLOR_GRAY;
         m_gc_has_gray_objects = true;
-    } else {
-        if (object != NULL && object->color == m_allocation_color) {
-            ASSERT(!"should have been marked!");
-        }
     }
 }
 
@@ -366,23 +362,48 @@ static void gc_trace() {
     gc_complete_trace();
 }
 
+static atomic_size_t m_objects_to_finalize = 0;
+
+static void gc_revive_finalized_objects(System_Object object) {
+    if (object->color == m_clear_color && !object->suppress_finalizer) {
+        // mark that no need for finalizer anymore
+        object->suppress_finalizer = 1;
+
+        // revive all the children
+        gc_mark_black(object);
+
+        // mark as a green object
+        object->color = COLOR_GREEN;
+
+        // we have another object to finalize
+        m_objects_to_finalize++;
+    }
+}
+
 static void gc_free_clear_objects(System_Object object) {
     if (object->color == m_clear_color) {
-        if (!object->suppress_finalizer) {
-            // the object has a finalizer that we need to run!
-            WARN("TODO: run finalizers, leaking memory right now");
-        }
-
+        // if this is still marked as clear color it means
+        // that it should not be alive for finalization
         heap_free(object);
     }
 }
 
 static void gc_sweep(bool full_collection) {
-    // we are going to free all the objects that have a clear color,
-    // so they can be used for allocations
+    // go over all the objects that should be freed but have a finalizer
+    heap_iterate_objects(gc_revive_finalized_objects);
+
+    // revive all these objects
+    gc_complete_trace();
+
+    // now free all the objects that don't need to stay alive anymore
     heap_iterate_objects(gc_free_clear_objects);
 
     if (full_collection) {
+        // if we do a full collection run the finalizers right now
+        if (gc_need_to_run_finalizers()) {
+            gc_run_finalizers();
+        }
+
         // in a full collection we are also going to reclaim memory back
         // from the collector to the pmm, this is a bit slower so only
         // done on full collection
@@ -398,6 +419,32 @@ static void gc_collection_cycle(bool full_collection) {
     gc_trace();
     gc_sweep(full_collection);
     m_gc_tracing = false;
+}
+
+static void gc_finalize(System_Object object) {
+    if (object->color != COLOR_GREEN) return;
+
+    m_objects_to_finalize--;
+
+    // get the finalizer function and run it
+    System_Exception(*finalize)(System_Object this) = object->vtable->type->Finalize->MirFunc->addr;
+    System_Exception exception = finalize(object);
+    if (exception != NULL) {
+        WARN("Got exception in finalizer: `%U`", exception->Message);
+    }
+
+    // we can now free this object, the rest will follow suite
+    heap_free(object);
+}
+
+void gc_run_finalizers() {
+    while (m_objects_to_finalize != 0) {
+        heap_iterate_objects(gc_finalize);
+    }
+}
+
+bool gc_need_to_run_finalizers() {
+    return m_objects_to_finalize != 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

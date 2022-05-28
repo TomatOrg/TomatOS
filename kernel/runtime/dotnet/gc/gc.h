@@ -93,6 +93,16 @@ void gc_update(void* o, size_t offset, void* new);
 void gc_update_ref(void* ptr, void* new);
 
 /**
+ * Run finalizers on the current thread until no finalizers are available
+ */
+void gc_run_finalizers();
+
+/**
+ * Should finalizers run right now
+ */
+bool gc_need_to_run_finalizers();
+
+/**
  * Update a pointer on the heap
  *
  * This is a wrapper around gc_update that takes a field name instead of raw offset
