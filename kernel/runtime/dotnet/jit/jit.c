@@ -499,6 +499,38 @@ cleanup:
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Codegen helpers
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+MIR_insn_code_t jit_number_cast_inscode(System_Type srctype, System_Type desttype) {
+    MIR_insn_code_t code = MIR_MOV;
+    if (srctype == tSystem_Single) {
+        if (desttype == tSystem_Double) {
+            code = MIR_F2D;
+        } else if (desttype == tSystem_Single) {
+            code = MIR_FMOV;
+        }
+    } else if (srctype == tSystem_Double) {
+        if (desttype == tSystem_Single) {
+            code = MIR_D2F;
+        } else if (desttype == tSystem_Double) {
+            code = MIR_DMOV;
+        }
+    }
+    return code;
+}
+
+MIR_insn_code_t jit_number_inscode(System_Type type) {
+    MIR_insn_code_t code = MIR_MOV;
+    if (type == tSystem_Single) {
+        code = MIR_FMOV;
+    } else if (type == tSystem_Double) {
+        code = MIR_DMOV;
+    }
+    return code;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Memory helpers
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -521,7 +553,7 @@ void jit_emit_memcpy(jit_context_t* ctx, MIR_reg_t dest, MIR_reg_t src, size_t c
     }
 }
 
-void emit_zerofill(jit_context_t* ctx, MIR_reg_t dest, size_t count) {
+void jit_emit_zerofill(jit_context_t* ctx, MIR_reg_t dest, size_t count) {
     if (count <= 32 && (count % 8) == 0) {
         for (size_t off = 0; off < count; off += 8) {
             MIR_append_insn(ctx->context, ctx->func,
@@ -1520,7 +1552,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, reg),
                                              MIR_new_double_op(ctx->context, 0.0)));
             } else {
-                emit_zerofill(ctx, reg, variable->LocalType->StackSize);
+                jit_emit_zerofill(ctx, reg, variable->LocalType->StackSize);
             }
         } else {
             // we can not verify non-initlocals methods, so we are not
@@ -2021,27 +2053,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     case STACK_TYPE_INTPTR:
                     case STACK_TYPE_FLOAT:
                     case STACK_TYPE_REF: {
-                        // handle implicit float casts, if it is invalid and doesn't
-                        // go to any of these it will simply fail in the verifier
-                        MIR_insn_code_t code = MIR_MOV;
-                        if (value_type == tSystem_Single) {
-                            if (variable_type == tSystem_Double) {
-                                // float->double
-                                code = MIR_F2D;
-                                value_type = variable_type;
-                            } else if (variable_type == tSystem_Single) {
-                                code = MIR_FMOV;
-                            }
-                        } else if (value_type == tSystem_Double) {
-                            if (variable_type == tSystem_Single) {
-                                // double->float
-                                code = MIR_D2F;
-                                value_type = variable_type;
-                            } else if (variable_type == tSystem_Double) {
-                                code = MIR_DMOV;
-                            }
-                        }
-
+                        MIR_insn_code_t code = jit_number_cast_inscode(value_type, variable_type);
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, code,
                                                      locals[operand_i32],
@@ -2088,14 +2100,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     case STACK_TYPE_INTPTR:
                     case STACK_TYPE_FLOAT:
                     case STACK_TYPE_REF: {
-                        // choose the mov operation
-                        MIR_insn_code_t code = MIR_MOV;
-                        if (value_type == tSystem_Single) {
-                            code = MIR_FMOV;
-                        } else if (value_type == tSystem_Double) {
-                            code = MIR_DMOV;
-                        }
-
+                        MIR_insn_code_t code = jit_number_inscode(value_type);
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, code,
                                                      MIR_new_reg_op(ctx->context, value_reg),
@@ -2225,14 +2230,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     case STACK_TYPE_INTPTR:
                     case STACK_TYPE_FLOAT:
                     case STACK_TYPE_REF: {
-                        // choose the mov operation
-                        MIR_insn_code_t code = MIR_MOV;
-                        if (arg_stack_type == tSystem_Single) {
-                            code = MIR_FMOV;
-                        } else if (arg_stack_type == tSystem_Double) {
-                            code = MIR_DMOV;
-                        }
-
+                        MIR_insn_code_t code = jit_number_inscode(arg_stack_type);
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, code,
                                                      MIR_new_reg_op(ctx->context, value_reg),
@@ -2346,14 +2344,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     case STACK_TYPE_INTPTR:
                     case STACK_TYPE_FLOAT:
                     case STACK_TYPE_REF: {
-                        // choose the mov operation
-                        MIR_insn_code_t code = MIR_MOV;
-                        if (top_type == tSystem_Single) {
-                            code = MIR_FMOV;
-                        } else if (top_type == tSystem_Double) {
-                            code = MIR_DMOV;
-                        }
-
+                        MIR_insn_code_t code = jit_number_inscode(top_type);
                         // normal value, copy the two regs
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, code,
@@ -2482,26 +2473,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     case STACK_TYPE_INT64:
                     case STACK_TYPE_INTPTR:
                     case STACK_TYPE_FLOAT: {
-                        // handle explicit float->double and double->float casts
-                        MIR_insn_code_t code = MIR_MOV;
-                        if (value_type == tSystem_Single) {
-                            if (field_type == tSystem_Double) {
-                                // float->double
-                                code = MIR_F2D;
-                                value_type = field_type;
-                            } else if (field_type == tSystem_Single) {
-                                code = MIR_FMOV;
-                            }
-                        } else if (value_type == tSystem_Double) {
-                            if (field_type == tSystem_Single) {
-                                // double->float
-                                code = MIR_D2F;
-                                value_type = field_type;
-                            } else if (field_type == tSystem_Double) {
-                                code = MIR_DMOV;
-                            }
-                        }
-
+                        MIR_insn_code_t code = jit_number_cast_inscode(value_type, field_type);
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, code,
                                                      MIR_new_mem_op(ctx->context,
@@ -2842,7 +2814,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                         if (this_type->IsValueType) {
                             // For a value type we just need to zero it out before calling the ctor
-                            emit_zerofill(ctx, this_reg, this_type->StackSize);
+                            jit_emit_zerofill(ctx, this_reg, this_type->StackSize);
                         } else {
                             // get the item for the allocation
                             int typei = hmgeti(ctx->types, operand_method->DeclaringType);
@@ -3004,7 +2976,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 CHECK(type_get_stack_type(dest_type->BaseType) == STACK_TYPE_VALUE_TYPE);
                 CHECK(type_is_verifier_assignable_to(operand_type, dest_type->BaseType));
 
-                emit_zerofill(ctx, dest_reg, operand_type->StackSize);
+                jit_emit_zerofill(ctx, dest_reg, operand_type->StackSize);
             } break;
 
             case CEE_RET: {
@@ -3281,26 +3253,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     case STACK_TYPE_INT64:
                     case STACK_TYPE_INTPTR:
                     case STACK_TYPE_FLOAT: {
-                        // handle explicit float->double and double->float casts
-                        MIR_insn_code_t code = MIR_MOV;
-                        if (value_type == tSystem_Single) {
-                            if (operand_type == tSystem_Double) {
-                                // float->double
-                                code = MIR_F2D;
-                                value_type = operand_type;
-                            } else if (operand_type == tSystem_Single) {
-                                code = MIR_FMOV;
-                            }
-                        } else if (value_type == tSystem_Double) {
-                            if (operand_type == tSystem_Single) {
-                                // double->float
-                                code = MIR_D2F;
-                                value_type = operand_type;
-                            } else if (operand_type == tSystem_Double) {
-                                code = MIR_DMOV;
-                            }
-                        }
-
+                        MIR_insn_code_t code = jit_number_cast_inscode(value_type, operand_type);
                         MIR_append_insn(ctx->context, ctx->func,
                                         MIR_new_insn(ctx->context, code,
                                                      MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
