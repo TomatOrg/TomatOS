@@ -364,6 +364,7 @@ System_Object heap_alloc(size_t size, int color) {
 exit:
     // set the color of the allocation
     if (allocated != NULL) {
+        memset(allocated, 0, size);
         allocated->color = color;
     }
 
