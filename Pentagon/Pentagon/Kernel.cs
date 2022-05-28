@@ -24,8 +24,10 @@ public class Kernel
     public static int Main()
     {
         var a = new A();
-        a.lol.a = 1;
-        a.lol.b = 2;
+        var lol = new A.Lol();
+        lol.a = 1;
+        lol.b = 2;
+        a.lol = lol;
         return a.GetSum();
     }
     

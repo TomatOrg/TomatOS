@@ -5,6 +5,7 @@
 #include "runtime/dotnet/gc/gc.h"
 #include "kernel.h"
 #include "runtime/dotnet/loader.h"
+#include "runtime/dotnet/gc/heap.h"
 
 #include <util/except.h>
 #include <util/stb_ds.h>
@@ -74,6 +75,17 @@ static void managed_memcpy(System_Object this, System_Type struct_type, int offs
     }
 }
 
+static void managed_ref_memcpy(void* base, System_Type struct_type, void* from) {
+//    uint8_t* this_base = (uint8_t*)this;
+    System_Object this = heap_find_fast(base);
+    if (this != NULL) {
+        managed_memcpy(this, struct_type, (uintptr_t)base - (uintptr_t)this, from);
+    } else {
+        // not on the heap, do simple memcpy
+        memcpy(base, from, struct_type->StackSize);
+    }
+}
+
 err_t init_jit() {
     err_t err = NO_ERROR;
 
@@ -90,6 +102,7 @@ err_t init_jit() {
     MIR_load_external(m_mir_context, "memcpy", memcpy_wrapper);
     MIR_load_external(m_mir_context, "memset", memset_wrapper);
     MIR_load_external(m_mir_context, "managed_memcpy", managed_memcpy);
+    MIR_load_external(m_mir_context, "managed_ref_memcpy", managed_ref_memcpy);
 
     MIR_load_external(m_mir_context, "[Corelib.dll]System.Object::GetType()", System_Object_GetType);
 
@@ -321,6 +334,9 @@ typedef struct jit_context {
 
     MIR_item_t managed_memcpy_proto;
     MIR_item_t managed_memcpy_func;
+
+    MIR_item_t managed_ref_memcpy_proto;
+    MIR_item_t managed_ref_memcpy_func;
 
     MIR_item_t get_array_type_proto;
     MIR_item_t get_array_type_func;
@@ -2488,8 +2504,22 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                                   MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset),
                                                                   MIR_new_reg_op(ctx->context, value_reg)));
                             } else {
+                                // add the offset to the object base
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_insn(ctx->context, MIR_ADD,
+                                                             MIR_new_reg_op(ctx->context, obj_reg),
+                                                             MIR_new_reg_op(ctx->context, obj_reg),
+                                                             MIR_new_int_op(ctx->context, (int)operand_field->MemoryOffset)));
+
                                 // copying into a managed pointer, use the managed ref memcpy
-                                CHECK_FAIL("TODO: managed_ref_memcpy");
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_call_insn(ctx->context, 5,
+                                                                  MIR_new_ref_op(ctx->context, ctx->managed_ref_memcpy_proto),
+                                                                  MIR_new_ref_op(ctx->context, ctx->managed_ref_memcpy_func),
+                                                                  MIR_new_reg_op(ctx->context, obj_reg),
+                                                                  MIR_new_ref_op(ctx->context, type_item),
+                                                                  MIR_new_reg_op(ctx->context, value_reg)));
+
                             }
                         }
                     } break;
@@ -3686,6 +3716,9 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
 
     ctx.managed_memcpy_proto = MIR_new_proto(ctx.context, "managed_memcpy$proto", 0, NULL, 4, MIR_T_P, "this", MIR_T_P, "struct_type", MIR_T_I32, "offset", MIR_T_P, "from");
     ctx.managed_memcpy_func = MIR_new_import(ctx.context, "managed_memcpy");
+
+    ctx.managed_ref_memcpy_proto = MIR_new_proto(ctx.context, "managed_ref_memcpy$proto", 0, NULL, 3, MIR_T_P, "this", MIR_T_P, "struct_type", MIR_T_P, "from");
+    ctx.managed_ref_memcpy_func = MIR_new_import(ctx.context, "managed_ref_memcpy");
 
     ctx.memcpy_proto = MIR_new_proto(ctx.context, "memcpy$proto", 0, NULL, 3, MIR_T_P, "dest", MIR_T_P, "src", MIR_T_U64, "count");
     ctx.memcpy_func = MIR_new_import(ctx.context, "memcpy");
