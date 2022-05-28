@@ -43,7 +43,7 @@ typedef struct System_Enum {
 } System_Enum;
 
 typedef bool System_Boolean;
-typedef wchar_t System_Char;
+typedef __CHAR16_TYPE__ System_Char;
 typedef int8_t System_SByte;
 typedef uint8_t System_Byte;
 typedef int16_t System_Int16;
@@ -115,7 +115,7 @@ DEFINE_ARRAY(System_Byte);
 typedef struct System_String {
     struct System_Object;
     int Length;
-    wchar_t Chars[];
+    System_Char Chars[];
 } *System_String;
 
 DEFINE_ARRAY(System_String);

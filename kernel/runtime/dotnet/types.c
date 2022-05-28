@@ -86,7 +86,7 @@ System_String string_append_cstr(System_String old, const char* str) {
 
     // copy the old chars
     System_String new = GC_NEW_STRING(old->Length + len);
-    memcpy(new->Chars, old->Chars, sizeof(wchar_t) * old->Length);
+    memcpy(new->Chars, old->Chars, sizeof(System_Char) * old->Length);
 
     // copy the new chars
     for (int i = 0; i < len; i++) {
