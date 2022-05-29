@@ -3,7 +3,6 @@
 #include "runtime/dotnet/opcodes.h"
 #include "runtime/dotnet/types.h"
 #include "runtime/dotnet/gc/gc.h"
-#include "kernel.h"
 #include "runtime/dotnet/loader.h"
 #include "runtime/dotnet/gc/heap.h"
 
@@ -76,7 +75,7 @@ static void managed_memcpy(System_Object this, System_Type struct_type, int offs
 }
 
 static void managed_ref_memcpy(void* base, System_Type struct_type, void* from) {
-//    uint8_t* this_base = (uint8_t*)this;
+    //uint8_t* this_base = (uint8_t*)this;
     System_Object this = heap_find_fast(base);
     if (this != NULL) {
         managed_memcpy(this, struct_type, (uintptr_t)base - (uintptr_t)this, from);
@@ -146,11 +145,10 @@ static err_t jit_load_assembly(MIR_context_t old_context, MIR_module_t module, S
     //
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
         System_Type type = assembly->DefinedTypes->Data[i];
-        FILE* name = fcreate();
-        type_print_full_name(type, name);
-        fputc('\0', name);
-        MIR_load_external(m_mir_context, name->buffer, type);
-        fclose(name);
+        strbuilder_t name = strbuilder_new();
+        type_print_full_name(type, &name);
+        MIR_load_external(m_mir_context, strbuilder_get(&name), type);
+        strbuilder_free(&name);
     }
 
     //
@@ -579,14 +577,12 @@ void jit_emit_zerofill(jit_context_t* ctx, MIR_reg_t dest, size_t count) {
 static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_MethodInfo method, bool external) {
     err_t err = NO_ERROR;
 
-    FILE* proto_name = fcreate();
-    method_print_full_name(method, proto_name);
-    fprintf(proto_name, "$proto");
-    fputc('\0', proto_name);
+    strbuilder_t proto_name = strbuilder_new();
+    method_print_full_name(method, &proto_name);
+    strbuilder_cstr(&proto_name, "$proto");
 
-    FILE* func_name = fcreate();
-    method_print_full_name(method, func_name);
-    fputc('\0', func_name);
+    strbuilder_t func_name = strbuilder_new();
+    method_print_full_name(method, &func_name);
 
     size_t nres = 1;
     MIR_type_t res_type[2] = {
@@ -638,20 +634,20 @@ static err_t prepare_method_signature(jit_context_t* ctx, System_Reflection_Meth
     }
 
     // create the proto def
-    MIR_item_t proto = MIR_new_proto_arr(ctx->context, proto_name->buffer, nres, res_type, arrlen(vars), vars);
+    MIR_item_t proto = MIR_new_proto_arr(ctx->context, strbuilder_get(&proto_name), nres, res_type, arrlen(vars), vars);
 
     // create a forward (only if this is a real method)
     MIR_item_t forward = NULL;
     if (!method_is_abstract(method)) {
         if (external || method_is_unmanaged(method) || method_is_internal_call(method)) {
             // import the method
-            forward = MIR_new_import(ctx->context, func_name->buffer);
+            forward = MIR_new_import(ctx->context, strbuilder_get(&func_name));
         } else {
             // create a forward
-            forward = MIR_new_forward(ctx->context, func_name->buffer);
+            forward = MIR_new_forward(ctx->context, strbuilder_get(&func_name));
 
             // export the method
-            MIR_new_export(ctx->context, func_name->buffer);
+            MIR_new_export(ctx->context, strbuilder_get(&func_name));
         }
     }
 
@@ -667,8 +663,8 @@ cleanup:
     arrfree(vars);
 
     // free the name
-    fclose(proto_name);
-    fclose(func_name);
+    strbuilder_free(&proto_name);
+    strbuilder_free(&func_name);
 
     return err;
 }
@@ -1449,9 +1445,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     System_Reflection_MethodBody body = method->MethodBody;
     System_Reflection_Assembly assembly = method->Module->Assembly;
 
-    FILE* method_name = fcreate();
-    method_print_full_name(method, method_name);
-    fputc('\0', method_name);
+    strbuilder_t method_name = strbuilder_new();
+    method_print_full_name(method, &method_name);
 
     // results
     size_t nres = 1;
@@ -1510,7 +1505,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
     }
 
     // Create the actual mir function
-    ctx->func = MIR_new_func_arr(ctx->context, method_name->buffer, nres, res_type, arrlen(vars), vars);
+    ctx->func = MIR_new_func_arr(ctx->context, strbuilder_get(&method_name), nres, res_type, arrlen(vars), vars);
     method->MirFunc = ctx->func;
 
     // Create the exception handling reg
@@ -3740,7 +3735,7 @@ cleanup:
     }
 
     // free the name of the method
-    fclose(method_name);
+    strbuilder_free(&method_name);
 
     // free the vars
     arrfree(vars);
@@ -3765,11 +3760,10 @@ static void jit_import_type(jit_context_t* ctx, System_Type type) {
         return;
     }
 
-    FILE* name = fcreate();
-    type_print_full_name(type, name);
-    fputc('\0', name);
-    hmput(ctx->types, type, MIR_new_import(ctx->context, name->buffer));
-    fclose(name);
+    strbuilder_t name = strbuilder_new();
+    type_print_full_name(type, &name);
+    hmput(ctx->types, type, MIR_new_import(ctx->context, strbuilder_get(&name)));
+    strbuilder_free(&name);
 }
 
 err_t jit_assembly(System_Reflection_Assembly assembly) {
@@ -3780,10 +3774,10 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     ctx.context = MIR_init();
     CHECK(ctx.context != NULL);
 
-    FILE* module_name = fcreate();
-    fprintf(module_name, "%U", assembly->Module->Name);
-    MIR_module_t mod = MIR_new_module(ctx.context, module_name->buffer);
-    fclose(module_name);
+    strbuilder_t module_name = strbuilder_new();
+    strbuilder_utf16(&module_name, assembly->Module->Name->Chars, assembly->Module->Name->Length);
+    MIR_module_t mod = MIR_new_module(ctx.context, strbuilder_get(&module_name));
+    strbuilder_free(&module_name);
     CHECK(mod != NULL);
 
     // setup special mir functions
@@ -3844,11 +3838,11 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     //
 
     for (int i = 0; i < hmlen(assembly->UserStringsTable); i++) {
-        FILE* name = fcreate();
-        fprintf(name, "string$%d", assembly->UserStringsTable[i].key);
-        fputc('\0', name);
-        hmput(ctx.strings, assembly->UserStringsTable[i].value, MIR_new_import(ctx.context, name->buffer));
-        fclose(name);
+        strbuilder_t name = strbuilder_new();
+        strbuilder_cstr(&name, "string$");
+        strbuilder_uint(&name, assembly->UserStringsTable[i].key);
+        hmput(ctx.strings, assembly->UserStringsTable[i].value, MIR_new_import(ctx.context, strbuilder_get(&name)));
+        strbuilder_free(&name);
     }
 
     //

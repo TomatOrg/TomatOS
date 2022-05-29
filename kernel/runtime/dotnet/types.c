@@ -1,12 +1,12 @@
 #include "types.h"
-#include "util/stb_ds.h"
 #include "opcodes.h"
 
 #include <runtime/dotnet/gc/gc.h>
-
-#include <util/string.h>
-
 #include <mem/mem.h>
+
+#include <util/stb_ds.h>
+#include <util/string.h>
+#include <util/strbuilder.h>
 
 System_Type tSystem_Enum = NULL;
 System_Type tSystem_Exception = NULL;
@@ -535,42 +535,44 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R) {
     return false;
 }
 
-void type_print_name(System_Type type, FILE* output) {
+void type_print_name(System_Type type, strbuilder_t* builder) {
     if (type->DeclaringType != NULL) {
-        type_print_name(type->DeclaringType, output);
-        fputc('+', output);
+        type_print_name(type->DeclaringType, builder);
+        strbuilder_char(builder, '+');
     } else {
         if (type->Namespace->Length > 0) {
-            fprintf(output, "%U.", type->Namespace);
+            strbuilder_utf16(builder, type->Namespace->Chars, type->Namespace->Length);
+            strbuilder_char(builder, '.');
         }
     }
-    fprintf(output, "%U", type->Name);
+    strbuilder_utf16(builder, type->Name->Chars, type->Name->Length);
 }
 
-void type_print_full_name(System_Type type, FILE* output) {
-    fputc('[', output);
-    fprintf(output, "%U", type->Module->Name);
-    fputc(']', output);
-    type_print_name(type, output);
+
+void type_print_full_name(System_Type type, strbuilder_t* builder) {
+    strbuilder_char(builder, '[');
+    strbuilder_utf16(builder, type->Module->Name->Chars, type->Module->Name->Length);
+    strbuilder_char(builder, ']');
+    type_print_name(type, builder);
 }
 
-void method_print_name(System_Reflection_MethodInfo method, FILE* output) {
-    fprintf(output, "%U", method->Name);
-    fputc('(', output);
+void method_print_name(System_Reflection_MethodInfo method, strbuilder_t* builder) {
+    strbuilder_utf16(builder, method->Name->Chars, method->Name->Length);
+    strbuilder_char(builder, '(');
     for (int i = 0; i < method->Parameters->Length; i++) {
-        type_print_full_name(method->Parameters->Data[i]->ParameterType, output);
+        type_print_full_name(method->Parameters->Data[i]->ParameterType, builder);
         if (i + 1 != method->Parameters->Length) {
-            fputc(',', output);
+            strbuilder_char(builder, ',');
         }
     }
-    fputc(')', output);
+    strbuilder_char(builder, ')');
 }
 
-void method_print_full_name(System_Reflection_MethodInfo method, FILE* output) {
-    type_print_full_name(method->DeclaringType, output);
-    fputc(':', output);
-    fputc(':', output);
-    method_print_name(method, output);
+void method_print_full_name(System_Reflection_MethodInfo method, strbuilder_t* builder) {
+    type_print_full_name(method->DeclaringType, builder);
+    strbuilder_char(builder, ':');
+    strbuilder_char(builder, ':');
+    method_print_name(method, builder);
 }
 
 System_Reflection_FieldInfo type_get_field_cstr(System_Type type, const char* name) {
@@ -625,26 +627,38 @@ bool isinstance(System_Object object, System_Type type) {
 }
 
 void assembly_dump(System_Reflection_Assembly assembly) {
-    TRACE("Assembly `%U`:", assembly->Module->Name);
+    strbuilder_t name = strbuilder_new();
+    strbuilder_utf16(&name, assembly->Module->Name->Chars, assembly->Module->Name->Length);
+    TRACE("Assembly `%s`:", strbuilder_get(&name));
+    strbuilder_free(&name);
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
         System_Type type = assembly->DefinedTypes->Data[i];
 
         printf("[*] \t%s %s ", type_visibility_str(type_visibility(type)), type_is_interface(type) ? "interface" : "class");
-        type_print_full_name(type, stdout);
+        strbuilder_t name = strbuilder_new();
+        type_print_full_name(type, &name);
         if (type->BaseType != NULL) {
-            printf(" : ");
-            type_print_full_name(type->BaseType, stdout);
+            strbuilder_cstr(&name, " : ");
+            type_print_full_name(type->BaseType, &name);
         }
-        printf("\r\n");
+        printf("%s\r\n", strbuilder_get(&name));
+        strbuilder_free(&name);
 
         for (int j = 0; j < type->Fields->Length; j++) {
-            TRACE("\t\t%s %s%U.%U %U; // offset 0x%02x",
-                  field_access_str(field_access(type->Fields->Data[j])),
-                  field_is_static(type->Fields->Data[j]) ? "static " : "",
-                  type->Fields->Data[j]->FieldType->Namespace,
-                  type->Fields->Data[j]->FieldType->Name,
-                  type->Fields->Data[j]->Name,
-                  type->Fields->Data[j]->MemoryOffset);
+            strbuilder_t field = strbuilder_new();
+            strbuilder_cstr(&field, field_access_str(field_access(type->Fields->Data[j])));
+            strbuilder_char(&field, ' ');
+            strbuilder_cstr(&field, field_is_static(type->Fields->Data[j]) ? "static " : "");
+            
+            strbuilder_utf16(&field, type->Fields->Data[j]->FieldType->Namespace->Chars, type->Fields->Data[j]->FieldType->Namespace->Length);
+            strbuilder_char(&field, '.');
+            strbuilder_utf16(&field, type->Fields->Data[j]->FieldType->Name->Chars, type->Fields->Data[j]->FieldType->Name->Length);
+            strbuilder_char(&field, ' ');
+            
+            strbuilder_utf16(&field, type->Fields->Data[j]->Name->Chars, type->Fields->Data[j]->Name->Length);
+            
+            TRACE("\t\t%s; // offset 0x%02x", strbuilder_get(&field), type->Fields->Data[j]->MemoryOffset);
+            strbuilder_free(&field);
         }
 
         for (int j = 0; j < type->Methods->Length; j++) {
@@ -652,33 +666,36 @@ void assembly_dump(System_Reflection_Assembly assembly) {
 
             printf("[*] \t\t");
 
+            strbuilder_t method = strbuilder_new();
+
             if (method_is_static(mi)) {
-                printf("static ");
+                strbuilder_cstr(&method, "static ");
             }
 
             if (method_is_abstract(mi)) {
-                printf("abstract ");
+                strbuilder_cstr(&method, "abstract ");
             }
 
             if (method_is_final(mi)) {
-                printf("final ");
+                strbuilder_cstr(&method, "final ");
             }
 
             if (method_is_virtual(mi)) {
-                printf("virtual[%d] ", mi->VTableOffset);
+                strbuilder_cstr(&method, "virtual[");
+                strbuilder_uint(&method, mi->VTableOffset);
+                strbuilder_cstr(&method, "] ");
             }
 
             if (mi->ReturnType == NULL) {
-                printf("void");
+                strbuilder_cstr(&method, "void");
             } else {
-                type_print_full_name(mi->ReturnType, stdout);
+                type_print_full_name(mi->ReturnType, &method);
             }
-            printf(" ");
-
-            method_print_full_name(mi, stdout);
-
-            printf("\r\n");
-
+            strbuilder_char(&method, ' ');
+            method_print_full_name(mi, &method);
+            printf("%s\r\n", strbuilder_get(&method));
+            strbuilder_free(&method);
+            
             if (
                 method_get_code_type(mi) == METHOD_IL &&
                 !method_is_unmanaged(mi) &&
@@ -688,8 +705,12 @@ void assembly_dump(System_Reflection_Assembly assembly) {
                 // handle locals
                 for (int li = 0; li < mi->MethodBody->LocalVariables->Length; li++) {
                     printf("[*] \t\t\t");
-                    type_print_full_name(mi->MethodBody->LocalVariables->Data[li]->LocalType, stdout);
-                    printf(" V_%d\r\n", mi->MethodBody->LocalVariables->Data[li]->LocalIndex);
+                    strbuilder_t local = strbuilder_new();
+                    type_print_full_name(mi->MethodBody->LocalVariables->Data[li]->LocalType, &local);
+                    strbuilder_cstr(&local, " V_");
+                    strbuilder_uint(&local, mi->MethodBody->LocalVariables->Data[li]->LocalIndex);
+                    printf("%s\r\n", strbuilder_get(&local));
+                    strbuilder_free(&local);
                 }
 
                 opcode_disasm_method(mi);

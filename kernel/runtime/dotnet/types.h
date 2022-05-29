@@ -11,6 +11,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#include <util/strbuilder.h>
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct System_Object *System_Object;
@@ -347,12 +349,12 @@ static inline bool method_is_rt_special_name(System_Reflection_MethodInfo method
 /**
  * Print the method name as<name>(<parameters>) <name>(<parameters>)
  */
-void method_print_name(System_Reflection_MethodInfo method, FILE* output);
+void method_print_name(System_Reflection_MethodInfo method, strbuilder_t* builder);
 
 /**
  * Print the full method name as [<assembly>]<namespace>.<class>[+<nested>]::<name>(<parameters>)
  */
-void method_print_full_name(System_Reflection_MethodInfo method, FILE* output);
+void method_print_full_name(System_Reflection_MethodInfo method, strbuilder_t* builder);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -475,12 +477,12 @@ System_Type get_by_ref_type(System_Type Type);
 /**
  * Print the type name as <namespace>.<class>[+<nested>]
  */
-void type_print_name(System_Type Type, FILE* output);
+void type_print_name(System_Type Type, strbuilder_t* builder);
 
 /**
  * Print the full name as [assembly]<namespace>.<class>[+<nested>]
  */
-void type_print_full_name(System_Type Type, FILE* output);
+void type_print_full_name(System_Type Type, strbuilder_t* builder);
 
 /**
  * Get a field by its name

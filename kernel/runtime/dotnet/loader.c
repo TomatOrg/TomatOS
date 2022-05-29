@@ -1388,6 +1388,10 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
     CHECK_AND_RETHROW(connect_nested_types(assembly, &metadata));
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
+#ifdef PENTAGON_DUMP_ASSEMBLIES
+    assembly_dump(assembly);
+#endif
+
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));
 
