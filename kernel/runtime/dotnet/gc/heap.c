@@ -713,7 +713,10 @@ static void heap_dump_callback(System_Object object) {
     if (object->vtable == NULL) {
         printf("<no vtable>");
     } else {
-        type_print_full_name(object->vtable->type, stdout);
+        strbuilder_t vtable = strbuilder_new();
+        type_print_full_name(object->vtable->type, &vtable);
+        printf("%s", strbuilder_get(&vtable));
+        strbuilder_free(&vtable);
     }
     printf(": %s", m_color_str[object->color]);
 
