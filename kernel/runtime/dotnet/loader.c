@@ -679,34 +679,32 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                 }
             }
 
-            if (field_is_literal(fieldInfo)) {
-                CHECK_FAIL("TODO: Handle literal or rva");
+            CHECK(!field_is_literal(fieldInfo));
+
+            // align the offset, set it, and then increment by the field size
+            managedSize = ALIGN_UP(managedSize, fieldInfo->FieldType->StackAlignment);
+            fieldInfo->MemoryOffset = managedSize;
+            managedSize += fieldInfo->FieldType->StackSize;
+            CHECK(managedSize > managedSizePrev, "Type size overflow! %d -> %d", managedSizePrev, managedSize);
+            managedSizePrev = managedSize;
+
+            // pointer offsets for gc
+            if (!fieldInfo->FieldType->IsValueType) {
+                // this is a normal reference type, just add the offset to us
+                arrpush(type->ManagedPointersOffsets, fieldInfo->MemoryOffset);
             } else {
-                // align the offset, set it, and then increment by the field size
-                managedSize = ALIGN_UP(managedSize, fieldInfo->FieldType->StackAlignment);
-                fieldInfo->MemoryOffset = managedSize;
-                managedSize += fieldInfo->FieldType->StackSize;
-                CHECK(managedSize > managedSizePrev, "Type size overflow! %d -> %d", managedSizePrev, managedSize);
-                managedSizePrev = managedSize;
-
-                // pointer offsets for gc
-                if (!fieldInfo->FieldType->IsValueType) {
-                    // this is a normal reference type, just add the offset to us
-                    arrpush(type->ManagedPointersOffsets, fieldInfo->MemoryOffset);
-                } else {
-                    // for value types we are essentially embedding them in us, so we are
-                    // going to just copy all the offsets from them and add their base to
-                    // our offsets
-                    int* offsets = arraddnptr(type->ManagedPointersOffsets, arrlen(fieldInfo->FieldType->ManagedPointersOffsets));
-                    for (int j = 0; j < arrlen(fieldInfo->FieldType->ManagedPointersOffsets); j++, offsets++) {
-                        int offset = fieldInfo->FieldType->ManagedPointersOffsets[j];
-                        *offsets = (int)fieldInfo->MemoryOffset + offset;
-                    }
+                // for value types we are essentially embedding them in us, so we are
+                // going to just copy all the offsets from them and add their base to
+                // our offsets
+                int* offsets = arraddnptr(type->ManagedPointersOffsets, arrlen(fieldInfo->FieldType->ManagedPointersOffsets));
+                for (int j = 0; j < arrlen(fieldInfo->FieldType->ManagedPointersOffsets); j++, offsets++) {
+                    int offset = fieldInfo->FieldType->ManagedPointersOffsets[j];
+                    *offsets = (int)fieldInfo->MemoryOffset + offset;
                 }
-
-                // set new type alignment
-                managedAlignment = MAX(managedAlignment, fieldInfo->FieldType->StackAlignment);
             }
+
+            // set new type alignment
+            managedAlignment = MAX(managedAlignment, fieldInfo->FieldType->StackAlignment);
         }
 
         // lastly align the whole size to the struct alignment
