@@ -37,7 +37,7 @@ CFLAGS 		+= -fms-extensions -Wno-microsoft-anon-tag
 CFLAGS		+= -Wno-unused-command-line-argument
 
 # General dependencies
-# printf: ignored in hosted builds
+# printf
 CFLAGS		+= -DPRINTF_NTOA_BUFFER_SIZE=64
 CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_EXPONENTIAL
 # unicode converter
@@ -56,6 +56,7 @@ HOSTED_CFLAGS	:= $(CFLAGS)
 HOSTED_CFLAGS 	+= -DPENTAGON_HOSTED -DPENTAGON_DUMP_ASSEMBLIES
 HOSTED_SRCS 	:= $(SRCS)
 HOSTED_SRCS 	+= $(shell find kernel/runtime -type f \( -iname "*.c" ! -iname "heap.c" ! -iname "gc.c" \))
+HOSTED_SRCS		+= kernel/util/printf.c
 HOSTED_SRCS		+= kernel/util/stb_ds.c
 HOSTED_SRCS		+= kernel/util/strbuilder.c
 HOSTED_SRCS		+= kernel/hosted/main.c
