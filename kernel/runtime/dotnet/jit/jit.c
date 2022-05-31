@@ -2702,6 +2702,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // count the amount of arguments, +1 if we have a this
                 int arg_count = operand_method->Parameters->Length;
+                bool aggressive_inlining = method_is_aggressive_inlining(operand_method);
+
 
                 // TODO: the method must be accessible from the call size.
                 // TODO: throw unconditional System.MethodAccessException
@@ -2946,13 +2948,13 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     // just work out because of how we have the order of everything :)
                     arg_ops[3] = MIR_new_reg_op(ctx->context, ret_reg);
                     MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn_arr(ctx->context, MIR_CALL,
+                                    MIR_new_insn_arr(ctx->context, aggressive_inlining ? MIR_INLINE : MIR_CALL,
                                                      other_args + arg_count,
                                                      arg_ops));
                 } else {
                     // Does not have a return argument, no need to handle
                     MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn_arr(ctx->context, MIR_CALL,
+                                    MIR_new_insn_arr(ctx->context, aggressive_inlining ? MIR_INLINE : MIR_CALL,
                                                      other_args + arg_count,
                                                      arg_ops));
                 }

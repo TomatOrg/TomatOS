@@ -581,13 +581,18 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                     // this is a newslot, always allocate a new slot
                     methodInfo->VTableOffset = virtualOfs++;
                 } else {
-                    System_Reflection_MethodInfo overriden = find_method_by_signature(type->BaseType, methodInfo);
-                    if (overriden == NULL) {
+                    System_Reflection_MethodInfo overridden = find_method_by_signature(type->BaseType, methodInfo);
+                    if (overridden == NULL) {
                         // The base method was not found, just allocate a new slot per the spec.
                         methodInfo->VTableOffset = virtualOfs++;
                     } else {
-                        CHECK(method_is_virtual(overriden));
-                        CHECK(method_is_final(overriden));
+                        if (method_is_strict(overridden)) {
+                            CHECK_FAIL("TODO: handle strict");
+                        }
+
+                        // should be a virtual method which can be overridden
+                        CHECK(method_is_virtual(overridden));
+                        CHECK(!method_is_final(overridden));
                     }
                 }
             } else {
@@ -808,20 +813,18 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
 
                 int lastOffset = -1;
                 for (int vi = 0; vi < interface->VirtualMethods->Length; vi++) {
-                    System_Reflection_MethodInfo overriden = find_method_by_signature(type,
-                                                                                      interface->VirtualMethods->Data[vi]);
-                    CHECK(overriden != NULL);
-                    CHECK(method_is_virtual(overriden));
-                    CHECK(method_is_final(overriden));
+                    System_Reflection_MethodInfo implementation = find_method_by_signature(type, interface->VirtualMethods->Data[vi]);
+                    CHECK(implementation != NULL);
+                    CHECK(method_is_virtual(implementation));
 
                     // resolve/verify the offset is sequential
                     if (lastOffset == -1) {
-                        lastOffset = overriden->VTableOffset;
+                        lastOffset = implementation->VTableOffset;
                         interfaceImpl->VTableOffset = lastOffset;
                     } else {
-                        CHECK(lastOffset == overriden->VTableOffset - 1);
+                        CHECK(lastOffset == implementation->VTableOffset - 1);
                     }
-                    lastOffset = overriden->VTableOffset;
+                    lastOffset = implementation->VTableOffset;
                 }
             }
         }

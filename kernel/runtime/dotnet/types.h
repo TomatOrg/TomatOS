@@ -326,6 +326,7 @@ typedef enum method_code_type {
 } method_code_type_t;
 
 static inline method_code_type_t method_get_code_type(System_Reflection_MethodInfo method) { return (method_code_type_t)(method->ImplAttributes & 0x0003); }
+static inline bool method_is_aggressive_inlining(System_Reflection_MethodInfo method) { return method->ImplAttributes & 256; }
 static inline bool method_is_unmanaged(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0004; }
 static inline bool method_is_forward_ref(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0010; }
 static inline bool method_is_preserve_sig(System_Reflection_MethodInfo method) { return method->ImplAttributes & 0x0080; }
