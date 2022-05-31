@@ -432,7 +432,7 @@ cleanup:
     #define TRACE_FILL_TYPE(...)
 #endif
 
-static System_Reflection_MethodInfo find_override_method(System_Type type, System_Reflection_MethodInfo method) {
+static System_Reflection_MethodInfo find_method_by_signature(System_Type type, System_Reflection_MethodInfo method) {
     while (type != NULL) {
         // TODO: search MethodImpl table
 
@@ -581,7 +581,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                     // this is a newslot, always allocate a new slot
                     methodInfo->VTableOffset = virtualOfs++;
                 } else {
-                    System_Reflection_MethodInfo overriden = find_override_method(type->BaseType, methodInfo);
+                    System_Reflection_MethodInfo overriden = find_method_by_signature(type->BaseType, methodInfo);
                     if (overriden == NULL) {
                         // The base method was not found, just allocate a new slot per the spec.
                         methodInfo->VTableOffset = virtualOfs++;
@@ -590,6 +590,9 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                         CHECK(method_is_final(overriden));
                     }
                 }
+            } else {
+                // make sure there isn't another method with this signature
+                CHECK(find_method_by_signature(type, methodInfo) == NULL);
             }
 
             // for interfaces all methods need to be abstract
@@ -662,11 +665,6 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             System_Reflection_FieldInfo fieldInfo = type->Fields->Data[i];
             if (field_is_static(fieldInfo)) continue;
 
-            if (type_is_generic_type(type)) {
-                // Clone the type?
-                CHECK_FAIL("TODO: Handle generic instantiation");
-            }
-
             // Fill it
             if (unprimed_is_value_type(fieldInfo->FieldType)) {
                 CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
@@ -709,23 +707,6 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                 // set new type alignment
                 managedAlignment = MAX(managedAlignment, fieldInfo->FieldType->StackAlignment);
             }
-
-            if (type_is_enum(type)) {
-                if (string_equals_cstr(fieldInfo->Name, "value__")) {
-                    // must be an integer type
-                    CHECK(type_is_integer(fieldInfo->FieldType));
-                    type->ElementType = fieldInfo->FieldType;
-                    if (fieldInfo->FieldType == tSystem_IntPtr || fieldInfo->FieldType == tSystem_UIntPtr) {
-                        type ->StackType = STACK_TYPE_INTPTR;
-                    } else if (fieldInfo->FieldType == tSystem_Int64 || fieldInfo->FieldType == tSystem_UInt64) {
-                        type ->StackType = STACK_TYPE_INT64;
-                    } else {
-                        type ->StackType = STACK_TYPE_INT32;
-                    }
-                } else {
-                    CHECK_FAIL("enum should only have a single instance field named value__");
-                }
-            }
         }
 
         // lastly align the whole size to the struct alignment
@@ -755,11 +736,6 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         for (int i = 0; i < type->Fields->Length; i++) {
             System_Reflection_FieldInfo fieldInfo = type->Fields->Data[i];
 
-            if (type_is_generic_type(type)) {
-                // Clone the type?
-                CHECK_FAIL("TODO: Handle generic instantiation");
-            }
-
             // Fill it
             CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
         }
@@ -775,24 +751,33 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         for (int i = 0; i < type->Methods->Length; i++) {
             System_Reflection_MethodInfo methodInfo = type->Methods->Data[i];
 
-            if (type_is_generic_type(type)) {
-                // Setup this properly
-                CHECK_FAIL("TODO: Handle generic instantiation");
-            }
-
-            if (method_is_rt_special_name(methodInfo)) {
-                // TODO: .ctor
-                // TODO: .cctor
-            }
-
-            // for performance reason we are not going to have every method have a finalizer
-            // but instead we are going to have it virtually virtual
-            if (string_equals_cstr(methodInfo->Name, "Finalize")) {
-                // check the signature
-                if (methodInfo->ReturnType == NULL && methodInfo->Parameters->Length == 0) {
-                    CHECK(type->Finalize == NULL);
-                    GC_UPDATE(type, Finalize, methodInfo);
+            // handle special methods
+            if (string_equals_cstr(methodInfo->Name, ".cctor")) {
+                CHECK(method_is_rt_special_name(methodInfo));
+                CHECK(method_is_special_name(methodInfo));
+                CHECK(method_is_static(methodInfo));
+                CHECK(methodInfo->Parameters->Length == 0);
+                CHECK(methodInfo->ReturnType == NULL);
+                CHECK(type->StaticCtor != NULL);
+                type->StaticCtor = methodInfo;
+            } else if (string_equals_cstr(methodInfo->Name, ".ctor")) {
+                CHECK(method_is_rt_special_name(methodInfo));
+                CHECK(method_is_special_name(methodInfo));
+                CHECK(!method_is_static(methodInfo));
+                CHECK(methodInfo->ReturnType == NULL);
+            } else {
+                if (string_equals_cstr(methodInfo->Name, "Finalize")) {
+                    // for performance reason we are not going to have every method have a finalizer
+                    // but instead we are going to have it virtually virtual
+                    if (methodInfo->ReturnType == NULL && methodInfo->Parameters->Length == 0) {
+                        CHECK(type->Finalize == NULL);
+                        GC_UPDATE(type, Finalize, methodInfo);
+                    }
                 }
+
+                // the rest should not be marked rtspecialname (we can have specialname
+                // since Properties use it for example)
+                CHECK(!method_is_rt_special_name(methodInfo));
             }
         }
 
@@ -825,7 +810,8 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
 
                 int lastOffset = -1;
                 for (int vi = 0; vi < interface->VirtualMethods->Length; vi++) {
-                    System_Reflection_MethodInfo overriden = find_override_method(type, interface->VirtualMethods->Data[vi]);
+                    System_Reflection_MethodInfo overriden = find_method_by_signature(type,
+                                                                                      interface->VirtualMethods->Data[vi]);
                     CHECK(overriden != NULL);
                     CHECK(method_is_virtual(overriden));
                     CHECK(method_is_final(overriden));
@@ -862,6 +848,24 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             type->ManagedSize = sizeof(void*);
             type->ManagedAlignment = alignof(void*);
             type->ManagedPointersOffsets = interface_pointers;
+        }
+
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        // Finally check special runtime types
+        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        if (type_is_enum(type)) {
+            // for enum types we need to get the underlying type
+            for (int i = 0; i < type->Fields->Length; i++) {
+                System_Reflection_FieldInfo field = type->Fields->Data[i];
+                if (!field_is_static(field)) {
+                    CHECK(string_equals_cstr(field->Name, "value__"));
+                    CHECK(type_is_integer(field->FieldType));
+                    type->ElementType = field->FieldType;
+                } else {
+                    CHECK(field_is_literal(field));
+                }
+            }
         }
 
     } else {

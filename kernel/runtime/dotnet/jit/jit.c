@@ -2408,6 +2408,12 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 //       in theory CIL allows that, but I think I won't for simplicity
                 CHECK(!field_is_static(operand_field));
 
+                // if this is an init-only field then make sure that
+                // only rtspecialname can access it (.ctor and .cctor)
+                if (field_is_init_only(operand_field)) {
+                    CHECK(method_is_rt_special_name(method));
+                }
+
                 // check the object is not null
                 if (type_get_stack_type(obj_type) == STACK_TYPE_O) {
                     CHECK_AND_RETHROW(jit_null_check(ctx, il_offset, obj_reg, obj_type));
@@ -2700,7 +2706,12 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // TODO: the method must be accessible from the call size.
                 // TODO: throw unconditional System.MethodAccessException
 
-                if (opcode == CEE_CALLVIRT || opcode == CEE_NEWOBJ) {
+                if (opcode == CEE_NEWOBJ) {
+                    // newobj must call a ctor, we verify that ctors are good
+                    // in the loader
+                    CHECK(method_is_rt_special_name(operand_method));
+                    CHECK(string_equals_cstr(operand_method->Name, ".ctor"));
+                } else if (opcode == CEE_CALLVIRT) {
                     // callvirt must call an instance methods
                     CHECK(!method_is_static(operand_method));
                 } else {

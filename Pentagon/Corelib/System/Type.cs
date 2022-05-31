@@ -31,6 +31,7 @@ namespace System
         private int _stackAlignment;
         private unsafe void* _vtable;
         private int _stackType;
+        private MethodInfo _staticCtor;
         
         private InterfaceImpl[] _interfaceImpl;
         

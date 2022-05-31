@@ -422,6 +422,7 @@ struct System_Type {
     int StackAlignment;
     object_vtable_t* VTable;
     stack_type_t StackType;
+    System_Reflection_MethodInfo StaticCtor;
 
     Pentagon_Reflection_InterfaceImpl_Array InterfaceImpls;
 
