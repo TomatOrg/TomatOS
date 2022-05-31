@@ -304,24 +304,40 @@ static void gc_mark_global_roots() {
     // get all the app domains and iterate all their assemblies and stuff
 }
 
+static void gc_mark_fields_gray(void* base, System_Type type) {
+    for (int i = 0; i < arrlen(type->ManagedPointersOffsets); i++) {
+        gc_mark_gray(read_field(base, type->ManagedPointersOffsets[i]));
+    }
+}
+
 static void gc_mark_black(System_Object object) {
     System_Type type = object->vtable->type;
 
     // mark all the children as gray
-    if (type->IsArray && !type->ElementType->IsValueType) {
+    if (type->IsArray) {
         // array object, mark all the items
         System_Array array = (System_Array) object;
-        for (int i = 0; i < array->Length; i++) {
-            size_t offset = sizeof(struct System_Array) + i * sizeof(void *);
-            gc_mark_gray(read_field(object, offset));
+        System_Type elementType = type->ElementType;
+
+        if (elementType->IsValueType && arrlen(elementType->ManagedPointersOffsets) != 0) {
+            // this is an array of structs that have managed values, so we need to iterate each
+            // of the items and read all the pointers
+            for (int i = 0; i < array->Length; i++) {
+                size_t offset = sizeof(struct System_Array) + i * elementType->StackSize;
+                gc_mark_fields_gray(read_field(object, offset), elementType);
+            }
+        } else {
+            // this is an array of pointers
+            for (int i = 0; i < array->Length; i++) {
+                size_t offset = sizeof(struct System_Array) + i * sizeof(void *);
+                gc_mark_gray(read_field(object, offset));
+            }
         }
     } else {
         // for normal objects iterate the managed pointer offsets, which
         // essentially contains all the offsets for all the pointers in
         // the object
-        for (int i = 0; i < arrlen(object->vtable->type->ManagedPointersOffsets); i++) {
-            gc_mark_gray(read_field(object, object->vtable->type->ManagedPointersOffsets[i]));
-        }
+        gc_mark_fields_gray(object, type);
     }
 
     // don't forget about the Type object
