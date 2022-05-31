@@ -1099,6 +1099,25 @@ cleanup:
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// invoke all the cctors
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static err_t loader_run_cctors(System_Reflection_Assembly assembly) {
+    err_t err = NO_ERROR;
+
+    for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
+        System_Type type = assembly->DefinedTypes->Data[i];
+        if (type->StaticCtor != NULL) {
+            void (*cctor)() = type->StaticCtor->MirFunc->addr;
+            cctor();
+        }
+    }
+
+cleanup:
+    return err;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // corelib is a bit different so load it as needed
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1189,6 +1208,8 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     // save this
     g_corelib = assembly;
     gc_add_root(&g_corelib);
+
+    CHECK_AND_RETHROW(loader_run_cctors(assembly));
 
 cleanup:
     free_metadata(&metadata);
@@ -1398,6 +1419,8 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
 
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));
+
+    CHECK_AND_RETHROW(loader_run_cctors(assembly));
 
     // get the entry point
     GC_UPDATE(assembly, EntryPoint, assembly_get_method_by_token(assembly, file.cli_header->entry_point_token));
