@@ -3766,6 +3766,11 @@ static void jit_import_type(jit_context_t* ctx, System_Type type) {
     strbuilder_free(&name);
 }
 
+static const char* m_allowed_internal_call_assemblies[] = {
+    "Corelib.dll",
+    "Pentagon.dll"
+};
+
 err_t jit_assembly(System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
     jit_context_t ctx = {};
@@ -3868,12 +3873,36 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
         for (int mi = 0; mi < type->Methods->Length; mi++) {
             System_Reflection_MethodInfo method = type->Methods->Data[mi];
 
-            if (
-                !method_is_internal_call(method) &&
-                !method_is_unmanaged(method) &&
-                !method_is_abstract(method)
-            ) {
-                CHECK_AND_RETHROW(jit_method(&ctx, method));
+            // nothing to generate in abstract methods
+            if (method_is_abstract(method)) {
+                continue;
+            }
+
+            CHECK(!method_is_unmanaged(method));
+
+            if (method_get_code_type(method) == METHOD_RUNTIME) {
+                CHECK_FAIL("TODO: runtime methods");
+            } else if (method_get_code_type(method) == METHOD_IL) {
+                if (method_is_internal_call(method)) {
+                    // internal methods have no body
+                    CHECK(method->MethodBody == NULL);
+
+                    // only the corelib is allowed to have internal methods
+                    bool found = false;
+                    for (int i = 0; i < ARRAY_LEN(m_allowed_internal_call_assemblies); i++) {
+                        if (string_equals_cstr(method->Module->Name, m_allowed_internal_call_assemblies[i])) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    CHECK(found, "Assembly `%U` is not allowed to have internal calls", method->Module->Name);
+
+                    // TODO: if we need any special ones do it here
+                } else {
+                    CHECK_AND_RETHROW(jit_method(&ctx, method));
+                }
+            } else {
+                CHECK_FAIL();
             }
         }
     }
