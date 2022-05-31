@@ -909,38 +909,10 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         break;
       }
 
-      case 'W' : {
-        const wchar_t* p = va_arg(va, wchar_t*);
-        if (p == NULL) {
-            p = L"(null)";
-        }
-        unsigned int l = _wstrnlen_s(p, precision ? precision : (size_t)-1);
-        // pre padding
-        if (flags & FLAGS_PRECISION) {
-          l = (l < precision ? l : precision);
-        }
-        if (!(flags & FLAGS_LEFT)) {
-          while (l++ < width) {
-            out(' ', buffer, idx++, maxlen);
-          }
-        }
-        // string output
-        while ((*p != L'\0') && (!(flags & FLAGS_PRECISION) || precision--)) {
-          out((char)*(p++), buffer, idx++, maxlen);
-        }
-        // post padding
-        if (flags & FLAGS_LEFT) {
-          while (l++ < width) {
-            out(' ', buffer, idx++, maxlen);
-          }
-        }
-        format++;
-        break;
-      }
 
         case 'U' : {
             const System_String str = va_arg(va, System_String);
-            const wchar_t* p = NULL;
+            const System_Char* p = NULL;
             unsigned int l = 0;
 
             if (str == NULL) {
@@ -991,7 +963,11 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
 
       case 'P': {
           uintptr_t value = ((uintptr_t)va_arg(va, void*));
+          #ifdef PENTAGON_HOSTED
+          symbol_t* symbol = NULL;
+          #else
           symbol_t* symbol = debug_lookup_symbol(value);
+          #endif
           if (symbol == NULL || value - symbol->address != 0) {
               width = sizeof(void*) * 2U;
               flags |= FLAGS_ZEROPAD | FLAGS_UPPERCASE;

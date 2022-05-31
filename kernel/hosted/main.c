@@ -28,24 +28,10 @@ size_t corelib_file_size, kernel_file_size;
 
 #define TRACE(fmt, ...) printf("[*] " fmt "\r\n", ## __VA_ARGS__)
 
-int printf_(char const *fmt, ...) {
-    va_list arg;
-    int length;
-
-    va_start(arg, fmt);
-    length = vprintf(fmt, arg);
-    va_end(arg);
-    return length;
+void _putchar(char character) {
+    putchar(character);
 }
-int snprintf_(char *str, size_t n, char const *fmt, ...) {
-    va_list arg;
-    int length;
 
-    va_start(arg, fmt);
-    length = vsnprintf(str, n, fmt, arg);
-    va_end(arg);
-    return length;
-}
 
 #include <runtime/dotnet/loader.h>
 #include <runtime/dotnet/jit/jit.h>
