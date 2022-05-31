@@ -6,8 +6,8 @@
 #include <sync/conditional.h>
 #include <sync/wait_group.h>
 
-#include <proc/scheduler.h>
-#include <proc/thread.h>
+#include <thread/scheduler.h>
+#include <thread/thread.h>
 
 #include <util/stb_ds.h>
 #include "time/timer.h"

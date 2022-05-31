@@ -3,18 +3,19 @@
 #include <util/trace.h>
 #include <util/defs.h>
 
-#include <stddef.h>
-#include <stdint.h>
+#include "intrin.h"
+#include "apic.h"
+#include "msr.h"
+
+#include <thread/scheduler.h>
+#include <sync/spinlock.h>
+#include <debug/debug.h>
 #include <util/except.h>
 #include <mem/vmm.h>
+
 #include <stdnoreturn.h>
-#include "intrin.h"
-#include "sync/spinlock.h"
-#include "debug/debug.h"
-#include "msr.h"
-#include "proc/thread.h"
-#include "apic.h"
-#include "proc/scheduler.h"
+#include <stdint.h>
+
 
 #define IDT_TYPE_TASK           0x5
 #define IDT_TYPE_INTERRUPT_16   0x6

@@ -1,14 +1,16 @@
 ########################################################################################################################
 # User-modifiable build constants
 ########################################################################################################################
+
 CC 					:= ccache clang
 LD					:= ld.lld
 HOSTED_CC			:= ccache clang -fuse-ld=lld
+
 DEBUG				:= 1
 OUT_DIR				:= out
 
 BIN_DIR				:= $(OUT_DIR)/bin
-BUILD_DIR			:= $(OUT_DIR)/build
+BUILD_DIR			:= $(OUT_DIR)/build/kernel
 HOSTED_BUILD_DIR	:= $(OUT_DIR)/build/hosted
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -90,6 +92,8 @@ LDFLAGS		+= -Tkernel/linker.ld
 
 all: $(BIN_DIR)/pentagon.elf
 
+hosted: $(BIN_DIR)/pentagon_hosted.elf
+
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:%.o=%.d)
 BINS ?=
@@ -100,13 +104,12 @@ HOSTED_DEPS := $(HOSTED_OBJS:%.o=%.d)
 HOSTED_BINS ?=
 -include $(HOSTED_DEPS)
 
-
 $(BIN_DIR)/pentagon.elf: $(OBJS) | Makefile
 	@echo LD $@
 	@mkdir -p $(@D)
 	@$(LD) $(LDFLAGS) -o $@ $^
 
-$(BIN_DIR)/pentagon_hosted: $(HOSTED_OBJS) | Makefile
+$(BIN_DIR)/pentagon_hosted.elf: $(HOSTED_OBJS) | Makefile
 	@echo LD $@
 	@mkdir -p $(@D)
 	@$(HOSTED_CC) $(HOSTED_CFLAGS) -o $@ $^

@@ -2,16 +2,14 @@
 
 #include <limine.h>
 
-#include <runtime/dotnet/encoding.h>
 #include <runtime/dotnet/gc/heap.h>
 #include <runtime/dotnet/jit/jit.h>
-#include <runtime/dotnet/opcodes.h>
 #include <runtime/dotnet/loader.h>
 #include <runtime/dotnet/gc/gc.h>
 
-#include <proc/scheduler.h>
-#include <proc/cpu_local.h>
-#include <proc/thread.h>
+#include <thread/scheduler.h>
+#include <thread/cpu_local.h>
+#include <thread/thread.h>
 
 #include <debug/debug.h>
 

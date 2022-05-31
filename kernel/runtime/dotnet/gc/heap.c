@@ -1,14 +1,16 @@
 #include "heap.h"
 
 #include "gc.h"
-#include "kernel.h"
-#include "proc/cpu_local.h"
-#include "arch/intrin.h"
 
-#include <proc/thread.h>
+
+#include <thread/cpu_local.h>
+#include <thread/thread.h>
+#include <arch/intrin.h>
 #include <util/string.h>
 #include <util/defs.h>
 #include <mem/mem.h>
+
+#include <kernel.h>
 
 #include <stdatomic.h>
 

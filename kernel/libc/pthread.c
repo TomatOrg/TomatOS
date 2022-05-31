@@ -1,5 +1,6 @@
 #include "pthread.h"
-#include "proc/scheduler.h"
+
+#include <thread/scheduler.h>
 
 #include <string.h>
 

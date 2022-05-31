@@ -30,11 +30,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdatomic.h>
 #include "mutex.h"
-#include "util/except.h"
-#include "proc/scheduler.h"
-#include "time/timer.h"
+
+#include <thread/scheduler.h>
+#include <util/except.h>
+#include <time/timer.h>
+
+#include <stdatomic.h>
 
 typedef enum mutex_state {
     MUTEX_LOCKED = 1 << 0,
