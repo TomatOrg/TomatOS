@@ -372,6 +372,7 @@ typedef System_Exception System_DivideByZeroException;
 typedef System_Exception System_ExecutionEngineException;
 typedef System_Exception System_IndexOutOfRangeException;
 typedef System_Exception System_NullReferenceException;
+typedef System_Exception System_InvalidCastException;
 typedef System_Exception System_OutOfMemoryException;
 typedef System_Exception System_OverflowException;
 
@@ -557,6 +558,7 @@ extern System_Type tSystem_DivideByZeroException;
 extern System_Type tSystem_ExecutionEngineException;
 extern System_Type tSystem_IndexOutOfRangeException;
 extern System_Type tSystem_NullReferenceException;
+extern System_Type tSystem_InvalidCastException;
 extern System_Type tSystem_OutOfMemoryException;
 extern System_Type tSystem_OverflowException;
 

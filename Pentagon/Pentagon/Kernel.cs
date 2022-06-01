@@ -5,29 +5,34 @@ namespace Pentagon;
 public class Kernel
 {
 
-    public class A
+    public interface IA
+    {
+        public int GetNumber();
+    }
+    
+    public class A : IA
     {
 
-        public virtual void Test()
+        public int GetNumber()
         {
-            
+            return 123;
         }
-        
     }
 
-    public class B : A
+    public static IA GetIA()
     {
-
-        public void Test()
-        {
-            
-        }
-        
+        return new A();
     }
-
+    
+    public static object GetObject()
+    {
+        return GetIA();
+    }
+    
     public static int Main()
     {
-        return 123;
+        var a = GetObject();
+        return ((IA)a).GetNumber();
     }
     
 }

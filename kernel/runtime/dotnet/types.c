@@ -44,6 +44,7 @@ System_Type tSystem_DivideByZeroException = NULL;
 System_Type tSystem_ExecutionEngineException = NULL;
 System_Type tSystem_IndexOutOfRangeException = NULL;
 System_Type tSystem_NullReferenceException = NULL;
+System_Type tSystem_InvalidCastException = NULL;
 System_Type tSystem_OutOfMemoryException = NULL;
 System_Type tSystem_OverflowException = NULL;
 
@@ -616,14 +617,10 @@ Pentagon_Reflection_InterfaceImpl type_get_interface_impl(System_Type targetType
 }
 
 bool isinstance(System_Object object, System_Type type) {
-    System_Type objectType = object->vtable->type;
-    while (objectType != NULL) {
-        if (objectType == type) {
-            return true;
-        }
-        objectType = objectType->BaseType;
+    if (object == NULL) {
+        return true;
     }
-    return false;
+    return type_is_verifier_assignable_to(object->vtable->type, type);
 }
 
 void assembly_dump(System_Reflection_Assembly assembly) {

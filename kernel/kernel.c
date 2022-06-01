@@ -209,7 +209,7 @@ static void kernel_startup() {
     // call it
     method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
     method_result_t result = entry_point();
-    CHECK(result.exception == NULL, "Got exception: \"%U\"", result.exception->Message);
+    CHECK(result.exception == NULL, "Got exception: \"%U\" (of type `%U`)", result.exception->Message, result.exception->vtable->type->Name);
     TRACE("Kernel output: %d", result.value);
 
 cleanup:

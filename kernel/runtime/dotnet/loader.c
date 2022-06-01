@@ -1053,6 +1053,7 @@ static type_init_t m_type_init[] = {
     EXCEPTION_INIT("System", "ExecutionEngineException", System_ExecutionEngineException),
     EXCEPTION_INIT("System", "IndexOutOfRangeException", System_IndexOutOfRangeException),
     EXCEPTION_INIT("System", "NullReferenceException", System_NullReferenceException),
+    EXCEPTION_INIT("System", "InvalidCastException", System_InvalidCastException),
     EXCEPTION_INIT("System", "OutOfMemoryException", System_OutOfMemoryException),
     EXCEPTION_INIT("System", "OverflowException", System_OverflowException),
     TYPE_INIT("Pentagon.Reflection", "InterfaceImpl", Pentagon_Reflection_InterfaceImpl, 3),

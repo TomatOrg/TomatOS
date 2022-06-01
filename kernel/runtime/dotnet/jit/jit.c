@@ -35,13 +35,29 @@ static method_result_t System_Object_GetType(System_Object this) {
 // The wrappers are needed here because the two functions are just macros over __builtin_X
 
 __attribute__((flatten))
-void memset_wrapper(void* dest, int c, size_t count) {
+static void memset_wrapper(void* dest, int c, size_t count) {
     memset(dest, c, count);
 }
 
 __attribute__((flatten))
-void memcpy_wrapper(void* dest, void* src, size_t count) {
+static void memcpy_wrapper(void* dest, void* src, size_t count) {
     memcpy(dest, src, count);
+}
+
+static bool dynamic_cast_obj_to_interface(void** dest, System_Object source, System_Type targetInterface) {
+    // should only be called after the type checking
+    Pentagon_Reflection_InterfaceImpl interface = type_get_interface_impl(source->vtable->type, targetInterface);
+    if (interface == NULL) {
+        dest[0] = 0;
+        dest[1] = 0;
+        return false;
+    }
+
+    // set the interface fields
+    dest[0] = &source->vtable->virtual_functions[interface->VTableOffset];
+    dest[1] = source;
+
+    return true;
 }
 
 /**
@@ -92,7 +108,8 @@ err_t init_jit() {
     m_mir_context = MIR_init();
     CHECK(m_mir_context != NULL);
 
-    // load externals
+    // load JIT required functions
+    MIR_load_external(m_mir_context, "dynamic_cast_obj_to_interface", dynamic_cast_obj_to_interface);
     MIR_load_external(m_mir_context, "isinstance", isinstance);
     MIR_load_external(m_mir_context, "gc_new", gc_new);
     MIR_load_external(m_mir_context, "gc_update", gc_update);
@@ -103,6 +120,7 @@ err_t init_jit() {
     MIR_load_external(m_mir_context, "managed_memcpy", managed_memcpy);
     MIR_load_external(m_mir_context, "managed_ref_memcpy", managed_ref_memcpy);
 
+    // load internal functions
     MIR_load_external(m_mir_context, "[Corelib.dll]System.Object::GetType()", System_Object_GetType);
 
     // init the code gen
@@ -317,6 +335,9 @@ typedef struct jit_context {
     //////////////////////////////////////////////////////////////////////////////////
 
     // runtime functions
+    MIR_item_t dynamic_cast_obj_to_interface_proto;
+    MIR_item_t dynamic_cast_obj_to_interface_func;
+
     MIR_item_t is_instance_proto;
     MIR_item_t is_instance_func;
 
@@ -2025,20 +2046,27 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 switch (type_get_stack_type(value_type)) {
                     case STACK_TYPE_O: {
                         if (type_is_interface(variable_type)) {
-                            // storing to interface
                             if (type_is_interface(value_type)) {
-                                // from interface, simple memcpy
+                                // interface -> interface
                                 goto stloc_value_type;
                             } else {
-                                // from an object, need to do a cast
-                                // from an object, we need to do it properly
+                                // object -> interface
                                 CHECK(locals[operand_i32].mode == MIR_OP_REG);
                                 CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
                                                                             locals[operand_i32].u.reg, value_reg,
                                                                             value_type, variable_type, 0));
                             }
                         } else {
-                            goto stloc_primitive_type;
+                            if (type_is_interface(value_type)) {
+                                // interface -> object
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_insn(ctx->context, MIR_MOV,
+                                                             locals[operand_i32],
+                                                             MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), value_reg, 0, 1)));
+                            } else {
+                                // object -> object
+                                goto stloc_primitive_type;
+                            }
                         }
                     } break;
 
@@ -2426,13 +2454,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 switch (type_get_stack_type(value_type)) {
                     case STACK_TYPE_O: {
                         if (type_is_interface(field_type)) {
-                            // storing to interface
-
                             if (type_is_interface(value_type)) {
-                                // from an interface, copy with a write-barrier
+                                // interface -> interface
                                 goto stfld_value_type;
                             } else {
-                                // from an object, cast required, need a write-barrier
+                                // object -> interface
                                 CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
                                                                             obj_reg, value_reg,
                                                                             value_type, field_type,
@@ -2441,6 +2467,15 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         } else {
                             // storing to an object from an object, use a write-barrier
                             if (type_get_stack_type(obj_type) == STACK_TYPE_O) {
+
+                                // check for interface -> object casting
+                                if (type_is_interface(value_type)) {
+                                    MIR_append_insn(ctx->context, ctx->func,
+                                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                                 MIR_new_reg_op(ctx->context, value_reg),
+                                                                 MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), value_reg, 0, 1)));
+                                }
+
                                 // the base is an object, call the gc_update write barrier
                                 MIR_append_insn(ctx->context, ctx->func,
                                                 MIR_new_call_insn(ctx->context, 5,
@@ -2895,7 +2930,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     MIR_append_insn(ctx->context, ctx->func,
                                     MIR_new_insn(ctx->context, MIR_MOV,
                                                  MIR_new_reg_op(ctx->context, temp_reg),
-                                                 MIR_new_mem_op(ctx->context, MIR_T_I64, 0, this_reg, 0, 1)));
+                                                 MIR_new_mem_op(ctx->context, MIR_T_P, 0, this_reg, 0, 1)));
 
                     // figure offset and the actual method
                     int offset;
@@ -2905,6 +2940,13 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         // and the vtable index is exactly as given in the operand
                         offset = 0;
                         vtable_index = operand_method->VTableOffset;
+
+                        // read the actual instance pointer of the interface, so we can use it
+                        // when calling the function
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_MOV,
+                                                     MIR_new_reg_op(ctx->context, this_reg),
+                                                     MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), this_reg, 0, 1)));
                     } else {
                         // we have an object reference on the stack, the vtable is at offset
                         // of the virtual functions in the object vtable
@@ -3013,20 +3055,33 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     switch (type_get_stack_type(ret_type)) {
                         case STACK_TYPE_O: {
                             if (type_is_interface(method_ret_type)) {
-                                // returning an interface
                                 if (type_is_interface(ret_type)) {
-                                    // from an interface
+                                    // interface -> interface
                                     goto ret_value_type;
                                 } else {
-                                    // from an object, cast to the float
+                                    // object -> interface
                                     CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
                                                                                 return_block_reg, ret_arg,
                                                                                 ret_type, method_ret_type,
                                                                                 0));
+
+                                    // return no exception
+                                    MIR_append_insn(ctx->context, ctx->func,
+                                                    MIR_new_ret_insn(ctx->context, 1,
+                                                                     MIR_new_int_op(ctx->context, 0)));
                                 }
                             } else {
-                                // just a normal object
-                                goto ret_primitive_type;
+                                if (type_is_interface(ret_type)) {
+                                    // interface -> object
+                                    MIR_append_insn(ctx->context, ctx->func,
+                                                    MIR_new_ret_insn(ctx->context, 2,
+                                                                     MIR_new_int_op(ctx->context, 0),
+                                                                     MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), ret_arg, 0, 1)));
+                                } else {
+                                    // object -> object
+                                    goto ret_primitive_type;
+
+                                }
                             }
                         } break;
 
@@ -3049,7 +3104,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                             // this is a big struct, copy it to the return block
                             jit_emit_memcpy(ctx, return_block_reg, ret_arg, ret_type->StackSize);
 
-                            // return the exception
+                            // return no exception
                             MIR_append_insn(ctx->context, ctx->func,
                                             MIR_new_ret_insn(ctx->context, 1,
                                                              MIR_new_int_op(ctx->context, 0)));
@@ -3058,6 +3113,103 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         case STACK_TYPE_REF:
                             CHECK_FAIL();
                     }
+                }
+            } break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Casting
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+            case CEE_ISINST:
+            case CEE_CASTCLASS: {
+                MIR_reg_t obj_reg;
+                System_Type obj_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
+
+                // make sure both are object references
+                CHECK(obj_type->StackType == STACK_TYPE_O);
+                CHECK(operand_type->StackType == STACK_TYPE_O);
+
+                // check that casting from the wanted type to the tracked type is possible,
+                // otherwise it is not actually possible to get the opposite
+                CHECK(type_is_verifier_assignable_to(operand_type, obj_type));
+
+                // push it, but now as the new type
+                MIR_reg_t obj2_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, operand_type, &obj2_reg));
+
+                // temp for the cast result
+                MIR_reg_t cast_result_reg = new_reg(ctx, tSystem_Boolean);
+
+                // get the type handler
+                int typei = hmgeti(ctx->types, operand_type);
+                CHECK(typei != -1);
+                MIR_item_t type_ref = ctx->types[typei].value;
+
+                MIR_insn_t cast_success = MIR_new_label(ctx->context);
+
+                // if this is an interface get the type instance itself
+                if (type_is_interface(obj_type)) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, obj_reg),
+                                                 MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*),
+                                                                obj_reg, 0, 1)));
+                }
+
+                // call the isinstance method to dynamically check the cast is valid
+                if (type_is_interface(operand_type)) {
+                    // casting to an interface, use the dynamic_cast_obj_to_interface to do the cast
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_call_insn(ctx->context, 6,
+                                                      MIR_new_ref_op(ctx->context, ctx->dynamic_cast_obj_to_interface_proto),
+                                                      MIR_new_ref_op(ctx->context, ctx->dynamic_cast_obj_to_interface_func),
+                                                      MIR_new_reg_op(ctx->context, cast_result_reg),
+                                                      MIR_new_reg_op(ctx->context, obj2_reg),
+                                                      MIR_new_reg_op(ctx->context, obj_reg),
+                                                      MIR_new_ref_op(ctx->context, type_ref)));
+                } else {
+                    // casting to an object, so everything is fine
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_call_insn(ctx->context, 5,
+                                                      MIR_new_ref_op(ctx->context, ctx->is_instance_proto),
+                                                      MIR_new_ref_op(ctx->context, ctx->is_instance_func),
+                                                      MIR_new_reg_op(ctx->context, cast_result_reg),
+                                                      MIR_new_reg_op(ctx->context, obj_reg),
+                                                      MIR_new_ref_op(ctx->context, type_ref)));
+                }
+
+                // check that it was a success
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_BT,
+                                             MIR_new_label_op(ctx->context, cast_success),
+                                             MIR_new_reg_op(ctx->context, cast_result_reg)));
+
+                // cast has failed
+                if (opcode == CEE_ISINST) {
+                    // for ISINST just return null, the dynamic cast already handles that
+                    // case for interfaces
+                    if (!type_is_interface(operand_type)) {
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_MOV,
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_int_op(ctx->context, 0)));
+                    }
+                } else {
+                    // for CLASSCAST throw an exception
+                    CHECK(opcode == CEE_CASTCLASS);
+                    CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_InvalidCastException));
+                }
+
+                MIR_append_insn(ctx->context, ctx->func, cast_success);
+
+                // interfaces are handled by the dynamic cast object to interface function so there
+                // is nothing to do for them, for normal objects just move them to the obj2
+                if (!type_is_interface(operand_type)) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, MIR_MOV,
+                                                 MIR_new_reg_op(ctx->context, obj2_reg),
+                                                 MIR_new_reg_op(ctx->context, obj_reg)));
                 }
             } break;
 
@@ -3206,13 +3358,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 switch (type_get_stack_type(value_type)) {
                     case STACK_TYPE_O: {
                         if (type_is_interface(operand_type)) {
-                            // storing to interface
-
                             if (type_is_interface(value_type)) {
-                                // from an interface, copy with a write barrier
+                                // interface -> interface
                                 goto stelem_value_type;
                             } else {
-                                // from an object, implicit cast it
+                                // object -> interface
 
                                 // calculate the offset as `index_reg * sizeof(operand_type) + sizeof(System.Array)`
                                 MIR_append_insn(ctx->context, ctx->func,
@@ -3234,6 +3384,14 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                                                             array_reg));
                             }
                         } else {
+                            // check if we need to cast to an object from an interface
+                            if (type_is_interface(value_type)) {
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_insn(ctx->context, MIR_MOV,
+                                                             MIR_new_reg_op(ctx->context, value_reg),
+                                                             MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), value_reg, 0, 1)));
+                            }
+
                             // calculate the offset as `index_reg * sizeof(operand_type) + sizeof(System.Array)`
                             MIR_append_insn(ctx->context, ctx->func,
                                             MIR_new_insn(ctx->context, MIR_MUL,
@@ -3825,6 +3983,10 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     ctx.memset_func = MIR_new_import(ctx.context, "memset");
 
     res_type = MIR_T_I8;
+
+    ctx.dynamic_cast_obj_to_interface_proto = MIR_new_proto(ctx.context, "dynamic_cast_obj_to_interface$proto", 1, &res_type, 3, MIR_T_P, "dest", MIR_T_P, "source", MIR_T_P, "targetInterface");
+    ctx.dynamic_cast_obj_to_interface_func = MIR_new_import(ctx.context, "dynamic_cast_obj_to_interface");
+
     ctx.is_instance_proto = MIR_new_proto(ctx.context, "isinstance$proto", 1, &res_type, 2, MIR_T_P, "object", MIR_T_P, "type");
     ctx.is_instance_func = MIR_new_import(ctx.context, "isinstance");
 
@@ -3848,6 +4010,7 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     jit_import_type(&ctx, tSystem_ExecutionEngineException);
     jit_import_type(&ctx, tSystem_IndexOutOfRangeException);
     jit_import_type(&ctx, tSystem_NullReferenceException);
+    jit_import_type(&ctx, tSystem_InvalidCastException);
     jit_import_type(&ctx, tSystem_OutOfMemoryException);
     jit_import_type(&ctx, tSystem_OverflowException);
 
