@@ -21,18 +21,18 @@ Right now the main work is on the runtime itself, the main features of the runti
 - Full support for struct types
 - Full support for interface types
   - Implemented using Fat-Pointers and implicitly casting as needed
-- Support for managed references
+- Full support for managed references
   - Supports locals, fields and array elements
+- Full support for boxing/unboxing 
 - Most common CIL instructions implemented
 
 ### Main missing features
-- Boxing/Unboxing
+- Bit-shifting
 - Static fields
 - Constant fields
-- Bit-shifting
 - Generics
-- Overflow math
 - Delegates
+- Overflow math
 
 ## OS Design
 
