@@ -1143,13 +1143,74 @@ cleanup:
     return err;
 }
 
-static err_t jit_throw_new(jit_context_t* ctx, int il_offset, System_Type type) {
+static err_t jit_throw_new(jit_context_t* ctx, int il_offset, System_Type type);
+
+static err_t jit_new(jit_context_t* ctx, MIR_reg_t result, System_Type type, MIR_op_t size, int il_offset) {
     err_t err = NO_ERROR;
 
-    // get the type item
-    int itemi = hmgeti(ctx->types, type);
-    CHECK(itemi != -1);
-    MIR_item_t type_item = ctx->types[itemi].value;
+    MIR_op_t type_ref_op;
+    if (type->IsArray) {
+        // get the element type item
+        int itemi = hmgeti(ctx->types, type->ElementType);
+        CHECK(itemi != -1);
+        MIR_item_t type_item = ctx->types[itemi].value;
+
+        // this is a special case
+        type_ref_op = MIR_new_reg_op(ctx->context, result);
+
+        // TODO: somehow propagate that we need the static array type
+        //       instead of using the dynamic method
+        // get the type
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_call_insn(ctx->context, 4,
+                                          MIR_new_ref_op(ctx->context, ctx->get_array_type_proto),
+                                          MIR_new_ref_op(ctx->context, ctx->get_array_type_func),
+                                          type_ref_op,
+                                          MIR_new_ref_op(ctx->context, type_item)));
+    } else {
+        // get the type item
+        int itemi = hmgeti(ctx->types, type);
+        CHECK(itemi != -1);
+        MIR_item_t type_item = ctx->types[itemi].value;
+
+        type_ref_op = MIR_new_ref_op(ctx->context, type_item);
+    }
+
+    // allocate the new object
+    MIR_append_insn(ctx->context, ctx->func,
+                    MIR_new_call_insn(ctx->context, 5,
+                                      MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
+                                      MIR_new_ref_op(ctx->context, ctx->gc_new_func),
+                                      MIR_new_reg_op(ctx->context, result),
+                                      type_ref_op,
+                                      size));
+
+    // this is an edge case, if we get to this point then just let it crash...
+    if (type != tSystem_OutOfMemoryException) {
+        // if we got NULL from the gc_new function it means we got an OOM
+
+        // handle any exception which might have been thrown
+        MIR_insn_t label = MIR_new_label(ctx->context);
+
+        // if we have a non-zero value then skip the throw
+        MIR_append_insn(ctx->context, ctx->func,
+                        MIR_new_insn(ctx->context, MIR_BT,
+                                     MIR_new_label_op(ctx->context, label),
+                                     MIR_new_reg_op(ctx->context, result)));
+
+        // throw the error, it has an unknown type
+        CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_OutOfMemoryException));
+
+        // insert the skip label
+        MIR_append_insn(ctx->context, ctx->func, label);
+    }
+
+cleanup:
+    return err;
+}
+
+static err_t jit_throw_new(jit_context_t* ctx, int il_offset, System_Type type) {
+    err_t err = NO_ERROR;
 
     // call the default ctor
     System_Reflection_MethodInfo ctor = NULL;
@@ -1173,15 +1234,10 @@ static err_t jit_throw_new(jit_context_t* ctx, int il_offset, System_Type type) 
     MIR_reg_t exception_obj = new_reg(ctx, type);
 
     // allocate the new object
-    MIR_append_insn(ctx->context, ctx->func,
-                    MIR_new_call_insn(ctx->context, 5,
-                                      MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
-                                      MIR_new_ref_op(ctx->context, ctx->gc_new_func),
-                                      MIR_new_reg_op(ctx->context, exception_obj),
-                                      MIR_new_ref_op(ctx->context, type_item),
-                                      MIR_new_int_op(ctx->context, type->ManagedSize)));
+    CHECK_AND_RETHROW(jit_new(ctx, exception_obj, type,
+                              MIR_new_int_op(ctx->context, type->ManagedSize), il_offset));
 
-    // call it, we are going to store
+    // call the ctor for it
     MIR_append_insn(ctx->context, ctx->func,
                     MIR_new_call_insn(ctx->context, 4,
                                       MIR_new_ref_op(ctx->context, ctx->functions[methodi].proto),
@@ -2859,36 +2915,10 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                             // For a value type we just need to zero it out before calling the ctor
                             jit_emit_zerofill(ctx, this_reg, this_type->StackSize);
                         } else {
-                            // get the item for the allocation
-                            int typei = hmgeti(ctx->types, operand_method->DeclaringType);
-                            CHECK(typei != -1);
-                            MIR_item_t type_item = ctx->types[typei].value;
-
                             // allocate the new object
-                            MIR_append_insn(ctx->context, ctx->func,
-                                            MIR_new_call_insn(ctx->context, 5,
-                                                              MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
-                                                              MIR_new_ref_op(ctx->context, ctx->gc_new_func),
-                                                              MIR_new_reg_op(ctx->context, this_reg),
-                                                              MIR_new_ref_op(ctx->context, type_item),
-                                                              MIR_new_int_op(ctx->context, operand_method->DeclaringType->ManagedSize)));
-
-                            // if we got NULL from the gc_new function it means we got an OOM
-
-                            // handle any exception which might have been thrown
-                            MIR_insn_t label = MIR_new_label(ctx->context);
-
-                            // if we have a non-zero value then skip the throw
-                            MIR_append_insn(ctx->context, ctx->func,
-                                            MIR_new_insn(ctx->context, MIR_BT,
-                                                         MIR_new_label_op(ctx->context, label),
-                                                         MIR_new_reg_op(ctx->context, this_reg)));
-
-                            // throw the error, it has an unknown type
-                            CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_OutOfMemoryException));
-
-                            // insert the skip label
-                            MIR_append_insn(ctx->context, ctx->func, label);
+                            CHECK_AND_RETHROW(jit_new(ctx,
+                                                      this_reg, operand_method->DeclaringType,
+                                                      MIR_new_int_op(ctx->context, operand_method->DeclaringType->ManagedSize), il_offset));
                         }
                     } else {
                         // this is a call, get it from the stack
@@ -3217,6 +3247,75 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             // Array handling
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+            case CEE_BOX: {
+                System_Type val_type;
+                MIR_reg_t val_reg;
+                CHECK_AND_RETHROW(stack_pop(ctx, &val_type, &val_reg));
+
+                // must not be a ref type
+                CHECK(type_get_stack_type(operand_type) != STACK_TYPE_REF);
+
+                // make sure that this is fine
+                CHECK(type_is_verifier_assignable_to(val_type, operand_type));
+
+                // we track this as an object now
+                MIR_reg_t obj_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_Object, &obj_reg));
+
+                // check if we need to allocate memory for this
+                if (operand_type->IsValueType) {
+                    // allocate it
+                    CHECK_AND_RETHROW(jit_new(ctx, obj_reg, operand_type,
+                                              MIR_new_int_op(ctx->context, tSystem_Object->ManagedSize + val_type->ManagedSize),
+                                              il_offset));
+                }
+
+                // must be a value type
+                switch (type_get_stack_type(operand_type)) {
+                    case STACK_TYPE_O: {
+                        // return unchanged
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_MOV,
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_reg_op(ctx->context, val_reg)));
+                    } break;
+
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_FLOAT: {
+                        // store the item in the type
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, jit_number_inscode(operand_type),
+                                                     MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
+                                                                    tSystem_Object->ManagedSize, obj_reg, 0, 1),
+                                                     MIR_new_reg_op(ctx->context, val_reg)));
+
+                    } break;
+
+                    case STACK_TYPE_VALUE_TYPE: {
+                        // memcpy it
+
+                        // first get the base for memcpy
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_ADD,
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_int_op(ctx->context, tSystem_Object->ManagedSize)));
+
+                        // now emit the memcpy
+                        jit_emit_memcpy(ctx, obj_reg, val_reg, operand_type->ManagedSize);
+                    } break;
+
+                    case STACK_TYPE_REF:
+                        CHECK_FAIL();
+                }
+            } break;
+
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Array handling
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
             case CEE_NEWARR: {
                 // get the number of elements
                 MIR_reg_t num_elems_reg;
@@ -3249,24 +3348,11 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_reg_op(ctx->context, size_reg),
                                              MIR_new_int_op(ctx->context, tSystem_Array->ManagedSize)));
 
-                // TODO: somehow propagate that we need the static array type
-                //       instead of using the dynamic method
-                // get the type
-                MIR_append_insn(ctx->context, ctx->func,
-                                MIR_new_call_insn(ctx->context, 4,
-                                                  MIR_new_ref_op(ctx->context, ctx->get_array_type_proto),
-                                                  MIR_new_ref_op(ctx->context, ctx->get_array_type_func),
-                                                  MIR_new_reg_op(ctx->context, array_reg),
-                                                  MIR_new_ref_op(ctx->context, type_item)));
-
                 // actually allocate it now
-                MIR_append_insn(ctx->context, ctx->func,
-                                MIR_new_call_insn(ctx->context, 5,
-                                                  MIR_new_ref_op(ctx->context, ctx->gc_new_proto),
-                                                  MIR_new_ref_op(ctx->context, ctx->gc_new_func),
-                                                  MIR_new_reg_op(ctx->context, array_reg),
-                                                  MIR_new_reg_op(ctx->context, array_reg),
-                                                  MIR_new_reg_op(ctx->context, size_reg)));
+                // allocate the new object
+                CHECK_AND_RETHROW(jit_new(ctx,
+                                          array_reg, get_array_type(operand_type),
+                                          MIR_new_reg_op(ctx->context, size_reg), il_offset));
 
                 // Set the length of the array
                 MIR_append_insn(ctx->context, ctx->func,

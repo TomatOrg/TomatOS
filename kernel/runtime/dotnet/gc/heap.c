@@ -711,7 +711,7 @@ static void heap_dump_callback(System_Object object) {
         m_last_pool_idx = pool_idx;
     }
 
-    printf("[*] \t\t%p - ", get_cpu_id(), object);
+    printf("[*] \t\t%p - ", object);
     if (object->vtable == NULL) {
         printf("<no vtable>");
     } else {
@@ -723,8 +723,34 @@ static void heap_dump_callback(System_Object object) {
     printf(": %s", m_color_str[object->color]);
 
     if (object->vtable != NULL) {
-        if (object->vtable->type == tSystem_String) {
+        System_Type type = object->vtable->type;
+
+        if (type == tSystem_String) {
             printf(" - \"%U\"", (System_String)object);
+        } else if (type == tSystem_SByte) {
+            printf(" - %d", *(System_SByte*)(object + 1));
+        } else if (type == tSystem_Int16) {
+            printf(" - %d", *(System_Int16*)(object + 1));
+        } else if (type == tSystem_Int32) {
+            printf(" - %d", *(System_Int32*)(object + 1));
+        } else if (type == tSystem_Int16) {
+            printf(" - %ld", *(System_IntPtr*)(object + 1));
+        } else if (type == tSystem_Int16) {
+            printf(" - %lld", *(System_Int64*)(object + 1));
+        } else if (type == tSystem_Byte) {
+            printf(" - %u", *(System_Byte*)(object + 1));
+        } else if (type == tSystem_UInt16) {
+            printf(" - %u", *(System_UInt16*)(object + 1));
+        } else if (type == tSystem_UInt32) {
+            printf(" - %u", *(System_UInt32*)(object + 1));
+        } else if (type == tSystem_UIntPtr) {
+            printf(" - %lu", *(System_UIntPtr*)(object + 1));
+        } else if (type == tSystem_UInt64) {
+            printf(" - %llu", *(System_UInt64*)(object + 1));
+        } else if (type == tSystem_Char) {
+            printf(" - %c", *(System_Char*)(object + 1));
+        } else if (type == tSystem_Boolean) {
+            printf(" - %s", *(System_Boolean*)(object + 1) ? "true" : "false");
         }
     }
 
