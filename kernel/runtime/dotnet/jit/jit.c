@@ -3147,22 +3147,27 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             } break;
 
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // Casting
+            // Casting and boxing
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             case CEE_ISINST:
-            case CEE_CASTCLASS: {
+            case CEE_CASTCLASS:
+            case CEE_UNBOX_ANY: {
                 MIR_reg_t obj_reg;
                 System_Type obj_type;
                 CHECK_AND_RETHROW(stack_pop(ctx, &obj_type, &obj_reg));
 
-                // make sure both are object references
-                CHECK(obj_type->StackType == STACK_TYPE_O);
-                CHECK(operand_type->StackType == STACK_TYPE_O);
+                if (opcode == CEE_ISINST || opcode == CEE_CASTCLASS) {
+                    // for castclass/isinst we must have a result of a reference type
+                    CHECK(operand_type->StackType == STACK_TYPE_O);
 
-                // check that casting from the wanted type to the tracked type is possible,
-                // otherwise it is not actually possible to get the opposite
-                CHECK(type_is_verifier_assignable_to(operand_type, obj_type));
+                    // check that casting from the wanted type to the tracked type is possible,
+                    // otherwise it is not actually possible to get the opposite
+                    CHECK(type_is_verifier_assignable_to(operand_type, obj_type));
+                }
+
+                // the object type must always be a ref type for unboxing
+                CHECK(obj_type->StackType == STACK_TYPE_O);
 
                 // push it, but now as the new type
                 MIR_reg_t obj2_reg;
@@ -3227,33 +3232,61 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     }
                 } else {
                     // for CLASSCAST throw an exception
-                    CHECK(opcode == CEE_CASTCLASS);
+                    CHECK(opcode == CEE_CASTCLASS || opcode == CEE_UNBOX_ANY);
                     CHECK_AND_RETHROW(jit_throw_new(ctx, il_offset, tSystem_InvalidCastException));
                 }
 
                 MIR_append_insn(ctx->context, ctx->func, cast_success);
 
-                // interfaces are handled by the dynamic cast object to interface function so there
-                // is nothing to do for them, for normal objects just move them to the obj2
-                if (!type_is_interface(operand_type)) {
-                    MIR_append_insn(ctx->context, ctx->func,
-                                    MIR_new_insn(ctx->context, MIR_MOV,
-                                                 MIR_new_reg_op(ctx->context, obj2_reg),
-                                                 MIR_new_reg_op(ctx->context, obj_reg)));
+                switch (type_get_stack_type(operand_type)) {
+                    case STACK_TYPE_O: {
+                        // interfaces are handled by the dynamic cast object to interface function so there
+                        // is nothing to do for them, for normal objects just move them to the obj2
+                        if (!type_is_interface(operand_type)) {
+                            MIR_append_insn(ctx->context, ctx->func,
+                                            MIR_new_insn(ctx->context, MIR_MOV,
+                                                         MIR_new_reg_op(ctx->context, obj2_reg),
+                                                         MIR_new_reg_op(ctx->context, obj_reg)));
+                        }
+                    } break;
+
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_FLOAT: {
+                        // store the item in the type
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, jit_number_inscode(operand_type),
+                                                     MIR_new_reg_op(ctx->context, obj2_reg),
+                                                     MIR_new_mem_op(ctx->context, get_mir_type(operand_type),
+                                                                    tSystem_Object->ManagedSize, obj_reg, 0, 1)));
+
+                    } break;
+
+                    case STACK_TYPE_VALUE_TYPE: {
+                        // memcpy it
+
+                        // first get the base for memcpy
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, MIR_ADD,
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_reg_op(ctx->context, obj_reg),
+                                                     MIR_new_int_op(ctx->context, tSystem_Object->ManagedSize)));
+
+                        // now emit the memcpy
+                        jit_emit_memcpy(ctx, obj2_reg, obj_reg, operand_type->ManagedSize);
+                    } break;
+
+                        // already handled in the castclass case
+                    case STACK_TYPE_REF:
+                        CHECK_FAIL();
                 }
             } break;
-
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
-            // Array handling
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             case CEE_BOX: {
                 System_Type val_type;
                 MIR_reg_t val_reg;
                 CHECK_AND_RETHROW(stack_pop(ctx, &val_type, &val_reg));
-
-                // must not be a ref type
-                CHECK(type_get_stack_type(operand_type) != STACK_TYPE_REF);
 
                 // make sure that this is fine
                 CHECK(type_is_verifier_assignable_to(val_type, operand_type));

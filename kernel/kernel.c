@@ -212,8 +212,6 @@ static void kernel_startup() {
     CHECK(result.exception == NULL, "Got exception: \"%U\" (of type `%U`)", result.exception->Message, result.exception->vtable->type->Name);
     TRACE("Kernel output: %d", result.value);
 
-    heap_dump();
-
 cleanup:
     ASSERT(!IS_ERROR(err));
     TRACE("Kernel initialization finished!");

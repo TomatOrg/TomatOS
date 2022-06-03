@@ -12,8 +12,8 @@ public class Kernel
     
     public static int Main()
     {
-        object a = GetObject();
-        return 456;
+        var a = GetObject();
+        return (int)a;
     }
     
 }
