@@ -196,15 +196,11 @@ static void kernel_startup() {
     CHECK_AND_RETHROW(init_jit());
 
     // load the corelib
-    uint64_t start = microtime();
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_file.address, m_corelib_file.size));
-    TRACE("corelib loading took %dms", (microtime() - start) / 1000);
 
     // load the kernel assembly
-    start = microtime();
     System_Reflection_Assembly kernel_asm = NULL;
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
-    TRACE("kernel loading took %dms", (microtime() - start) / 1000);
 
     // call it
     method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;

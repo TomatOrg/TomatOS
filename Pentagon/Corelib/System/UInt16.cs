@@ -1,9 +1,8 @@
-namespace System
+namespace System;
+
+public readonly struct UInt16
 {
-    public readonly struct UInt16
-    {
 #pragma warning disable 169
-        private readonly ushort _value;
+    private readonly ushort _value;
 #pragma warning restore 169
-    }
 }

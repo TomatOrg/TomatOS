@@ -552,7 +552,10 @@ void type_print_name(System_Type type, strbuilder_t* builder) {
 
 void type_print_full_name(System_Type type, strbuilder_t* builder) {
     strbuilder_char(builder, '[');
-    strbuilder_utf16(builder, type->Module->Name->Chars, type->Module->Name->Length);
+    strbuilder_utf16(builder, type->Assembly->Name->Chars, type->Assembly->Name->Length);
+    strbuilder_char(builder, '-');
+    strbuilder_char(builder, 'v');
+    strbuilder_uint(builder, type->Assembly->MajorVersion);
     strbuilder_char(builder, ']');
     type_print_name(type, builder);
 }

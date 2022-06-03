@@ -121,7 +121,7 @@ err_t init_jit() {
     MIR_load_external(m_mir_context, "managed_ref_memcpy", managed_ref_memcpy);
 
     // load internal functions
-    MIR_load_external(m_mir_context, "[Corelib.dll]System.Object::GetType()", System_Object_GetType);
+    MIR_load_external(m_mir_context, "[Corelib-v1]System.Object::GetType()", System_Object_GetType);
 
     // init the code gen
     MIR_gen_init(m_mir_context, 1);

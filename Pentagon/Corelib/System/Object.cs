@@ -1,7 +1,9 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace System
 {
+    [StructLayout(LayoutKind.Sequential)]
     public class Object
     {
         private unsafe void* _vtable;

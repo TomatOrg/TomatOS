@@ -1,11 +1,13 @@
-namespace System.Reflection
+using System.Runtime.InteropServices;
+
+namespace System.Reflection;
+
+[StructLayout(LayoutKind.Sequential)]
+public class ParameterInfo
 {
-    public class ParameterInfo
-    {
 
-        private ushort _attributes;
-        private string _name;
-        private Type parameterType;
+    private ushort _attributes;
+    private string _name;
+    private Type parameterType;
 
-    }
 }

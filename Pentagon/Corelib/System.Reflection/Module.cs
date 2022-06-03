@@ -1,10 +1,12 @@
-namespace System.Reflection
+using System.Runtime.InteropServices;
+
+namespace System.Reflection;
+
+[StructLayout(LayoutKind.Sequential)]
+public class Module
 {
-    public class Module
-    {
 
-        private Assembly _assembly;
-        private string _name;
+    private Assembly _assembly;
+    private string _name;
 
-    }
 }

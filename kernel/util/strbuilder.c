@@ -30,8 +30,9 @@ void strbuilder_char(strbuilder_t* builder, char c) {
 
 void strbuilder_uint(strbuilder_t* builder, size_t n) {
     size_t start = arrlenu(builder->buf), target_len = 20; // maximum number of digits in a 64bit number
-    arraddn(builder->buf, target_len);
-    snprintf(builder->buf + start, 20, "%lu", n); // TODO: replace this with a handrolled atoi
+    arrsetcap(builder->buf, arrlen(builder->buf) + target_len);
+    int len = snprintf(builder->buf + start, 20, "%lu", n); // TODO: replace this with a handrolled atoi
+    arrsetlen(builder->buf, arrlen(builder->buf) + len);
 }
 
 char* strbuilder_get(strbuilder_t* builder) {

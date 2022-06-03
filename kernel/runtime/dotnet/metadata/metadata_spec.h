@@ -118,8 +118,8 @@ typedef struct metadata_decl_security {
 
 #define METADATA_CLASS_LAYOUT 0x0f
 typedef struct metadata_class_layout {
-    uint16_t packing_size;
-    uint32_t class_size;
+    int16_t packing_size;
+    int32_t class_size;
     token_t parent;
 } PACKED metadata_class_layout_t;
 

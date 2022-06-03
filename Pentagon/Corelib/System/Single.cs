@@ -1,9 +1,8 @@
-namespace System
+namespace System;
+
+public readonly struct Single
 {
-    public readonly struct Single
-    {
 #pragma warning disable 169
-        private readonly float _value;
+    private readonly float _value;
 #pragma warning restore 169
-    }
 }

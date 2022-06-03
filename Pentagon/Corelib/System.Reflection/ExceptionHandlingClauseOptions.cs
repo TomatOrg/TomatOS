@@ -1,12 +1,11 @@
-namespace System.Reflection
+namespace System.Reflection;
+
+public enum ExceptionHandlingClauseOptions
 {
-    public enum ExceptionHandlingClauseOptions
-    {
         
-        Clause = 0,
-        Fault = 4,
-        Filter = 1,
-        Finally = 2
+    Clause = 0,
+    Fault = 4,
+    Filter = 1,
+    Finally = 2
         
-    }
 }

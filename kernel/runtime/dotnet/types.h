@@ -152,6 +152,13 @@ DEFINE_ARRAY(System_Int32);
 struct System_Reflection_Assembly {
     struct System_Object;
 
+    // Information about the assembly
+    System_String Name;
+    uint16_t MajorVersion;
+    uint16_t MinorVersion;
+    uint16_t BuildNumber;
+    uint16_t RevisionNumber;
+
     // the module and entry point of this assembly
     System_Reflection_Module Module;
     System_Reflection_MethodInfo EntryPoint;
@@ -412,6 +419,10 @@ struct System_Type {
     System_Type_Array GenericTypeArguments;
     System_Type_Array GenericTypeParameters;
     System_Type GenericTypeDefinition;
+
+    // from the class-layout stuff
+    int32_t ClassSize;
+    int16_t PackingSize;
 
     int* ManagedPointersOffsets;
     bool IsFilled;

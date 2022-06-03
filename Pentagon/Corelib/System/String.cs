@@ -1,10 +1,12 @@
-namespace System
+using System.Runtime.InteropServices;
+
+namespace System;
+
+[StructLayout(LayoutKind.Sequential)]
+public class String
 {
-    public class String
-    {
 
-        private int _length;
-        private char _chars;
+    private int _length;
+    private char _chars;
 
-    }
 }

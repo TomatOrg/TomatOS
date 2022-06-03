@@ -9,6 +9,7 @@
 #include "encoding.h"
 #include "util/stb_ds.h"
 #include "opcodes.h"
+#include "time/timer.h"
 
 #include <util/string.h>
 #include <mem/mem.h>
@@ -16,6 +17,57 @@
 System_Reflection_Assembly g_corelib = NULL;
 
 // TODO: we really need a bunch of constants for the flags for better readability
+
+static err_t validate_token(token_t* token, metadata_t* metadata, bool allow_null) {
+    err_t err = NO_ERROR;
+
+    CHECK(token->table <= ARRAY_LEN(metadata->tables));
+    CHECK(metadata->tables[token->table].table != NULL);
+    CHECK(token->index <= metadata->tables[token->table].rows);
+
+    if (!allow_null) {
+        CHECK(token->index != 0);
+    }
+
+cleanup:
+    return err;
+}
+
+static err_t validate_metadata_assembly(pe_file_t* ctx, metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+    CHECK(metadata->tables[METADATA_ASSEMBLY].rows == 1);
+
+    metadata_assembly_t* assembly = metadata->tables[METADATA_ASSEMBLY].table;
+    CHECK(assembly->name[0] != '\0');
+
+cleanup:
+    return err;
+}
+
+static err_t validate_metadata_module(pe_file_t* ctx, metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+    CHECK(metadata->tables[METADATA_MODULE].rows == 1);
+
+    metadata_module_t* module = metadata->tables[METADATA_MODULE].table;
+    CHECK(module->name[0] != '\0');
+
+cleanup:
+    return err;
+}
+
+/**
+ * Any simple validations are made in here before the CIL is even parsed
+ */
+static err_t validate_metadata(pe_file_t* ctx, metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+    CHECK_AND_RETHROW(validate_metadata_assembly(ctx, metadata));
+
+cleanup:
+    return err;
+}
 
 static err_t decode_metadata(pe_file_t* ctx, metadata_t* metadata) {
     err_t err = NO_ERROR;
@@ -27,6 +79,9 @@ static err_t decode_metadata(pe_file_t* ctx, metadata_t* metadata) {
 
     // parse it
     CHECK_AND_RETHROW(metadata_parse(ctx, metadata_root, ctx->cli_header->metadata.size, metadata));
+
+    // do basic validations
+    CHECK_AND_RETHROW(validate_metadata(ctx, metadata));
 
 cleanup:
     // we no longer need this
@@ -250,6 +305,49 @@ cleanup:
     return err;
 }
 
+static err_t set_class_layout(System_Reflection_Assembly assembly, metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+    metadata_class_layout_t* class_layouts = metadata->tables[METADATA_NESTED_CLASS].table;
+    for (int i = 0; i < metadata->tables[METADATA_NESTED_CLASS].rows; i++) {
+        metadata_class_layout_t* class_layout = &class_layouts[i];
+        System_Type type = assembly_get_type_by_token(assembly, class_layout->parent);
+        CHECK(type != NULL);
+
+        // layout must be seq or explicit to have a row in this class
+        type_layout_t layout = type_layout(type);
+        CHECK(layout == TYPE_SEQUENTIAL_LAYOUT || layout == TYPE_EXPLICIT_LAYOUT);
+
+        // set the class size, checking it will be done later on
+        type->ClassSize = class_layout->class_size;
+
+        // can only have packing size on seq layout
+        if (class_layout->packing_size != 0) {
+            CHECK(layout == TYPE_SEQUENTIAL_LAYOUT);
+            type->PackingSize = class_layout->packing_size;
+
+            // make sure it is valid
+            switch (type->PackingSize) {
+                case 0:
+                case 1:
+                case 2:
+                case 4:
+                case 8:
+                case 16:
+                case 32:
+                case 64:
+                case 128:
+                    break;
+                default:
+                    CHECK_FAIL();
+            }
+        }
+    }
+
+    cleanup:
+    return err;
+}
+
 static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Reflection_Assembly assembly) {
     err_t err = NO_ERROR;
 
@@ -280,10 +378,18 @@ static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Refle
         GC_UPDATE(type, Module, assembly->Module);
         type->Attributes = type_def->flags;
 
+        CHECK(
+            type_layout(type) == TYPE_SEQUENTIAL_LAYOUT ||
+            type_layout(type) == TYPE_EXPLICIT_LAYOUT ||
+            type_layout(type) == TYPE_AUTO_LAYOUT
+        );
+
         // setup the name and base types
         GC_UPDATE(type, Name, new_string_from_utf8(type_def->type_name, strlen(type_def->type_name)));
         GC_UPDATE(type, Namespace, new_string_from_utf8(type_def->type_namespace, strlen(type_def->type_namespace)));
         GC_UPDATE(type, BaseType, assembly_get_type_by_token(assembly, type_def->extends));
+
+        CHECK(type->Name->Length > 0);
     }
 
     //
@@ -390,6 +496,9 @@ static err_t setup_type_info(pe_file_t* file, metadata_t* metadata, System_Refle
             GC_UPDATE_ARRAY(type->InterfaceImpls, j, interfaceImpl);
         }
     }
+
+    // init class layout
+    CHECK_AND_RETHROW(set_class_layout(assembly, metadata));
 
 cleanup:
     if (interfaces != NULL) {
@@ -664,6 +773,17 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             }
         }
 
+        // TODO: for auto-layout we can optimize the layout
+        //       to have the best packing possible
+
+        // TODO: handle explicit layout, but check for overlapping
+        //       so no reference type will have overlapping with
+        //       another type
+        CHECK(type_layout(type) != TYPE_EXPLICIT_LAYOUT);
+
+        // the default max alignment is 16
+        uint8_t max_alignment = type->PackingSize ?: 16;
+
         // for non-static we have two steps, first resolve all the stack sizes, for ref types
         // we are not going to init ourselves yet
         for (int i = 0; i < type->Fields->Length; i++) {
@@ -684,11 +804,15 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                 }
             }
 
+            // only static fields can be literal
             CHECK(!field_is_literal(fieldInfo));
 
-            // align the offset, set it, and then increment by the field size
-            managedSize = ALIGN_UP(managedSize, fieldInfo->FieldType->StackAlignment);
+            // align the size
+            int16_t alignment = MIN(max_alignment, fieldInfo->FieldType->StackAlignment);
+            managedSize = ALIGN_UP(managedSize, alignment);
             fieldInfo->MemoryOffset = managedSize;
+
+            // now add the size
             managedSize += fieldInfo->FieldType->StackSize;
             CHECK(managedSize > managedSizePrev, "Type size overflow! %d -> %d", managedSizePrev, managedSize);
             managedSizePrev = managedSize;
@@ -710,6 +834,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
 
             // set new type alignment
             managedAlignment = MAX(managedAlignment, fieldInfo->FieldType->StackAlignment);
+            managedAlignment = MIN(max_alignment, managedAlignment);
         }
 
         // lastly align the whole size to the struct alignment
@@ -717,6 +842,10 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
         CHECK(managedSize >= managedSizePrev, "Type size overflow! %d >= %d", managedSize, managedSizePrev);
 
         if (type->ManagedSize != 0) {
+            // only builtin-types should have this, and it means
+            // they should be sequential layout
+            CHECK(type_layout(type) == TYPE_SEQUENTIAL_LAYOUT, "%U", type->Name);
+
             // This has a C type equivalent, verify the sizes match
             CHECK(type->ManagedSize == managedSize && type->ManagedAlignment == managedAlignment,
                   "Size mismatch for type %U.%U (native: %d bytes (%d), dotnet: %d bytes (%d))",
@@ -724,28 +853,51 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                   type->ManagedSize, type->ManagedAlignment,
                   managedSize, managedAlignment);
         }
+
+        // set the correct class size, must not be smaller than
+        // the size we got
+        if (type->ClassSize != 0) {
+            CHECK(type->ClassSize >= managedSize);
+            managedSize = type->ClassSize;
+        }
+
         type->ManagedSize = managedSize;
         type->ManagedAlignment = managedAlignment;
 
         // Sort the stack size, if it was a reference type we already set it, otherwise it
         // is a struct type
         if (type->StackSize == 0) {
+            CHECK(type->IsValueType);
             type->StackSize = type->ManagedSize;
             type->StackAlignment = type->ManagedAlignment;
+
+            // max size for stack type is 1MB
+            CHECK(type->StackSize <= SIZE_1MB);
         }
 
         // now that we initialized the instance size of this, we can go over and initialize
         // all the fields, both static and non-static
         for (int i = 0; i < type->Fields->Length; i++) {
             System_Reflection_FieldInfo fieldInfo = type->Fields->Data[i];
+            if (field_is_static(fieldInfo)) continue;
 
             // Fill it
             CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
         }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // TODO: Handle static fields
+        // Handle static fields
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+        // now that all the non-static fields are initialized we can have all our globals initialized properly
+        // there is nothing much to do since most of the work is in the jit
+        for (int i = 0; i < type->Fields->Length; i++) {
+            System_Reflection_FieldInfo fieldInfo = type->Fields->Data[i];
+            if (!field_is_static(fieldInfo)) continue;
+
+            // Fill it
+            CHECK_AND_RETHROW(loader_fill_type(fieldInfo->FieldType, genericTypeArguments, genericMethodArguments));
+        }
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // Now handle all the methods
@@ -1119,6 +1271,27 @@ cleanup:
     return err;
 }
 
+static err_t loader_setup_module(System_Reflection_Assembly assembly, metadata_t* metadata) {
+    err_t err = NO_ERROR;
+
+    // setup the assembly
+    metadata_assembly_t* mt_assembly = metadata->tables[METADATA_ASSEMBLY].table;
+    GC_UPDATE(assembly, Name, new_string_from_cstr(mt_assembly->name));
+    assembly->MajorVersion = mt_assembly->major_version;
+    assembly->MinorVersion = mt_assembly->minor_version;
+    assembly->BuildNumber = mt_assembly->build_number;
+    assembly->RevisionNumber = mt_assembly->revision_number;
+
+    // create the module
+    metadata_module_t* module = metadata->tables[METADATA_MODULE].table;
+    GC_UPDATE(assembly, Module, GC_NEW(tSystem_Reflection_Module));
+    GC_UPDATE(assembly->Module, Name, new_string_from_cstr(module->name));
+    GC_UPDATE(assembly->Module, Assembly, assembly);
+
+cleanup:
+    return err;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // corelib is a bit different so load it as needed
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1126,6 +1299,8 @@ cleanup:
 err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     err_t err = NO_ERROR;
     metadata_t metadata = { 0 };
+
+    uint64_t start = microtime();
 
     // Start by loading the PE file for the corelib
     pe_file_t file = {
@@ -1163,11 +1338,7 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     CHECK_AND_RETHROW(validate_have_init_types());
 
     // create the module
-    CHECK(metadata.tables[METADATA_MODULE].rows == 1);
-    metadata_module_t* module = metadata.tables[METADATA_MODULE].table;
-    assembly->Module = GC_NEW(tSystem_Reflection_Module);
-    assembly->Module->Name = new_string_from_cstr(module->name);
-    assembly->Module->Assembly = assembly;
+    CHECK_AND_RETHROW(loader_setup_module(assembly, &metadata));
 
     assembly->DefinedMethods = gc_new(NULL, sizeof(struct System_Array) + method_count * sizeof(System_Reflection_MethodInfo));
     assembly->DefinedMethods->Length = method_count;
@@ -1217,6 +1388,13 @@ cleanup:
     free_metadata(&metadata);
     free_pe_file(&file);
 
+    if (!IS_ERROR(err)) {
+        TRACE("loading assembly `%U` (v%d.%d.%d.%d) took %dms",
+              assembly->Name,
+              assembly->MajorVersion, assembly->MinorVersion, assembly->BuildNumber, assembly->RevisionNumber,
+              (microtime() - start) / 1000);
+    }
+
     return err;
 }
 
@@ -1250,7 +1428,7 @@ static err_t loader_load_refs(System_Reflection_Assembly assembly, metadata_t* m
 
         // resolve the assembly
         System_Reflection_Assembly refed = NULL;
-        if (strcmp(assembly_ref->name, "Corelib") == 0) {
+        if (string_equals_cstr(g_corelib->Name, assembly_ref->name)) {
             refed = g_corelib;
         } else {
             // TODO: properly load anything which is not loaded
@@ -1258,7 +1436,15 @@ static err_t loader_load_refs(System_Reflection_Assembly assembly, metadata_t* m
         }
         CHECK(refed != NULL);
 
-        // TODO: validate the version we have loaded
+        // Validate the version we have loaded
+        //  - majors:   must match, indicate a breaking change in the API
+        //  - minor:    must be higher, indicates a compatible change in the API
+        //  - build:    must be higher, indicates a bugfix/improvement
+        //  - revision: ignored, mostly used as a unique id for the build so the
+        //              exact release source can be found
+        CHECK(refed->MajorVersion == assembly_ref->major_version);
+        CHECK(refed->MinorVersion >= assembly_ref->minor_version);
+        CHECK(refed->BuildNumber >= assembly_ref->build_number);
 
         // get the type
         System_Type refed_type = assembly_get_type_by_name(refed, type_ref->type_name, type_ref->type_namespace);
@@ -1362,6 +1548,7 @@ cleanup:
 err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_Assembly* out_assembly) {
     err_t err = NO_ERROR;
     metadata_t metadata = { 0 };
+    uint64_t start = microtime();
 
     // Start by loading the PE file for the corelib
     pe_file_t file = {
@@ -1389,12 +1576,7 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
         GC_UPDATE_ARRAY(assembly->DefinedTypes, i, GC_NEW(tSystem_Type));
     }
 
-    // create the module
-    CHECK(metadata.tables[METADATA_MODULE].rows == 1);
-    metadata_module_t* module = metadata.tables[METADATA_MODULE].table;
-    GC_UPDATE(assembly, Module, GC_NEW(tSystem_Reflection_Module));
-    GC_UPDATE(assembly->Module, Name, new_string_from_cstr(module->name));
-    GC_UPDATE(assembly->Module, Assembly, assembly);
+    CHECK_AND_RETHROW(loader_setup_module(assembly, &metadata));
 
     // load all the external dependencies
     CHECK_AND_RETHROW(loader_load_refs(assembly, &metadata));
@@ -1433,6 +1615,13 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
 cleanup:
     free_metadata(&metadata);
     free_pe_file(&file);
+
+    if (!IS_ERROR(err)) {
+        TRACE("loading assembly `%U` (v%d.%d.%d.%d) took %dms",
+              assembly->Name,
+              assembly->MajorVersion, assembly->MinorVersion, assembly->BuildNumber, assembly->RevisionNumber,
+              (microtime() - start) / 1000);
+    }
 
     return err;
 }

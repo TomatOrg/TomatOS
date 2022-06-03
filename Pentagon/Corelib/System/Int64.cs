@@ -1,9 +1,8 @@
-namespace System
+namespace System;
+
+public readonly struct Int64
 {
-    public readonly struct Int64
-    {
 #pragma warning disable 169
-        private readonly long _value;
+    private readonly long _value;
 #pragma warning restore 169
-    }
 }
