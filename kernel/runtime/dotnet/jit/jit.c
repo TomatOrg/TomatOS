@@ -1786,6 +1786,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 token_t value = *(token_t*)&body->Il->Data[il_ptr];
                 il_ptr += sizeof(token_t);
                 operand_field = assembly_get_field_by_token(assembly, value);
+                CHECK(operand_field != NULL);
+                CHECK(check_field_accessibility(method->DeclaringType, operand_field));
             } break;
             case OPCODE_OPERAND_InlineI: {
                 operand_i32 = *(int32_t*)&body->Il->Data[il_ptr];
@@ -1799,6 +1801,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 token_t value = *(token_t*)&body->Il->Data[il_ptr];
                 il_ptr += sizeof(token_t);
                 operand_method = assembly_get_method_by_token(assembly, value);
+                CHECK(operand_method != NULL);
+                CHECK(check_method_accessibility(method->DeclaringType, operand_method));
             } break;
             case OPCODE_OPERAND_InlineR: {
                 operand_f64 = *(double*)&body->Il->Data[il_ptr];
@@ -1809,6 +1813,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 token_t value = *(token_t*)&body->Il->Data[il_ptr];
                 il_ptr += sizeof(token_t);
                 operand_string = assembly_get_string_by_token(assembly, value);
+                CHECK(operand_string != NULL);
             } break;
             case OPCODE_OPERAND_InlineSwitch: {
                 operand_switch_n = *(uint32_t*)&body->Il->Data[il_ptr];
@@ -1821,6 +1826,8 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 token_t value = *(token_t*)&body->Il->Data[il_ptr];
                 il_ptr += sizeof(token_t);
                 operand_type = assembly_get_type_by_token(assembly, value);
+                CHECK(operand_type != NULL);
+                CHECK(check_type_visibility(method->DeclaringType, operand_type));
             } break;
             case OPCODE_OPERAND_InlineVar: {
                 operand_i32 = *(uint16_t*)&body->Il->Data[il_ptr];
@@ -2486,8 +2493,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // get the field type, ignoring stuff like enums
                 System_Type field_type = type_get_underlying_type(operand_field->FieldType);
 
-                // TODO: check field access
-
                 // TODO: does the runtime actually use ldfld for static fields?
                 //       in theory CIL allows that, but I think I won't for simplicity
                 CHECK(!field_is_static(operand_field));
@@ -2654,8 +2659,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
                 CHECK(base != NULL);
 
-                // TODO: check accessibility
-
                 // TODO: does the runtime actually use ldfld for static fields?
                 CHECK(!field_is_static(operand_field));
 
@@ -2747,8 +2750,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
                 CHECK(base != NULL);
 
-                // TODO: check accessibility
-
                 // TODO: does the runtime actually use ldfld for static fields?
                 CHECK(!field_is_static(operand_field));
 
@@ -2794,10 +2795,6 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 // count the amount of arguments, +1 if we have a this
                 int arg_count = operand_method->Parameters->Length;
                 bool aggressive_inlining = method_is_aggressive_inlining(operand_method);
-
-
-                // TODO: the method must be accessible from the call size.
-                // TODO: throw unconditional System.MethodAccessException
 
                 if (opcode == CEE_NEWOBJ) {
                     // newobj must call a ctor, we verify that ctors are good

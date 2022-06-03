@@ -1012,6 +1012,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
             for (int i = 0; i < type->Fields->Length; i++) {
                 System_Reflection_FieldInfo field = type->Fields->Data[i];
                 if (!field_is_static(field)) {
+                    // TODO: check specialname/rtspecialname
                     CHECK(string_equals_cstr(field->Name, "value__"));
                     CHECK(type_is_integer(field->FieldType));
                     type->ElementType = field->FieldType;
@@ -1597,9 +1598,9 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
     CHECK_AND_RETHROW(connect_nested_types(assembly, &metadata));
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
-//#ifdef PENTAGON_DUMP_ASSEMBLIES
+#ifdef PENTAGON_DUMP_ASSEMBLIES
     assembly_dump(assembly);
-//#endif
+#endif
 
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));

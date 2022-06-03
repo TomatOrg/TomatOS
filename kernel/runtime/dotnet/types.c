@@ -313,6 +313,19 @@ System_Type get_by_ref_type(System_Type Type) {
     return Type->ByRefType;
 }
 
+const char* method_access_str(method_access_t access) {
+    static const char* strs[] = {
+        [METHOD_COMPILER_CONTROLLED] = "compilercontrolled",
+        [METHOD_PRIVATE] = "private",
+        [METHOD_FAMILY_AND_ASSEMBLY] = "private protected",
+        [METHOD_ASSEMBLY] = "internal",
+        [METHOD_FAMILY] = "protected",
+        [METHOD_FAMILY_OR_ASSEMBLY] = "protected internal",
+        [METHOD_PUBLIC] = "public",
+    };
+    return strs[access];
+}
+
 const char* field_access_str(field_access_t access) {
     static const char* strs[] = {
         [FIELD_COMPILER_CONTROLLED] = "compilercontrolled",
@@ -668,6 +681,9 @@ void assembly_dump(System_Reflection_Assembly assembly) {
 
             strbuilder_t method = strbuilder_new();
 
+            strbuilder_cstr(&method, method_access_str(method_get_access(mi)));
+            strbuilder_char(&method, ' ');
+
             if (method_is_static(mi)) {
                 strbuilder_cstr(&method, "static ");
             }
@@ -723,4 +739,96 @@ void assembly_dump(System_Reflection_Assembly assembly) {
 
         TRACE("");
     }
+}
+
+static bool is_same_family(System_Type from, System_Type to) {
+    while (from != to) {
+        if (from == NULL) {
+            return false;
+        }
+        from = from->BaseType;
+    }
+    return true;
+}
+
+bool check_field_accessibility(System_Type from, System_Reflection_FieldInfo to) {
+    if (!check_type_visibility(from, to->DeclaringType)) {
+        return false;
+    }
+
+    bool family = is_same_family(from, to->DeclaringType);
+    bool assembly = from->Assembly == to->DeclaringType->Assembly;
+
+    switch (field_access(to)) {
+        case FIELD_COMPILER_CONTROLLED: ASSERT(!"TODO: METHOD_COMPILER_CONTROLLED"); return false;
+        case FIELD_PRIVATE: return from == to->DeclaringType;
+        case FIELD_FAMILY: return family;
+        case FIELD_ASSEMBLY: return assembly;
+        case FIELD_FAMILY_AND_ASSEMBLY: return family && assembly;
+        case FIELD_FAMILY_OR_ASSEMBLY: return family || assembly;
+        case FIELD_PUBLIC: return true;
+        default:
+            ASSERT(!"Invalid method access");
+            return false;
+    }
+
+}
+
+bool check_method_accessibility(System_Type from, System_Reflection_MethodInfo to) {
+    if (!check_type_visibility(from, to->DeclaringType)) {
+        return false;
+    }
+
+    bool family = is_same_family(from, to->DeclaringType);
+    bool assembly = from->Assembly == to->DeclaringType->Assembly;
+
+    switch (method_get_access(to)) {
+        case METHOD_COMPILER_CONTROLLED: ASSERT(!"TODO: METHOD_COMPILER_CONTROLLED"); return false;
+        case METHOD_PRIVATE: return from == to->DeclaringType;
+        case METHOD_FAMILY: return family;
+        case METHOD_ASSEMBLY: return assembly;
+        case METHOD_FAMILY_AND_ASSEMBLY: return family && assembly;
+        case METHOD_FAMILY_OR_ASSEMBLY: return family || assembly;
+        case METHOD_PUBLIC: return true;
+        default:
+            ASSERT(!"Invalid method access");
+            return false;
+    }
+}
+
+bool check_type_visibility(System_Type from, System_Type to) {
+    type_visibility_t visibility = type_visibility(to);
+
+    // start with easy cases
+    if (visibility == TYPE_PUBLIC) {
+        // anyone can access this
+        return true;
+    } else if (visibility == TYPE_NOT_PUBLIC) {
+        // only the same assembly may access this
+        return from->Assembly == to->Assembly;
+    }
+
+    // the rest only works on nested types
+    if (to->DeclaringType != NULL) {
+        ASSERT(!"Must be nested");
+        return false;
+    }
+
+    bool family = is_same_family(from, to->DeclaringType);
+    bool assembly = from->Assembly == to->DeclaringType->Assembly;
+
+    switch (visibility) {
+        case TYPE_NESTED_PRIVATE: return from == to->DeclaringType;
+        case TYPE_NESTED_FAMILY: return family;
+        case TYPE_NESTED_ASSEMBLY: return assembly;
+        case TYPE_NESTED_FAMILY_AND_ASSEMBLY: return family && assembly;
+        case TYPE_NESTED_FAMILY_OR_ASSEMBLY: return family || assembly;
+        case TYPE_NESTED_PUBLIC: return true;
+        case TYPE_NOT_PUBLIC:
+        case TYPE_PUBLIC:
+            ASSERT(!"We should have already handled this?");
+            return false;
+    }
+
+    return true;
 }

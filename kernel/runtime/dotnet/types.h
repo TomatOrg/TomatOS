@@ -322,7 +322,15 @@ typedef enum method_access {
     METHOD_PUBLIC = 0x0006
 } method_access_t;
 
+/**
+ * Get the access of the method
+ */
 static inline method_access_t method_get_access(System_Reflection_MethodInfo method) { return (method_access_t)(method->Attributes & 0x0007); }
+
+/**
+ * Get the method access as a string
+ */
+const char* method_access_str(method_access_t access);
 
 // method attribute impl helpers
 
@@ -589,3 +597,6 @@ bool type_is_verifier_assignable_to(System_Type Q, System_Type R);
 
 bool isinstance(System_Object object, System_Type type);
 
+bool check_field_accessibility(System_Type from, System_Reflection_FieldInfo to);
+bool check_method_accessibility(System_Type from, System_Reflection_MethodInfo to);
+bool check_type_visibility(System_Type from, System_Type to);
