@@ -308,8 +308,8 @@ cleanup:
 static err_t set_class_layout(System_Reflection_Assembly assembly, metadata_t* metadata) {
     err_t err = NO_ERROR;
 
-    metadata_class_layout_t* class_layouts = metadata->tables[METADATA_NESTED_CLASS].table;
-    for (int i = 0; i < metadata->tables[METADATA_NESTED_CLASS].rows; i++) {
+    metadata_class_layout_t* class_layouts = metadata->tables[METADATA_CLASS_LAYOUT].table;
+    for (int i = 0; i < metadata->tables[METADATA_CLASS_LAYOUT].rows; i++) {
         metadata_class_layout_t* class_layout = &class_layouts[i];
         System_Type type = assembly_get_type_by_token(assembly, class_layout->parent);
         CHECK(type != NULL);
@@ -913,7 +913,7 @@ err_t loader_fill_type(System_Type type, System_Type_Array genericTypeArguments,
                 CHECK(method_is_static(methodInfo));
                 CHECK(methodInfo->Parameters->Length == 0);
                 CHECK(methodInfo->ReturnType == NULL);
-                CHECK(type->StaticCtor != NULL);
+                CHECK(type->StaticCtor == NULL);
                 type->StaticCtor = methodInfo;
             } else if (string_equals_cstr(methodInfo->Name, ".ctor")) {
                 CHECK(method_is_rt_special_name(methodInfo));
@@ -1376,6 +1376,8 @@ err_t loader_load_corelib(void* buffer, size_t buffer_size) {
     CHECK_AND_RETHROW(connect_nested_types(assembly, &metadata));
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
+//    assembly_dump(assembly);
+
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));
 
@@ -1598,9 +1600,9 @@ err_t loader_load_assembly(void* buffer, size_t buffer_size, System_Reflection_A
     CHECK_AND_RETHROW(connect_nested_types(assembly, &metadata));
     CHECK_AND_RETHROW(parse_user_strings(assembly, &file));
 
-#ifdef PENTAGON_DUMP_ASSEMBLIES
+//#ifdef PENTAGON_DUMP_ASSEMBLIES
     assembly_dump(assembly);
-#endif
+//#endif
 
     // now jit it (or well, prepare the ir of it)
     CHECK_AND_RETHROW(jit_assembly(assembly));

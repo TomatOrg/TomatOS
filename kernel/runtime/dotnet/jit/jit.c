@@ -326,6 +326,12 @@ typedef struct jit_context {
         MIR_item_t value;
     }* types;
 
+    // tracks all the static fields
+    struct {
+        System_Reflection_FieldInfo key;
+        MIR_item_t value;
+    }* static_fields;
+
     // track all the strings to their import item
     struct {
         System_String key;
@@ -2356,6 +2362,15 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                                              MIR_new_int_op(ctx->context, operand_i32)));
             } break;
 
+            case CEE_LDC_I8: {
+                MIR_reg_t reg;
+                CHECK_AND_RETHROW(stack_push(ctx, tSystem_Int64, &reg));
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, reg),
+                                             MIR_new_int_op(ctx->context, operand_i64)));
+            } break;
+
             case CEE_LDC_R4: {
                 MIR_reg_t reg;
                 CHECK_AND_RETHROW(stack_push(ctx, tSystem_Single, &reg));
@@ -2464,6 +2479,161 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
             // Field access
             ////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+            case CEE_STSFLD: {
+                // get the top value
+                MIR_reg_t value_reg;
+                System_Type value_type;
+                CHECK_AND_RETHROW(stack_pop(ctx, &value_type, &value_reg));
+
+                // get the field type, ignoring stuff like enums
+                System_Type field_type = type_get_underlying_type(operand_field->FieldType);
+
+                // make sure the field is static
+                CHECK(field_is_static(operand_field));
+
+                // if this is an init-only field then make sure that
+                // only rtspecialname can access it (.ctor and .cctor)
+                if (field_is_init_only(operand_field)) {
+                    CHECK(method_is_rt_special_name(method));
+                }
+
+                // validate the assignability
+                CHECK(type_is_verifier_assignable_to(value_type, operand_field->FieldType));
+
+                // get the field
+                int fieldi = hmgeti(ctx->static_fields, operand_field);
+                CHECK(fieldi != -1);
+                MIR_item_t field_ref = ctx->static_fields[fieldi].value;
+
+                // have the reference in a register for easy access
+                MIR_reg_t field_reg = new_reg(ctx, tSystem_IntPtr);
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, field_reg),
+                                             MIR_new_ref_op(ctx->context, field_ref)));
+                MIR_op_t field_op = MIR_new_mem_op(ctx->context, get_mir_type(field_type), 0, field_reg, 0, 1);
+
+                switch (type_get_stack_type(value_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(field_type)) {
+                            if (type_is_interface(value_type)) {
+                                // interface -> interface
+                                goto stsfld_value_type;
+                            } else {
+                                // object -> interface
+                                CHECK_AND_RETHROW(jit_cast_obj_to_interface(ctx,
+                                                                            field_reg, value_reg,
+                                                                            value_type, field_type, 0));
+                            }
+                        } else {
+                            if (type_is_interface(value_type)) {
+                                // interface -> object
+                                MIR_append_insn(ctx->context, ctx->func,
+                                                MIR_new_insn(ctx->context, MIR_MOV,
+                                                             field_op,
+                                                             MIR_new_mem_op(ctx->context, MIR_T_P, sizeof(void*), value_reg, 0, 1)));
+                            } else {
+                                // object -> object
+                                goto stsfld_primitive_type;
+                            }
+                        }
+                    } break;
+
+                    stsfld_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT:
+                    case STACK_TYPE_REF: {
+                        MIR_insn_code_t code = jit_number_cast_inscode(value_type, field_type);
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, code,
+                                                     field_op,
+                                                     MIR_new_reg_op(ctx->context, value_reg)));
+                    } break;
+
+                    stsfld_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        jit_emit_memcpy(ctx, field_reg, value_reg, value_type->StackSize);
+                    } break;
+                }
+            } break;
+
+            case CEE_LDSFLD: {
+
+                // only static fields
+                CHECK(field_is_static(operand_field));
+
+                // Get the field type
+                System_Type field_stack_type = type_get_intermediate_type(operand_field->FieldType);
+                System_Type field_type = type_get_underlying_type(operand_field->FieldType);
+
+                // push it
+                MIR_reg_t value_reg;
+                CHECK_AND_RETHROW(stack_push(ctx, field_stack_type, &value_reg));
+
+                // get the field
+                int fieldi = hmgeti(ctx->static_fields, operand_field);
+                CHECK(fieldi != -1);
+                MIR_item_t field_ref = ctx->static_fields[fieldi].value;
+
+                // have the reference in a register for easy access
+                MIR_reg_t field_reg = new_reg(ctx, tSystem_IntPtr);
+                MIR_append_insn(ctx->context, ctx->func,
+                                MIR_new_insn(ctx->context, MIR_MOV,
+                                             MIR_new_reg_op(ctx->context, field_reg),
+                                             MIR_new_ref_op(ctx->context, field_ref)));
+                MIR_op_t field_op = MIR_new_mem_op(ctx->context, get_mir_type(field_type), 0, field_reg, 0, 1);
+
+                switch (type_get_stack_type(field_type)) {
+                    case STACK_TYPE_O: {
+                        if (type_is_interface(field_type)) {
+                            goto ldsfld_value_type;
+                        } else {
+                            goto ldsfld_primitive_type;
+                        }
+                    } break;
+
+                    ldsfld_primitive_type:
+                    case STACK_TYPE_INT32:
+                    case STACK_TYPE_INT64:
+                    case STACK_TYPE_INTPTR:
+                    case STACK_TYPE_FLOAT: {
+                        // we need to extend this properly if the field is smaller
+                        // than an int32 (because we are going to load into an int32
+                        // essentially)
+                        MIR_insn_code_t insn = MIR_MOV;
+                        if (field_type == tSystem_SByte || field_type == tSystem_Boolean) {
+                            insn = MIR_EXT8;
+                        } else if (field_type == tSystem_Byte) {
+                            insn = MIR_UEXT8;
+                        } else if (field_type == tSystem_Int16) {
+                            insn = MIR_EXT16;
+                        } else if (field_type == tSystem_UInt16 || field_type == tSystem_Char) {
+                            insn = MIR_UEXT16;
+                        } else if (field_type == tSystem_Single) {
+                            insn = MIR_FMOV;
+                        } else if (field_type == tSystem_Single) {
+                            insn = MIR_DMOV;
+                        }
+
+                        MIR_append_insn(ctx->context, ctx->func,
+                                        MIR_new_insn(ctx->context, insn,
+                                                     MIR_new_reg_op(ctx->context, value_reg),
+                                                     field_op));
+                    } break;
+
+                    ldsfld_value_type:
+                    case STACK_TYPE_VALUE_TYPE: {
+                        // take the offset and copy it
+                        jit_emit_memcpy(ctx, value_reg, field_reg, field_type->StackSize);
+                    } break;
+
+                    case STACK_TYPE_REF:
+                        CHECK_FAIL("wtf");
+                }
+            } break;
+
             case CEE_STFLD: {
                 // get the values
                 MIR_reg_t obj_reg;
@@ -2478,7 +2648,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                     // this is a reference, so it has to be a reference to a value type
                     // note that we can't know if the value type is part of another class
                     // or not so we have to use gc_update_ref
-                    CHECK(type_get_stack_type(obj_type->BaseType) == STACK_TYPE_VALUE_TYPE);
+                    CHECK(obj_type->BaseType->IsValueType);
                 } else {
                     CHECK(type_get_stack_type(obj_type) == STACK_TYPE_O);
                 }
@@ -2894,6 +3064,7 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                 }
 
                 // handle the `this` argument
+                MIR_reg_t number_reg;
                 MIR_reg_t this_reg;
                 System_Type this_type;
                 if (!method_is_static(operand_method)) {
@@ -2905,10 +3076,25 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
                         CHECK(!type_is_abstract(this_type));
                         CHECK(!type_is_interface(this_type));
 
-                        // we have to create the object right now
                         CHECK_AND_RETHROW(stack_push(ctx, operand_method->DeclaringType, &this_reg));
 
                         if (this_type->IsValueType) {
+                            if (type_get_stack_type(this_type) != STACK_TYPE_VALUE_TYPE) {
+                                // this is an integer/float type, so allocate it on the stack
+                                // so we can pass it as a reference and then just copy it into
+                                // the eval stack as a normal variable
+
+                                // save the position on the eval stack
+                                number_reg = this_reg;
+
+                                // set a temp new location
+                                this_reg = new_reg(ctx, tSystem_IntPtr);
+                                MIR_prepend_insn(ctx->context, ctx->func,
+                                                 MIR_new_insn(ctx->context, MIR_ALLOCA,
+                                                              MIR_new_reg_op(ctx->context, this_reg),
+                                                              MIR_new_int_op(ctx->context, operand_method->DeclaringType->StackSize)));
+                            }
+
                             // For a value type we just need to zero it out before calling the ctor
                             jit_emit_zerofill(ctx, this_reg, this_type->StackSize);
                         } else {
@@ -3042,6 +3228,19 @@ static err_t jit_method(jit_context_t* ctx, System_Reflection_MethodInfo method)
 
                 // insert the skip label
                 MIR_append_insn(ctx->context, ctx->func, label);
+
+                // check if we need to copy the left out value from the stack
+                // to the eval stack
+                if (
+                    opcode == CEE_NEWOBJ &&
+                    operand_method->DeclaringType->IsValueType &&
+                    type_get_stack_type(operand_method->DeclaringType) != STACK_TYPE_VALUE_TYPE
+                ) {
+                    MIR_append_insn(ctx->context, ctx->func,
+                                    MIR_new_insn(ctx->context, jit_number_inscode(operand_method->DeclaringType),
+                                                 MIR_new_reg_op(ctx->context, number_reg),
+                                                 MIR_new_mem_op(ctx->context, get_mir_type(operand_method->DeclaringType), 0, this_reg, 0, 1)));
+                }
             } break;
 
             case CEE_INITOBJ: {
@@ -4042,15 +4241,27 @@ cleanup:
     return err;
 }
 
-static void jit_import_type(jit_context_t* ctx, System_Type type) {
+static err_t jit_import_type(jit_context_t* ctx, System_Type type, bool all_methods) {
+    err_t err = NO_ERROR;
+
     if (hmgeti(ctx->types, type) != -1) {
-        return;
+        goto cleanup;
     }
 
     strbuilder_t name = strbuilder_new();
     type_print_full_name(type, &name);
     hmput(ctx->types, type, MIR_new_import(ctx->context, strbuilder_get(&name)));
     strbuilder_free(&name);
+
+    // import all the types
+    if (all_methods) {
+        for (int i = 0; i < type->Methods->Length; i++) {
+            CHECK_AND_RETHROW(prepare_method_signature(ctx, type->Methods->Data[i], true));
+        }
+    }
+
+cleanup:
+    return err;
 }
 
 static const char* m_allowed_internal_call_assemblies[] = {
@@ -4112,23 +4323,26 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
 
     // internal types
     for (int i = 0; i < assembly->DefinedTypes->Length; i++) {
-        jit_import_type(&ctx, assembly->DefinedTypes->Data[i]);
+        CHECK_AND_RETHROW(jit_import_type(&ctx, assembly->DefinedTypes->Data[i], false));
     }
 
     // external types
     for (int i = 0; i < assembly->ImportedTypes->Length; i++) {
-        jit_import_type(&ctx, assembly->ImportedTypes->Data[i]);
+        CHECK_AND_RETHROW(jit_import_type(&ctx, assembly->ImportedTypes->Data[i], false));
     }
 
-    // all exceptions that the runtime may throw
-    jit_import_type(&ctx, tSystem_ArithmeticException);
-    jit_import_type(&ctx, tSystem_DivideByZeroException);
-    jit_import_type(&ctx, tSystem_ExecutionEngineException);
-    jit_import_type(&ctx, tSystem_IndexOutOfRangeException);
-    jit_import_type(&ctx, tSystem_NullReferenceException);
-    jit_import_type(&ctx, tSystem_InvalidCastException);
-    jit_import_type(&ctx, tSystem_OutOfMemoryException);
-    jit_import_type(&ctx, tSystem_OverflowException);
+    // all exceptions that the runtime may throw, only import if they are not defined in the
+    // given binary (aka the corelib)
+    if (assembly != tSystem_ArithmeticException->Assembly) {
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_ArithmeticException, true));
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_DivideByZeroException, true));
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_ExecutionEngineException, true));
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_IndexOutOfRangeException, true));
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_NullReferenceException, true));
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_InvalidCastException, true));
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_OutOfMemoryException, true));
+        CHECK_AND_RETHROW(jit_import_type(&ctx, tSystem_OverflowException, true));
+    }
 
     //
     // predefine all strings
@@ -4143,15 +4357,49 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     }
 
     //
-    // predefine all methods
+    // predefine all static fields
     //
 
-    for (int i = 0; i < hmlen(ctx.types); i++) {
-        System_Type type = ctx.types[i].key;
-        if (type == NULL) continue;
-        bool external = type->Assembly != assembly;
-        for (int mi = 0; mi < type->Methods->Length; mi++) {
-            CHECK_AND_RETHROW(prepare_method_signature(&ctx, type->Methods->Data[mi], external));
+    for (int i = 0; i < assembly->DefinedFields->Length; i++) {
+        System_Reflection_FieldInfo fieldInfo = assembly->DefinedFields->Data[i];
+        if (!field_is_static(fieldInfo)) continue;
+
+        strbuilder_t name = strbuilder_new();
+        type_print_name(fieldInfo->DeclaringType, &name);
+        strbuilder_cstr(&name, "::");
+        strbuilder_utf16(&name, fieldInfo->Name->Chars, fieldInfo->Name->Length);
+        hmput(ctx.static_fields, fieldInfo, MIR_new_bss(ctx.context, strbuilder_get(&name), fieldInfo->FieldType->StackSize));
+        MIR_new_export(ctx.context, strbuilder_get(&name));
+        strbuilder_free(&name);
+    }
+
+    //
+    // predefine all methods (and static fields)
+    //
+
+    // internal
+    for (int i = 0; i < assembly->DefinedMethods->Length; i++) {
+        CHECK_AND_RETHROW(prepare_method_signature(&ctx, assembly->DefinedMethods->Data[i], false));
+    }
+
+    // external
+    for (int i = 0; i < assembly->ImportedMembers->Length; i++) {
+        System_Reflection_MemberInfo memberInfo = assembly->ImportedMembers->Data[i];
+        if (isinstance((System_Object)memberInfo, tSystem_Reflection_MethodInfo)) {
+            // method
+            CHECK_AND_RETHROW(prepare_method_signature(&ctx, (System_Reflection_MethodInfo)memberInfo, true));
+        } else {
+            // field
+            System_Reflection_FieldInfo fieldInfo = (System_Reflection_FieldInfo) memberInfo;
+            if (field_is_static(fieldInfo)) {
+                // import the static field
+                strbuilder_t name = strbuilder_new();
+                type_print_name(fieldInfo->DeclaringType, &name);
+                strbuilder_cstr(&name, "::");
+                strbuilder_utf16(&name, fieldInfo->Name->Chars, fieldInfo->Name->Length);
+                hmput(ctx.static_fields, fieldInfo, MIR_new_import(ctx.context, strbuilder_get(&name)));
+                strbuilder_free(&name);
+            }
         }
     }
 
@@ -4218,6 +4466,7 @@ cleanup:
         MIR_finish(ctx.context);
     }
 
+    hmfree(ctx.static_fields);
     hmfree(ctx.functions);
     hmfree(ctx.types);
 
