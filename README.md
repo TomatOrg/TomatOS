@@ -25,11 +25,10 @@ Right now the main work is on the runtime itself, the main features of the runti
   - Supports locals, fields and array elements
 - Full support for boxing/unboxing 
 - Most common CIL instructions implemented
+- Visibility and Accessibility checking
 
 ### Main missing features
 - Bit-shifting
-- Static fields
-- Constant fields
 - Generics
 - Delegates
 - Overflow math

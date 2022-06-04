@@ -4365,7 +4365,7 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
         if (!field_is_static(fieldInfo)) continue;
 
         strbuilder_t name = strbuilder_new();
-        type_print_name(fieldInfo->DeclaringType, &name);
+        type_print_full_name(fieldInfo->DeclaringType, &name);
         strbuilder_cstr(&name, "::");
         strbuilder_utf16(&name, fieldInfo->Name->Chars, fieldInfo->Name->Length);
         hmput(ctx.static_fields, fieldInfo, MIR_new_bss(ctx.context, strbuilder_get(&name), fieldInfo->FieldType->StackSize));
@@ -4394,7 +4394,7 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
             if (field_is_static(fieldInfo)) {
                 // import the static field
                 strbuilder_t name = strbuilder_new();
-                type_print_name(fieldInfo->DeclaringType, &name);
+                type_print_full_name(fieldInfo->DeclaringType, &name);
                 strbuilder_cstr(&name, "::");
                 strbuilder_utf16(&name, fieldInfo->Name->Chars, fieldInfo->Name->Length);
                 hmput(ctx.static_fields, fieldInfo, MIR_new_import(ctx.context, strbuilder_get(&name)));
@@ -4455,6 +4455,36 @@ err_t jit_assembly(System_Reflection_Assembly assembly) {
     //
     CHECK_AND_RETHROW(jit_load_assembly(ctx.context, mod, assembly));
     CHECK_AND_RETHROW(jit_setup_vtables(assembly));
+
+    // add all the roots to the gc
+    for (int i = 0; i < hmlen(ctx.static_fields); i++) {
+        System_Type type = ctx.static_fields[i].key->FieldType;
+        MIR_item_t item = ctx.static_fields[i].value;
+        if (item->item_type != MIR_bss_item) continue;
+
+        switch (type_get_stack_type(type)) {
+            case STACK_TYPE_O: {
+                gc_add_root(item->addr);
+            } break;
+
+            case STACK_TYPE_VALUE_TYPE: {
+                for (int j = 0; j < arrlen(type->ManagedPointersOffsets); j++) {
+                    gc_add_root(item->addr + type->ManagedPointersOffsets[j]);
+                }
+            } break;
+
+            // ignore
+            case STACK_TYPE_INT32:
+            case STACK_TYPE_INTPTR:
+            case STACK_TYPE_REF:
+            case STACK_TYPE_INT64:
+            case STACK_TYPE_FLOAT:
+                break;
+
+            default:
+                CHECK_FAIL();
+        }
+    }
 
 cleanup:
     if (ctx.context != NULL) {
