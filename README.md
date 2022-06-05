@@ -9,6 +9,19 @@ available for apps to use.
 
 ## Progress
 
+### Kernel itself
+- Memory subsystem
+  - Buddy-bitmap-tree based physical memory allocator
+  - TLSF based kernel heap
+  - Single address space management
+- Threading subsystem
+  - Lightweight threading
+  - Mostly copied (translated) from Go
+    - Scheduler
+    - Synchronization primitives
+    - Timer subsystem
+
+### Dotnet Runtime
 Right now the main work is on the runtime itself, the main features of the runtime:
 - On-the-fly Garbage Collector for pause free garbage collection
   - Including support for finalization and reviving
