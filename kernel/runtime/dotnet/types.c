@@ -809,7 +809,7 @@ bool check_type_visibility(System_Type from, System_Type to) {
     }
 
     // the rest only works on nested types
-    if (to->DeclaringType != NULL) {
+    if (to->DeclaringType == NULL) {
         ASSERT(!"Must be nested");
         return false;
     }

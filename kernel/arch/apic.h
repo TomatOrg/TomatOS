@@ -91,4 +91,9 @@ size_t get_apic_id();
 /**
  * Set the deadline in microseconds since now
  */
+void lapic_set_timeout(uint64_t microseconds);
+
+/**
+ * Set the exact deadline and not an offset
+ */
 void lapic_set_deadline(uint64_t microseconds);

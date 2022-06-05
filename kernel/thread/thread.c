@@ -105,8 +105,7 @@ waiting_thread_t* acquire_waiting_thread() {
 void release_waiting_thread(waiting_thread_t* wt) {
     // we disable interrupts in here so we can do stuff
     // atomically on the current core
-    bool ints = (__readeflags() & BIT9) ? true : false;
-    _disable();
+    scheduler_preempt_disable();
 
     if (m_wt_cache_len == ARRAY_LEN(m_wt_cache)) {
         // Transfer half of the local cache to the central cache
@@ -133,9 +132,7 @@ void release_waiting_thread(waiting_thread_t* wt) {
     // put into the local cache
     m_wt_cache[m_wt_cache_len++] = wt;
 
-    if (ints) {
-        _enable();
-    }
+    scheduler_preempt_enable();
 }
 
 thread_status_t get_thread_status(thread_t* thread) {

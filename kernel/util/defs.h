@@ -7,6 +7,8 @@
 #define IF(...) _IF
 #endif
 
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -76,6 +78,24 @@
         char _c = c; \
         32 <= _c && _c <= 126; \
     })
+
+static inline bool mask_read(_Atomic(size_t)* p, uint32_t id) {
+    size_t word = id / (sizeof(size_t) * 8);
+    size_t mask = 1 << (id % sizeof(size_t) * 8);
+    return (atomic_load(&p[word]) & mask) != 0;
+}
+
+static inline void mask_set(_Atomic(size_t)* p, uint32_t id) {
+    size_t word = id / (sizeof(size_t) * 8);
+    size_t mask = 1 << (id % sizeof(size_t) * 8);
+    atomic_fetch_or(&p[word], mask);
+}
+
+static inline void mask_clear(_Atomic(size_t)* p, uint32_t id) {
+    size_t word = id / (sizeof(size_t) * 8);
+    size_t mask = 1 << (id % sizeof(size_t) * 8);
+    atomic_fetch_and(&p[word], ~mask);
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // useful constants

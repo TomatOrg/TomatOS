@@ -43,6 +43,8 @@
 
 #include <stdatomic.h>
 #include "arch/intrin.h"
+#include "timer.h"
+#include "time/timer.h"
 
 // little helper to deal with the global run queue
 typedef struct thread_queue {
@@ -103,7 +105,7 @@ static thread_queue_t m_global_run_queue;
 static int32_t m_global_run_queue_size;
 
 // The idle cpus
-static uint64_t m_idle_cpus;
+static _Atomic(size_t) m_idle_cpus[256 / (sizeof(size_t) * 8)];
 static _Atomic(uint32_t) m_idle_cpus_count;
 
 // spinlock to protect the scheduler internal stuff
@@ -196,16 +198,22 @@ INTERRUPT static void wake_cpu() {
 
     // get an idle cpu from the queue
     lock_scheduler();
-    uint8_t apic_id = __builtin_ffs(m_idle_cpus);
+    int cpu_id = -1;
+    size_t mask_entries = ALIGN_UP(get_cpu_count(), sizeof(size_t) * 8) / (sizeof(size_t) * 8);
+    for (int i = 0; i < mask_entries; i++) {
+        int idle_mask = atomic_load(&m_idle_cpus[i]);
+        if (idle_mask == 0) continue;
+        cpu_id = __builtin_ffs(idle_mask) - 1;
+    }
     unlock_scheduler();
 
-    if (apic_id == 0) {
+    if (cpu_id == -1) {
         // no cpu to wake up
         return;
     } else {
         // send an ipi to schedule threads from the global run queue
         // to the found cpu
-        lapic_send_ipi(IRQ_SCHEDULE, apic_id - 1);
+        lapic_send_ipi(IRQ_SCHEDULE, cpu_id);
     }
 }
 
@@ -365,14 +373,14 @@ INTERRUPT static thread_t* run_queue_get() {
     }
 }
 
-INTERRUPT static bool run_queue_empty() {
+INTERRUPT static bool run_queue_empty(int cpu) {
     // Defend against a race where
     //  1) cpu has thread in run_next but run_queue_head == run_queue_tail
     //  2) run_queue_put on cpu kicks thread to the run_queue
     //  3) run_queue_get on cpu empties run_queue_next.
     // Simply observing that run_queue_head == run_queue_tail and then observing
     // that run_next == nil does not mean the queue is empty.
-    local_run_queue_t* rq = get_run_queue();
+    local_run_queue_t* rq = get_run_queue_of(cpu);
     while (true) {
         uint32_t head = atomic_load(&rq->head);
         uint32_t tail = atomic_load(&rq->tail);
@@ -479,7 +487,7 @@ bool scheduler_can_spin(int i) {
     if (m_idle_cpus_count == 0) return false;
 
     // we have stuff to run on our local run queue
-    if (!run_queue_empty()) return false;
+    if (!run_queue_empty(get_cpu_id())) return false;
 
     // we can spin a little :)
     return true;
@@ -660,7 +668,7 @@ static int32_t CPU_LOCAL m_scheduler_tick;
 //----------------------------------------------------------------------------------------------------------------------
 
 static void scheduler_set_deadline() {
-    lapic_set_deadline(10 * 1000);
+    lapic_set_timeout(10 * 1000);
 }
 
 /**
@@ -766,11 +774,55 @@ INTERRUPT uint32_t fastrandom() {
 static bool CPU_LOCAL m_spinning;
 
 /**
+ * Time of last poll, 0 if currently offline
+ */
+static _Atomic(int64_t) m_last_poll;
+
+/**
+ * Time to which current poll is sleeping
+ */
+static _Atomic(int64_t) m_poll_until;
+
+/**
  * Number of spinning CPUs in the system
  */
 static _Atomic(uint32_t) m_number_spinning = 0;
 
-INTERRUPT static thread_t* steal_work() {
+/**
+ * The CPU that is currently polling
+ */
+static _Atomic(int) m_polling_cpu = -1;
+
+/**
+ * Interrupts the poller
+ */
+static void break_poller() {
+    int poller = atomic_load(&m_polling_cpu);
+    if (poller != -1) {
+        lapic_send_ipi(IRQ_SCHEDULE, poller);
+    }
+}
+
+void scheduler_wake_poller(int64_t when) {
+    if (atomic_load(&m_last_poll) == 0) {
+        // In find_runnable we ensure that when polling the poll_until
+        // field is either zero or the time to which the current poll
+        // is expected to run. This can have a spurious wakeup
+        // but should never miss a wakeup.
+        int64_t poller_wake_until = atomic_load(&m_poll_until);
+        if (poller_wake_until == 0 || poller_wake_until > when) {
+            break_poller();
+        }
+    } else {
+        // There are no threads in the poller, try to
+        // one there so it can handle new timers
+        wake_cpu();
+    }
+}
+
+INTERRUPT static thread_t* steal_work(int64_t* now, int64_t* poll_until, bool* ran_timers) {
+    *ran_timers = false;
+
     for (int i = 0; i < 4; i++) {
         // on the last round try to steal next
         bool steal_next = i == 4 - 1;
@@ -782,42 +834,113 @@ INTERRUPT static thread_t* steal_work() {
                 continue;
             }
 
-            // Don't bother to attempt to steal if the cpu is in sleep
-            if (m_idle_cpus & cpu) {
-                continue;
+            //
+            // Steal timers from cpu. This call to check_timers is the only place
+            // where we might hld a lock on a different CPU's timers. We do this
+            // once on the last pass before checking run_next because stealing from
+            // the other CPU's run_next should be the last resort, so if there
+            // are timers to steal do that first.
+            //
+            // we only check timers on one of the stealing iterations because
+            // the time stored in now doesn't cahnge in this loop, and checking
+            // tge tuners for eacg CPU more than once with the same value of now
+            // is probably a waste of time.
+            //
+            if (steal_next && cpu_has_timers(cpu)) {
+                int64_t when = 0;
+                bool ran = false;
+                check_timers(cpu, now, &when, &ran);
+
+                if (when != 0 && (*poll_until == 0 || when < *poll_until)) {
+                    *poll_until = when;
+                }
+
+                if (ran) {
+                    // Running the timers may have made
+                    // an arbitrary number of threads ready
+                    // and added them to this CPU's local run queue.
+                    // That invalidates the assumption of run_queue_steal
+                    // that it always has room to add stolen threads. So check now
+                    // if there is a local thread to run.
+                    thread_t* thread = run_queue_get();
+                    if (thread != NULL) {
+                        return thread;
+                    }
+                    *ran_timers = true;
+                }
             }
 
-            thread_t* thread = run_queue_steal(cpu, steal_next);
-            if (thread != NULL) {
-                return thread;
+            // Don't bother to attempt to steal if the cpu is in sleep
+            if (!mask_read(m_idle_cpus, cpu)) {
+                thread_t* thread = run_queue_steal(cpu, steal_next);
+                if (thread != NULL) {
+                    return thread;
+                }
             }
         }
     }
 
+    // no threads found to steal. Regardless, running a timer may
+    // have made some threads ready that we missed. Indicate the next
+    // timer to wait for.
     return NULL;
+}
+
+static void cpu_put_idle() {
+    // clear if there are no timers
+    update_cpu_timers_mask();
+    atomic_fetch_add(&m_idle_cpus_count, 1);
+}
+
+static void cpu_wake_idle() {
+    set_has_timers(get_cpu_id());
+    mask_set(m_idle_cpus, get_cpu_id());
+    atomic_fetch_sub(&m_idle_cpus_count, 1);
 }
 
 INTERRUPT static thread_t* find_runnable() {
     thread_t* thread = NULL;
 
     while (true) {
-        // try the local run queue first
-        thread = run_queue_get();
-        if (thread != NULL) {
-            m_spinning = false;
-            return thread;
-        }
+        // now and poll_until are saved for work stealing later,
+        // which may steal timers. It's important that between now
+        // and then, nothing blocks, so these numbers remain mostly
+        // relevant.
+        int64_t now = 0;
+        int64_t poll_until = 0;
+        check_timers(get_cpu_id(), &now, &poll_until, NULL);
 
-        // try the global run queue
-        if (m_global_run_queue_size != 0) {
+        // TODO: try to schedule gc worker (do we care about doing it explicitly?)
+
+        // Check the global runnable queue once in a while to ensure fairness.
+        // Otherwise, two goroutines can completely occupy the local run queue
+        // by constantly respawning each other.
+        if ((m_scheduler_tick % 61) == 0 && m_global_run_queue_size > 0) {
             lock_scheduler();
-            thread = global_run_queue_get(0);
+            thread = global_run_queue_get(1);
             unlock_scheduler();
             if (thread != NULL) {
-                m_spinning = false;
                 return thread;
             }
         }
+
+        // TODO: wake finalizers if needed (do we care about doing it explicitly?)
+
+        // get from the local run queue
+        thread = run_queue_get();
+        if (thread != NULL) {
+            return thread;
+        }
+
+        // Try global run queue
+        lock_scheduler();
+        thread = global_run_queue_get(0);
+        unlock_scheduler();
+        if (thread != NULL) {
+            return thread;
+        }
+
+        // TODO: polling
 
         //
         // Steal work from other cpus.
@@ -833,11 +956,29 @@ INTERRUPT static thread_t* find_runnable() {
             }
 
             // try to steal some work
-            thread = steal_work();
+            bool new_work = false;
+            int64_t when = 0;
+            thread = steal_work(&now, &when, &new_work);
             if (thread != NULL) {
+                // Successfully stole.
                 return thread;
             }
+
+            if (new_work) {
+                // There may be new timer or GC work, restart
+                // to discover
+                continue;
+            }
+
+            if (when != 0 && (poll_until == 0 || when < poll_until)) {
+                // Earlier timer to wait for.
+                poll_until = when;
+            }
         }
+
+        //
+        // We have nothing to do
+        //
 
         // prepare to enter idle
         lock_scheduler();
@@ -850,8 +991,7 @@ INTERRUPT static thread_t* find_runnable() {
         }
 
         // we are now idle
-        m_idle_cpus |= 1 << get_cpu_id();
-        m_idle_cpus_count++;
+        cpu_put_idle();
 
         unlock_scheduler();
 
@@ -859,48 +999,132 @@ INTERRUPT static thread_t* find_runnable() {
         bool was_spinning = m_spinning;
         if (m_spinning) {
             m_spinning = false;
+            ASSERT (atomic_fetch_sub(&m_number_spinning, 1) > 0);
 
-            if (atomic_fetch_add(&m_number_spinning, -1) == 0) {
-                ASSERT(!"negative spinning");
+            // Check all runqueues once again.
+            bool should_attempt_steal = false;
+            for (int cpu = 0; cpu < get_cpu_count(); cpu++) {
+                if (mask_read(m_idle_cpus, cpu) && !run_queue_empty(cpu)) {
+                    lock_scheduler();
+                    cpu_wake_idle();
+                    unlock_scheduler();
+                    should_attempt_steal = true;
+                    break;
+                }
+            }
+
+            if (should_attempt_steal) {
+                m_spinning = true;
+                atomic_fetch_add(&m_number_spinning, 1);
+                continue;
+            }
+
+            //
+            // check for timer creation or expiry concurrently with
+            // transition from spinning to non-spinning
+            //
+            for (int cpu = 0; cpu < get_cpu_count(); cpu++) {
+                if (cpu_has_timers(cpu)) {
+                    int64_t when = nobarrier_wake_time(cpu);
+                    if (when != 0 && (poll_until == 0 || when < poll_until)) {
+                        poll_until = when;
+                    }
+                }
             }
         }
 
-        // set a quick preemption timer so we can steal work later
-        lapic_set_deadline(1000000);
+        // Poll until next timer
+        if (poll_until != 0 && atomic_exchange(&m_last_poll, 0) != 0) {
+            atomic_store(&m_poll_until, poll_until);
 
-        // wait for next interrupt, we are already running from interrupt
-        // context so we need to re-enable interrupts first
+            ASSERT(!m_spinning);
+
+            // refresh now
+            now = microtime();
+            int64_t delay = -1;
+            if (poll_until != 0) {
+                delay = poll_until - now;
+                if (delay < 0) {
+                    delay = 0;
+                }
+            }
+
+            // TODO: we don't have a polling system yet
+            // decide how much to sleep
+            int32_t wait_ms;
+            if (delay < 0) {
+                // block indefinitely
+                wait_ms = -1;
+            } else if (delay == 0) {
+                // no blocking
+                // TODO: not really helping
+                wait_ms = 0;
+            } else if (delay < 1000) {
+                // the delay is smaller than 1ms, round up
+                wait_ms = 1;
+            } else if (delay < 1000000000000) {
+                // turn the
+                wait_ms = (int32_t)(delay / 1000);
+            } else {
+                // An arbitrary cap on how long to wait for a timer.
+                // 1e9 ms == ~11.5 days
+                wait_ms = 1000000000;
+            }
+
+            // TODO: what we wanna do in reality is have a poll
+            //       that has a timeout of wait_ms, but for now
+            //       we are just gonna sleep for that time
+            if (wait_ms > 0) {
+                // we want to sleep, so sleep for the given amount of
+                // time or when an interrupt happens
+                atomic_store(&m_polling_cpu, get_cpu_id());
+                lapic_set_timeout(wait_ms);
+                __asm__ ("sti; hlt; cli");
+                atomic_store(&m_polling_cpu, -1);
+            }
+
+            atomic_store(&m_poll_until, 0);
+            atomic_store(&m_last_poll, now);
+
+            // remove from idle cpus since we might have work to do
+            lock_scheduler();
+            cpu_wake_idle();
+            unlock_scheduler();
+
+            // we are spinning
+            if (was_spinning) {
+                m_spinning = true;
+                atomic_fetch_add(&m_number_spinning, 1);
+            }
+
+            // we might have work, go to the top
+            continue;
+        } else if (poll_until != 0) {
+            int64_t poller_poll_until = atomic_load(&m_poll_until);
+            if (poller_poll_until == 0 || poller_poll_until > poll_until) {
+                break_poller();
+            }
+        }
+
+        // we have nothing to do, so put the cpu into
+        // a sleeping state until an interrupt or something
+        // else happens.
         __asm__ ("sti; hlt; cli");
 
-        // remove from idle cpus since we might have work to do
+        // we might have work so wake the cpu
         lock_scheduler();
-        m_idle_cpus &= ~(1 << get_cpu_id());
-        m_idle_cpus_count--;
+        cpu_wake_idle();
         unlock_scheduler();
     }
 }
 
 INTERRUPT static void schedule(interrupt_context_t* ctx) {
-    thread_t* thread = NULL;
+    // will block until a thread is ready, essentially an idle loop,
+    // this must return something eventually.
+    thread_t* thread = find_runnable();
 
-    // Check the global runnable queue once in a while to ensure fairness.
-    // Otherwise, two goroutines can completely occupy the local run queue
-    // by constantly respawning each other.
-    if ((m_scheduler_tick % 61) == 0 && m_global_run_queue_size > 0) {
-        lock_scheduler();
-        thread = global_run_queue_get(1);
-        unlock_scheduler();
-    }
-
-    if (thread == NULL) {
-        // get from the local run queue
-        thread = run_queue_get();
-    }
-
-    if (thread == NULL) {
-        // will block until a thread is ready, essentially an idle loop,
-        // this must return something eventually.
-        thread = find_runnable();
+    if (m_spinning) {
+        // TODO: reset spinning
     }
 
     // actually run the new thread
@@ -977,8 +1201,8 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
         // this is a bit of a special case, because we are unlocking the lock
         // on behalf of the thread, we need to store its interrupt lock status
         // aside so the thread will have interrupts again
-        current_thread->save_state.rflags |= current_thread->wait_lock->status ? BIT9 : 0;
-        current_thread->wait_lock->status = false;
+//        current_thread->save_state.rflags |= current_thread->wait_lock->status ? BIT9 : 0;
+//        current_thread->wait_lock->status = false;
 
         // unlock it properly now
         spinlock_unlock(current_thread->wait_lock);
@@ -1015,6 +1239,11 @@ void scheduler_schedule() {
 }
 
 void scheduler_yield() {
+    // don't preempt if we can't preempt
+    if (m_preempt_disable_depth > 0) {
+        return;
+    }
+
     __asm__ volatile (
         "int %0"
         :
@@ -1059,6 +1288,9 @@ err_t init_scheduler() {
 
     // initialize our random for the amount of cores we have
     random_order_init(get_cpu_count());
+
+    // set the last poll
+    atomic_store(&m_last_poll, microtime());
 
     m_run_queues = malloc(get_cpu_count() * sizeof(local_run_queue_t));
     CHECK(m_run_queues != NULL);

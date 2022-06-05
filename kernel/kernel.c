@@ -34,6 +34,7 @@
 #include <stdalign.h>
 #include <stddef.h>
 #include "arch/intrin.h"
+#include "thread/timer.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Limine Requests
@@ -177,6 +178,12 @@ static struct limine_file m_kernel_file;
 
 // TODO: driver files
 
+static void my_timer_callback(void* arg, uintptr_t seq) {
+    timer_t* timer = arg;
+    TRACE("GOT TIMER!");
+    SAFE_FREE_TIMER(timer);
+}
+
 static void kernel_startup() {
     err_t err = NO_ERROR;
 
@@ -191,22 +198,28 @@ static void kernel_startup() {
     TRACE("Entered kernel thread!");
 
     // Initialize the runtime
-    CHECK_AND_RETHROW(init_gc());
-    CHECK_AND_RETHROW(init_heap());
-    CHECK_AND_RETHROW(init_jit());
+//    CHECK_AND_RETHROW(init_gc());
+//    CHECK_AND_RETHROW(init_heap());
+//    CHECK_AND_RETHROW(init_jit());
 
     // load the corelib
-    CHECK_AND_RETHROW(loader_load_corelib(m_corelib_file.address, m_corelib_file.size));
+//    CHECK_AND_RETHROW(loader_load_corelib(m_corelib_file.address, m_corelib_file.size));
+//
+//    // load the kernel assembly
+//    System_Reflection_Assembly kernel_asm = NULL;
+//    CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
+//
+//    // call it
+//    method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
+//    method_result_t result = entry_point();
+//    CHECK(result.exception == NULL, "Got exception: \"%U\" (of type `%U`)", result.exception->Message, result.exception->vtable->type->Name);
+//    TRACE("Kernel output: %d", result.value);
 
-    // load the kernel assembly
-    System_Reflection_Assembly kernel_asm = NULL;
-    CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
-
-    // call it
-    method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
-    method_result_t result = entry_point();
-    CHECK(result.exception == NULL, "Got exception: \"%U\" (of type `%U`)", result.exception->Message, result.exception->vtable->type->Name);
-    TRACE("Kernel output: %d", result.value);
+    timer_t* timer = create_timer();
+    timer->when = microtime() + 1000000;
+    timer->func = my_timer_callback;
+    timer->arg = timer;
+    timer_start(timer);
 
 cleanup:
     ASSERT(!IS_ERROR(err));

@@ -7,8 +7,8 @@
 #include "apic.h"
 #include "msr.h"
 
+#include <sync/irq_spinlock.h>
 #include <thread/scheduler.h>
-#include <sync/spinlock.h>
 #include <debug/debug.h>
 #include <util/except.h>
 #include <mem/vmm.h>
@@ -266,7 +266,7 @@ typedef struct exception_context {
  * Exception spinlock, so the exception output will be synced nicely even on multi
  * core crashes
  */
-static spinlock_t m_exception_lock = INIT_SPINLOCK();
+static irq_spinlock_t m_exception_lock = INIT_IRQ_SPINLOCK();
 
 typedef union selector_error_code {
     struct {
@@ -281,7 +281,7 @@ typedef union selector_error_code {
  * The default exception handler, simply panics...
  */
 static noreturn void default_exception_handler(exception_context_t* ctx) {
-    spinlock_lock(&m_exception_lock);
+    irq_spinlock_lock(&m_exception_lock);
 
     // reset the spinlock so we can print
     ERROR("");
@@ -319,14 +319,13 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     }
 
     // check if we have threading_old already
-//    if (__readmsr(MSR_IA32_GS_BASE) != 0) {
-//        thread_t* thread = get_current_thread();
-//        if (thread != NULL) {
-//            ERROR("Thread: `%.*s`", sizeof(thread->name), thread->name);
-//            ERROR("\tPriority: %d (actual %d)", thread->priority, __readcr8());
-//            ERROR("");
-//        }
-//    }
+    if (__readmsr(MSR_IA32_GS_BASE) != 0) {
+        thread_t* thread = get_current_thread();
+        if (thread != NULL) {
+            ERROR("Thread: `%.*s`", sizeof(thread->name), thread->name);
+            ERROR("");
+        }
+    }
 
     // registers
     ERROR("RAX=%016p RBX=%016p RCX=%016p RDX=%016p", ctx->rax, ctx->rbx, ctx->rcx, ctx->rdx);
@@ -345,14 +344,14 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
         debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
 
         ERROR("Code: %s", buffer);
-//        debug_disasm_at((void*)ctx->rip, 5);
+        debug_disasm_at((void*)ctx->rip, 5);
     }
 
     ERROR("");
 
     // stop
     ERROR("Halting :(");
-    spinlock_unlock(&m_exception_lock);
+    irq_spinlock_unlock(&m_exception_lock);
     while(1)
         __halt();
 }

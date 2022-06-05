@@ -4,6 +4,7 @@
 #include <arch/cpuid.h>
 
 #include "arch/intrin.h"
+#include "arch/idt.h"
 
 /**
  * The frequency of the cpu in ticks per microsecond
@@ -47,7 +48,7 @@ uint64_t get_tsc_freq() {
     return m_tsc_micro_freq;
 }
 
-uint64_t microtime() {
+INTERRUPT uint64_t microtime() {
     uint64_t value = _rdtsc() / m_tsc_micro_freq;
     _mm_lfence();
     return value;

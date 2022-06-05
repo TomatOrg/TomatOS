@@ -5,6 +5,7 @@
 #include <kernel.h>
 
 #include "arch/intrin.h"
+#include "arch/idt.h"
 
 extern char __cpu_local_size[];
 
@@ -41,14 +42,14 @@ cleanup:
     return err;
 }
 
-void* get_cpu_local_base(__seg_gs void* ptr) {
+INTERRUPT void* get_cpu_local_base(__seg_gs void* ptr) {
     return m_per_cpu_base + (size_t)ptr;
 }
 
-void* get_cpu_base(int cpu, __seg_gs void* ptr) {
+INTERRUPT void* get_cpu_base(int cpu, __seg_gs void* ptr) {
     return m_per_cpu_base_list[cpu] + (size_t)ptr;
 }
 
-int get_cpu_id() {
+INTERRUPT int get_cpu_id() {
     return m_cpu_id;
 }

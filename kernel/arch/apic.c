@@ -268,6 +268,11 @@ size_t get_apic_id() {
     return lapic_read(XAPIC_ID_OFFSET) >> 24;
 }
 
-void lapic_set_deadline(uint64_t microseconds) {
+void lapic_set_timeout(uint64_t microseconds) {
     __writemsr(MSR_IA32_TSC_DEADLINE, __builtin_ia32_rdtsc() + microseconds * get_tsc_freq());
+}
+
+void lapic_set_deadline(uint64_t microseconds) {
+    __writemsr(MSR_IA32_TSC_DEADLINE, microseconds * get_tsc_freq());
+
 }

@@ -4,7 +4,7 @@
 #include "mem.h"
 #include "vmm.h"
 
-#include <sync/spinlock.h>
+#include <sync/irq_spinlock.h>
 #include <util/string.h>
 #include <util/stb_ds.h>
 
@@ -603,7 +603,7 @@ extern void* memset(void* dest, int val, size_t n);
 /**
  * The spinlock to protect ourselves
  */
-static spinlock_t m_palloc_lock = INIT_SPINLOCK();
+static irq_spinlock_t m_palloc_lock = INIT_IRQ_SPINLOCK();
 
 static err_t mark_range(uintptr_t base, size_t length) {
     err_t err = NO_ERROR;
@@ -792,13 +792,13 @@ void* palloc(size_t size) {
         return NULL;
     }
 
-    spinlock_lock(&m_palloc_lock);
+    irq_spinlock_lock(&m_palloc_lock);
 
     size_t target_depth = depth_for_size(size);
     buddy_tree_pos_t pos = buddy_tree_find_free(target_depth);
     if (!buddy_tree_valid(pos)) {
         // no slot was found
-        spinlock_unlock(&m_palloc_lock);
+        irq_spinlock_unlock(&m_palloc_lock);
         return NULL;
     }
 
@@ -808,7 +808,7 @@ void* palloc(size_t size) {
     // Get the actual pointer value
     void* ptr = address_for_position(pos);
 
-    spinlock_unlock(&m_palloc_lock);
+    irq_spinlock_unlock(&m_palloc_lock);
 
     // memset to zero
     memset(ptr, 0, size);
@@ -822,12 +822,12 @@ void pfree(void* base) {
         return;
     }
 
-    spinlock_lock(&m_palloc_lock);
+    irq_spinlock_lock(&m_palloc_lock);
 
     buddy_tree_pos_t pos = position_for_address(base);
     ASSERT (buddy_tree_valid(pos));
     memset(base, 0xCD, size_for_depth(pos.depth));
     buddy_tree_release(pos);
 
-    spinlock_unlock(&m_palloc_lock);
+    irq_spinlock_unlock(&m_palloc_lock);
 }

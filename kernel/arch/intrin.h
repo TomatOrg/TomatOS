@@ -1,5 +1,8 @@
 #pragma once
 
+#include <stdint.h>
+#include <stddef.h>
+
 #define INTRIN_ATTR __attribute__((always_inline, artificial, target("general-regs-only")))
 
 static inline INTRIN_ATTR void _disable(void) {

@@ -5,11 +5,23 @@ namespace Pentagon;
 
 public class Kernel
 {
-    private static int a = 123;
 
+    public class Lol<T>
+    {
+        public T hello;
+
+        public Lol(T hi)
+        {
+            hello = hi;
+        }
+
+    }
+    
     public static int Main()
     {
-        return a;
+        Lol<int> hi = new Lol<int>(123);
+        Lol<string> hello = new Lol<string>("123");
+        return hi.hello;
     }
     
 }
