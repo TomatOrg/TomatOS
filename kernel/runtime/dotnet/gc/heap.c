@@ -91,7 +91,7 @@ err_t init_heap() {
     for (pml_index_t pml4i = PML4_INDEX(OBJECT_HEAP_START); pml4i < PML4_INDEX(OBJECT_HEAP_START) + POOL_COUNT; pml4i++) {
         // allocate it
         void* page = palloc(PAGE_SIZE);
-        CHECK_ERROR(page != NULL, ERROR_OUT_OF_RESOURCES);
+        CHECK_ERROR(page != NULL, ERROR_OUT_OF_MEMORY);
 
         // set it
         PAGE_TABLE_PML4[pml4i] = (page_entry_t){

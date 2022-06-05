@@ -267,9 +267,9 @@ err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
         size_t pml1i = (cva >> 12) & 0xFFFFFFFFFull;
 
         // setup the top levels properly
-        CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML4, PAGE_TABLE_PML3, pml4i), ERROR_OUT_OF_RESOURCES);
-        CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML3, PAGE_TABLE_PML2, pml3i), ERROR_OUT_OF_RESOURCES);
-        CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML2, PAGE_TABLE_PML1, pml2i), ERROR_OUT_OF_RESOURCES);
+        CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML4, PAGE_TABLE_PML3, pml4i), ERROR_OUT_OF_MEMORY);
+        CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML3, PAGE_TABLE_PML2, pml3i), ERROR_OUT_OF_MEMORY);
+        CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML2, PAGE_TABLE_PML1, pml2i), ERROR_OUT_OF_MEMORY);
 
         // setup the pml1 entry
         PAGE_TABLE_PML1[pml1i] = (page_entry_t) {

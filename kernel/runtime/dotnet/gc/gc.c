@@ -11,6 +11,7 @@
 
 #include <util/stb_ds.h>
 #include "time/timer.h"
+#include "runtime/dotnet/monitor.h"
 
 #include <stdnoreturn.h>
 #include <stdatomic.h>
@@ -184,10 +185,11 @@ static void gc_handshake_thread(void* arg) {
 
         // suspend and get the thread state
         suspend_state_t state = scheduler_suspend_thread(thread);
+
         gc_thread_data_t* gcl = &thread->tcb->tcb->gc_data;
 
         // sync2 == finding roots
-        if (status == THREAD_STATUS_SYNC2) {
+        if (status == THREAD_STATUS_SYNC2 && !state.dead) {
 
             // mark the stack
             for (uintptr_t ptr = ALIGN_UP(thread->save_state.rsp - 128, 8); ptr <= (uintptr_t)thread->stack_top - 8; ptr += 8) {
@@ -326,7 +328,7 @@ static void gc_mark_black(System_Object object) {
                 size_t offset = sizeof(struct System_Array) + i * elementType->StackSize;
                 gc_mark_fields_gray(read_field(object, offset), elementType);
             }
-        } else {
+        } else if (!elementType->IsValueType) {
             // this is an array of pointers
             for (int i = 0; i < array->Length; i++) {
                 size_t offset = sizeof(struct System_Array) + i * sizeof(void *);
@@ -400,6 +402,7 @@ static void gc_free_clear_objects(System_Object object) {
     if (object->color == m_clear_color) {
         // if this is still marked as clear color it means
         // that it should not be alive for finalization
+        free_monitor(object);
         heap_free(object);
     }
 }
@@ -450,6 +453,7 @@ static void gc_finalize(System_Object object) {
     }
 
     // we can now free this object, the rest will follow suite
+    free_monitor(object);
     heap_free(object);
 }
 

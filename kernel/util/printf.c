@@ -852,9 +852,10 @@ static NO_SANITIZE int _vsnprintf(out_fct_type out, char* buffer, const size_t m
           switch (err) {
               case ERROR_CHECK_FAILED: p = "ERROR_CHECK_FAILED"; break;
               case ERROR_NOT_FOUND: p = "ERROR_NOT_FOUND"; break;
-              case ERROR_OUT_OF_RESOURCES: p = "ERROR_OUT_OF_RESOURCES"; break;
+              case ERROR_OUT_OF_MEMORY: p = "ERROR_OUT_OF_MEMORY"; break;
               case ERROR_BAD_FORMAT: p = "ERROR_BAD_FORMAT"; break;
               case ERROR_INVALID_OPCODE: p = "ERROR_INVALID_OPCODE"; break;
+              case ERROR_SYNCHRONIZATION_LOCK: p = "ERROR_SYNCHRONIZATION_LOCK"; break;
               default: p = "(unknown error)"; break;
           }
           unsigned int l = _strnlen_s(p, precision ? precision : (size_t)-1);

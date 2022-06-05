@@ -749,14 +749,14 @@ INTERRUPT static uint32_t random_enum_position(random_enum_t* e) {
 
 static uint64_t CPU_LOCAL m_fast_rand;
 
-INTERRUPT __uint128_t mul64(uint64_t a, uint64_t b) {
+static INTERRUPT __uint128_t mul64(uint64_t a, uint64_t b) {
     return (__uint128_t)a * b;
 }
 
 /**
  * Implements wyrand
  */
-INTERRUPT uint32_t fastrandom() {
+static INTERRUPT uint32_t fastrandom() {
     m_fast_rand += 0xa0761d6478bd642f;
     __uint128_t i = mul64(m_fast_rand, m_fast_rand ^ 0xe7037ed1a0b428db);
     uint64_t hi = (uint64_t)(i >> 64);

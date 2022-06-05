@@ -22,7 +22,7 @@ typedef enum err {
     /**
      * The function ran out of resources to continue
      */
-    ERROR_OUT_OF_RESOURCES,
+    ERROR_OUT_OF_MEMORY,
 
     /**
      * Got a bad format, most likely when parsing file
@@ -33,6 +33,11 @@ typedef enum err {
      * The runtime found an invalid opcode
      */
     ERROR_INVALID_OPCODE,
+
+    /**
+     * The current thread does not own the lock for the specified object
+     */
+    ERROR_SYNCHRONIZATION_LOCK,
 } err_t;
 
 /**

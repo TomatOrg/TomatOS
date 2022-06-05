@@ -278,7 +278,7 @@ static err_t parse_single_table(metadata_parse_ctx_t* ctx, int table_id) {
 
     // allocate the table itself
     uint8_t* table = malloc(in_memory_size * rows);
-    CHECK_ERROR(table != NULL, ERROR_OUT_OF_RESOURCES);
+    CHECK_ERROR(table != NULL, ERROR_OUT_OF_MEMORY);
     ctx->metadata->tables[table_id].table = table;
 
     // now parse it
@@ -435,7 +435,7 @@ err_t metadata_parse(pe_file_t* file, void* stream, size_t size, metadata_t* met
         } else {
             // allocate the target
             void* target = malloc(stream_header->size);
-            CHECK_ERROR(target != NULL, ERROR_OUT_OF_RESOURCES);
+            CHECK_ERROR(target != NULL, ERROR_OUT_OF_MEMORY);
 
             // figure which stream we wanna set
             if (strcmp("#Strings", stream_header->name) == 0) {
