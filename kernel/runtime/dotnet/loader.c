@@ -1472,7 +1472,7 @@ static err_t loader_load_refs(System_Reflection_Assembly assembly, metadata_t* m
     size_t member_refs_count = metadata->tables[METADATA_MEMBER_REF].rows;
 
     // the array of imported fields and methods
-    GC_UPDATE(assembly, ImportedMembers, GC_NEW_ARRAY(tSystem_Reflection_MemberInfo, type_refs_count));
+    GC_UPDATE(assembly, ImportedMembers, GC_NEW_ARRAY(tSystem_Reflection_MemberInfo, member_refs_count));
 
     // dummy field so we can parse into it
     System_Reflection_FieldInfo dummyField = GC_NEW(tSystem_Reflection_FieldInfo);
