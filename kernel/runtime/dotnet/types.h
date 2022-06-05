@@ -449,7 +449,6 @@ struct System_Type {
 
     System_Type ArrayType;
     System_Type ByRefType;
-    mutex_t TypeMutex;
 };
 
 static inline stack_type_t type_get_stack_type(System_Type type) { return type == NULL ? STACK_TYPE_O : type->StackType; }
@@ -485,16 +484,16 @@ const char* type_visibility_str(type_visibility_t visibility);
 /**
  * Get the array type for the given type
  *
- * @param Type  [IN] The type
+ * @param type  [IN] The type
  */
-System_Type get_array_type(System_Type Type);
+System_Type get_array_type(System_Type type);
 
 /**
  * Get the by-ref type for the given type
  *
- * @param Type  [IN] The type
+ * @param type  [IN] The type
  */
-System_Type get_by_ref_type(System_Type Type);
+System_Type get_by_ref_type(System_Type type);
 
 /**
  * Print the type name as <namespace>.<class>[+<nested>]

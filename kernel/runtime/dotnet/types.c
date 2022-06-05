@@ -1,5 +1,6 @@
 #include "types.h"
 #include "opcodes.h"
+#include "monitor.h"
 
 #include <runtime/dotnet/gc/gc.h>
 #include <mem/mem.h>
@@ -216,16 +217,16 @@ System_String assembly_get_string_by_token(System_Reflection_Assembly assembly, 
     return hmget(assembly->UserStringsTable, token.index);
 }
 
-System_Type get_array_type(System_Type Type) {
-    if (Type->ArrayType != NULL) {
-        return Type->ArrayType;
+System_Type get_array_type(System_Type type) {
+    if (type->ArrayType != NULL) {
+        return type->ArrayType;
     }
 
-    mutex_lock(&Type->TypeMutex);
+    monitor_enter(type);
 
-    if (Type->ArrayType != NULL) {
-        mutex_unlock(&Type->TypeMutex);
-        return Type->ArrayType;
+    if (type->ArrayType != NULL) {
+        monitor_exit(type);
+        return type->ArrayType;
     }
 
     // allocate the new type
@@ -234,12 +235,12 @@ System_Type get_array_type(System_Type Type) {
     // make sure this was called after system array was initialized
     ASSERT(tSystem_Array->Assembly != NULL);
 
-    // set the type information to look as Type[]
-    GC_UPDATE(ArrayType, Module, Type->Module);
-    GC_UPDATE(ArrayType, Name, string_append_cstr(Type->Name, "[]"));
-    GC_UPDATE(ArrayType, Assembly, Type->Assembly);
+    // set the type information to look as type[]
+    GC_UPDATE(ArrayType, Module, type->Module);
+    GC_UPDATE(ArrayType, Name, string_append_cstr(type->Name, "[]"));
+    GC_UPDATE(ArrayType, Assembly, type->Assembly);
     GC_UPDATE(ArrayType, BaseType, tSystem_Array);
-    GC_UPDATE(ArrayType, Namespace, Type->Namespace);
+    GC_UPDATE(ArrayType, Namespace, type->Namespace);
 
     // this is an array
     ArrayType->IsArray = true;
@@ -261,29 +262,29 @@ System_Type get_array_type(System_Type Type) {
     ArrayType->ManagedPointersOffsets = NULL;
 
     // Set the element type
-    GC_UPDATE(ArrayType, ElementType, Type);
+    GC_UPDATE(ArrayType, ElementType, type);
 
     // Set the array type
-    GC_UPDATE(Type, ArrayType, ArrayType);
-    mutex_unlock(&Type->TypeMutex);
+    GC_UPDATE(type, ArrayType, ArrayType);
+    monitor_exit(type);
 
-    return Type->ArrayType;
+    return type->ArrayType;
 }
 
-System_Type get_by_ref_type(System_Type Type) {
-    if (Type->ByRefType != NULL) {
-        return Type->ByRefType;
+System_Type get_by_ref_type(System_Type type) {
+    if (type->ByRefType != NULL) {
+        return type->ByRefType;
     }
 
-    mutex_lock(&Type->TypeMutex);
+    monitor_enter(type);
 
-    if (Type->ByRefType != NULL) {
-        mutex_unlock(&Type->TypeMutex);
-        return Type->ByRefType;
+    if (type->ByRefType != NULL) {
+        monitor_exit(type);
+        return type->ByRefType;
     }
 
     // must not be a byref
-    ASSERT(!Type->IsByRef);
+    ASSERT(!type->IsByRef);
 
     // allocate the new ref type
     System_Type ByRefType = GC_NEW(tSystem_Type);
@@ -293,24 +294,24 @@ System_Type get_by_ref_type(System_Type Type) {
     ByRefType->IsFilled = 1;
     ByRefType->StackType = STACK_TYPE_REF;
 
-    // set the type information to look as ref Type
-    GC_UPDATE(ByRefType, Module, Type->Module);
-    GC_UPDATE(ByRefType, Name, string_append_cstr(Type->Name, "&"));
-    GC_UPDATE(ByRefType, Assembly, Type->Assembly);
-    GC_UPDATE(ByRefType, Namespace, Type->Namespace);
-    GC_UPDATE(ByRefType, BaseType, Type);
+    // set the type information to look as ref type
+    GC_UPDATE(ByRefType, Module, type->Module);
+    GC_UPDATE(ByRefType, Name, string_append_cstr(type->Name, "&"));
+    GC_UPDATE(ByRefType, Assembly, type->Assembly);
+    GC_UPDATE(ByRefType, Namespace, type->Namespace);
+    GC_UPDATE(ByRefType, BaseType, type);
 
     // set the sizes properly
     ByRefType->StackSize = sizeof(void*);
-    ByRefType->ManagedSize = Type->StackSize;
+    ByRefType->ManagedSize = type->StackSize;
     ByRefType->StackAlignment = alignof(void*);
-    ByRefType->ManagedAlignment = Type->StackAlignment;
+    ByRefType->ManagedAlignment = type->StackAlignment;
 
     // Set the array type
-    GC_UPDATE(Type, ByRefType, ByRefType);
-    mutex_unlock(&Type->TypeMutex);
+    GC_UPDATE(type, ByRefType, ByRefType);
+    monitor_exit(type);
 
-    return Type->ByRefType;
+    return type->ByRefType;
 }
 
 const char* method_access_str(method_access_t access) {

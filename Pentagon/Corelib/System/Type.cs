@@ -42,5 +42,4 @@ public abstract class Type : MemberInfo
         
     private Type _arrayType;
     private Type _byRefType;
-    private Mutex _typeMutex;
 }
