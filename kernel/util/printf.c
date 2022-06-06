@@ -33,7 +33,8 @@
 #include "printf.h"
 #include "except.h"
 #include "stb_ds.h"
-#include "runtime/dotnet/types.h"
+
+#include <dotnet/types.h>
 
 #include <stdbool.h>
 #include <stdint.h>

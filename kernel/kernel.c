@@ -2,10 +2,10 @@
 
 #include <limine.h>
 
-#include <runtime/dotnet/gc/heap.h>
-#include <runtime/dotnet/jit/jit.h>
-#include <runtime/dotnet/loader.h>
-#include <runtime/dotnet/gc/gc.h>
+#include <runtime/dotnet/heap.h>
+#include <dotnet/jit/jit.h>
+#include <dotnet/loader.h>
+#include <dotnet/gc/gc.h>
 
 #include <thread/scheduler.h>
 #include <thread/cpu_local.h>
@@ -25,6 +25,7 @@
 #include <time/timer.h>
 #include <acpi/acpi.h>
 
+#include <arch/intrin.h>
 #include <arch/apic.h>
 #include <arch/regs.h>
 #include <arch/gdt.h>
@@ -33,9 +34,6 @@
 #include <stdatomic.h>
 #include <stdalign.h>
 #include <stddef.h>
-#include "arch/intrin.h"
-#include "thread/timer.h"
-#include "runtime/dotnet/monitor.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Limine Requests

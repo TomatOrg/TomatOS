@@ -33,18 +33,18 @@
 #include "scheduler.h"
 
 #include "cpu_local.h"
-#include "kernel.h"
-#include "util/stb_ds.h"
-#include "runtime/dotnet/gc/gc.h"
+#include "timer.h"
 
+#include <runtime/dotnet/gc.h>
 #include <sync/spinlock.h>
+#include <arch/intrin.h>
+#include <util/stb_ds.h>
+#include <time/timer.h>
 #include <arch/apic.h>
 #include <arch/msr.h>
+#include <kernel.h>
 
 #include <stdatomic.h>
-#include "arch/intrin.h"
-#include "timer.h"
-#include "time/timer.h"
 
 // little helper to deal with the global run queue
 typedef struct thread_queue {

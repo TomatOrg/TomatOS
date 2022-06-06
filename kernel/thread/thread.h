@@ -1,6 +1,6 @@
 #pragma once
 
-#include <runtime/dotnet/gc/gc_thread_data.h>
+#include <runtime/dotnet/gc_thread_data.h>
 
 #include <sync/spinlock.h>
 #include <util/except.h>
