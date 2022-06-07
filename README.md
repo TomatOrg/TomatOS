@@ -22,23 +22,7 @@ available for apps to use.
     - Timer subsystem
 
 ### Dotnet Runtime
-Right now the main work is on the runtime itself, the main features of the runtime:
-- On-the-fly Garbage Collector for pause free garbage collection
-  - Including support for finalization and reviving
-  - A really cheap write-barrier
-- Full support for reference types
-  - With abstract/virtual methods support
-  - Upcasting fully implemented
-- Full support for integer and floating point types
-- Full support for array types
-- Full support for struct types
-- Full support for interface types
-  - Implemented using Fat-Pointers and implicitly casting as needed
-- Full support for managed references
-  - Supports locals, fields and array elements
-- Full support for boxing/unboxing 
-- Most common CIL instructions implemented
-- Visibility and Accessibility checking
+We are using our custom dotnet runtime called [TinyDotNet](https://github.com/Itay2805/tinydotnet), for progress on it see its README
 
 ### Main missing features
 - Bit-shifting
