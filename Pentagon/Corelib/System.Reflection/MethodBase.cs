@@ -10,5 +10,7 @@ public class MethodBase : MemberInfo
     private ushort _attributes;
     private MethodBody _methodBody;
     private ParameterInfo[] _parameters;
+    private Type[] _genericArguments;
+    private MethodInfo _genericMethodDefinition;
 
 }

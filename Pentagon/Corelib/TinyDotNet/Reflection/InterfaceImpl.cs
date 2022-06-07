@@ -2,10 +2,10 @@ using System;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace Pentagon.Reflection;
+namespace TinyDotNet.Reflection;
 
 [StructLayout(LayoutKind.Sequential)]
-public class InterfaceImpl
+internal class InterfaceImpl
 {
 
     private Type _interfaceType;

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using TinyDotNet.Reflection;
 
 namespace System.Reflection;
 
@@ -18,9 +19,10 @@ public class Assembly
     private Type[] _definedTypes;
     private MethodInfo[] _definedMethods;
     private FieldInfo[] _definedFields;
+    private byte[][] _definedTypeSpecs;
+    private MemberReference[] _definedMemberRefs;
         
     private Type[] _importedTypes;
-    private MemberInfo[] _importedMembers;
         
     private string[] _userStrings;
     private unsafe void* _userStringsTable;

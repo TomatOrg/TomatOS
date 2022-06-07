@@ -344,7 +344,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
         debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
 
         ERROR("Code: %s", buffer);
-        debug_disasm_at((void*)ctx->rip, 5);
+        debug_disasm_at((void*)ctx->rip, 1);
     }
 
     ERROR("");

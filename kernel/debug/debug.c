@@ -86,7 +86,7 @@ void debug_disasm_at(void* ptr, int opcodes) {
 
         // next...
         ptr += instruction.length;
-        if (!opcodes--) {
+        if (--opcodes == 0) {
             break;
         }
     }

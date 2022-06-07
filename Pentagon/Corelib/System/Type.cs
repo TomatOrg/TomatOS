@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
-using Pentagon;
-using Pentagon.Reflection;
+using TinyDotNet.Reflection;
 
 namespace System;
 
@@ -18,9 +17,11 @@ public abstract class Type : MemberInfo
     private uint _attributes;
     private bool _isArray;
     private bool _isByRef;
-    private Type[] _genericTypeArguments;
-    private Type[] _genericTypeParameters;
-    private Type[] _genericTypeDefinition;
+
+    private Type _genericTypeDefinition;
+    private int _genericTypeAttributes;
+    private int _genericParmaeterPosition;
+    private Type[] _genericArguments;
 
     private int _classSize;
     private int _packingSize;
@@ -42,4 +43,5 @@ public abstract class Type : MemberInfo
         
     private Type _arrayType;
     private Type _byRefType;
+    private Type _nextGenericInstance;
 }
