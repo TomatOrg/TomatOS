@@ -1,7 +1,6 @@
-#include "heap.h"
+#include <dotnet/gc/heap.h>
 
-#include "gc.h"
-
+#include <dotnet/gc/gc.h>
 
 #include <thread/cpu_local.h>
 #include <thread/thread.h>

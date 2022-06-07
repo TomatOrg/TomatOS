@@ -2,7 +2,7 @@
 
 #include <limine.h>
 
-#include <runtime/dotnet/heap.h>
+#include <dotnet/gc/heap.h>
 #include <dotnet/jit/jit.h>
 #include <dotnet/loader.h>
 #include <dotnet/gc/gc.h>

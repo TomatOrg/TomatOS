@@ -35,7 +35,6 @@
 #include "cpu_local.h"
 #include "timer.h"
 
-#include <runtime/dotnet/gc.h>
 #include <sync/spinlock.h>
 #include <arch/intrin.h>
 #include <util/stb_ds.h>

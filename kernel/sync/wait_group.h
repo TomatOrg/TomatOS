@@ -9,6 +9,8 @@ typedef struct wait_group {
     semaphore_t sema;
 } wait_group_t;
 
+#define INIT_WAIT_GROUP() ((wait_group_t){})
+
 void wait_group_add(wait_group_t* wg, int delta);
 
 void wait_group_done(wait_group_t* wg);
