@@ -40,6 +40,7 @@ public abstract class Type : MemberInfo
     private MethodInfo _staticCtor;
         
     private InterfaceImpl[] _interfaceImpl;
+    private unsafe void* _mirType;
         
     private Type _arrayType;
     private Type _byRefType;

@@ -14,12 +14,12 @@ public readonly struct IntPtr
     /// <summary>
     /// Gets the largest possible value of IntPtr.
     /// </summary>
-    public static nint MaxValue => (nint)long.MaxValue;
+    public static nint MaxValue => unchecked((nint)long.MaxValue);
     
     /// <summary>
     /// Gets the smallest possible value of IntPtr.
     /// </summary>
-    public static nint MinValue => (nint)long.MinValue;
+    public static nint MinValue => unchecked((nint)long.MinValue);
 
 
     /// <summary>
