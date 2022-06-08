@@ -1,0 +1,71 @@
+WARNING: The runtime version supported by this application is unavailable.
+Using default runtime: v4.0.30319
+.assembly extern Corelib
+{
+  .ver 1:0:0:0
+}
+.assembly 'Pentagon'
+{
+  .hash algorithm 0x00008004
+  .ver  0:0:0:0
+}
+.module Pentagon.dll // GUID = {679732C3-C16A-4F4F-B337-7F9C87095D50}
+
+
+.namespace Pentagon
+{
+  .class public auto ansi beforefieldinit Kernel
+  	extends [Corelib]System.Object
+  {
+
+    // method line 1
+    .method public static hidebysig 
+           default int32 Main ()  cil managed 
+    {
+        // Method begins at RVA 0x2050
+	.entrypoint
+	// Code size 13 (0xd)
+	.maxstack 8
+	IL_0000:  ldc.i4.s 0x7b
+	IL_0002:  newobj instance void class Pentagon.Kernel/Lol`1<int32>::.ctor(!0)
+	IL_0007:  ldfld !0 class Pentagon.Kernel/Lol`1<int32>::hello
+	IL_000c:  ret 
+    } // end of method Kernel::Main
+
+    // method line 2
+    .method public hidebysig specialname rtspecialname 
+           instance default void '.ctor' ()  cil managed 
+    {
+        // Method begins at RVA 0x205e
+	// Code size 7 (0x7)
+	.maxstack 8
+	IL_0000:  ldarg.0 
+	IL_0001:  call instance void class [Corelib]System.Object::'.ctor'()
+	IL_0006:  ret 
+    } // end of method Kernel::.ctor
+
+  .class nested public auto ansi beforefieldinit Lol`1<T>
+  	extends [Corelib]System.Object
+  {
+    .field  public  !0 hello
+
+    // method line 3
+    .method public hidebysig specialname rtspecialname 
+           instance default void '.ctor' (!T hi)  cil managed 
+    {
+        // Method begins at RVA 0x2066
+	// Code size 14 (0xe)
+	.maxstack 8
+	IL_0000:  ldarg.0 
+	IL_0001:  call instance void class [Corelib]System.Object::'.ctor'()
+	IL_0006:  ldarg.0 
+	IL_0007:  ldarg.1 
+	IL_0008:  stfld !0 class Pentagon.Kernel/Lol`1<!0>::hello
+	IL_000d:  ret 
+    } // end of method Lol`1::.ctor
+
+  } // end of class Lol`1
+
+  } // end of class Pentagon.Kernel
+}
+

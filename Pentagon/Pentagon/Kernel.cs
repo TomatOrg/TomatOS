@@ -1,27 +1,25 @@
 using System;
+using System.Collections.Generics;
 using System.Runtime.InteropServices;
 
 namespace Pentagon;
 
 public class Kernel
 {
-
-    public class Lol<T>
-    {
-        public T hello;
-    
-        public Lol(T hi)
-        {
-            hello = hi;
-        }
-    
-    }
     
     public static int Main()
     {
-        Lol<int> hi = new Lol<int>(123);
-        // Lol<string> hello = new Lol<string>("123");
-        return hi.hello;
+        List<int> a = new List<int>();
+        a.Add(1);
+        a.Add(2);
+        a.Add(3);
+
+        var sum = 0;
+        for (var i = 0; i < a.Count; i++)
+        {
+            sum += a[i];
+        }
+        return sum;
     }
     
 }
