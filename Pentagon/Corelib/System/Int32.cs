@@ -9,6 +9,11 @@ public readonly struct Int32
 #pragma warning disable 169
     private readonly int _value;
 #pragma warning restore 169
+
+    public bool Equals(int other)
+    {
+        return _value == other;
+    }
     
     public override bool Equals(object obj)
     {
