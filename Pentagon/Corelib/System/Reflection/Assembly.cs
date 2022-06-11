@@ -21,6 +21,7 @@ public class Assembly
     private FieldInfo[] _definedFields;
     private byte[][] _definedTypeSpecs;
     private MemberReference[] _definedMemberRefs;
+    private MethodSpec[] _definedMemberSpecs;
         
     private Type[] _importedTypes;
         

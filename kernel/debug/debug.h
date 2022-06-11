@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <dotnet/types.h>
+
 typedef struct symbol {
     uintptr_t address;
     size_t size;

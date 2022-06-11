@@ -4,11 +4,10 @@
         <OutputType>Exe</OutputType>
         <UseAppHost>false</UseAppHost>
         <TargetFramework>net6.0</TargetFramework>
-        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-        <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
-        <IsPackable>false</IsPackable>
         <NoStdLib>true</NoStdLib>
-    	<DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+        <NoConfig>true</NoConfig>
+        <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+        <IlcSystemModule>Corelib</IlcSystemModule>
     </PropertyGroup>
 
     <ItemGroup>

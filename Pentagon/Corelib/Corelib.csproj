@@ -4,10 +4,8 @@
         <NoStdLib>true</NoStdLib>
         <NoConfig>true</NoConfig>
         <TargetFramework>net6.0</TargetFramework>
-        <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
         <DisableImplicitNamespaceImports_DotNet>true</DisableImplicitNamespaceImports_DotNet>
         <RootNamespace />
-        <IsPackable>false</IsPackable>
     </PropertyGroup>
 
     <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">

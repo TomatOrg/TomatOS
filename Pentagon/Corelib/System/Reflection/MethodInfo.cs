@@ -11,5 +11,6 @@ public class MethodInfo : MethodBase
     private int _vtableOffset;
     private unsafe void* _mirFunc;
     private unsafe void* _mirProto;
+    private MethodInfo _nextGenericInstance;
 
 }
