@@ -14,12 +14,7 @@ public class Kernel
         a.Add(2);
         a.Add(3);
         
-        var sum = 0;
-        for (var i = 0; i < a.Count; i++)
-        {
-            sum += a[i];
-        }
-        return sum;
+        return a.Contains(3) ? 1 : 0;
     }
     
 }

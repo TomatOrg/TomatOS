@@ -5,26 +5,11 @@ namespace System;
 /// </summary>
 public readonly struct IntPtr
 {
-
-    /// <summary>
-    /// A read-only field that represents a pointer or handle that has been initialized to zero.
-    /// </summary>
     public static readonly IntPtr Zero = new IntPtr(0);
 
-    /// <summary>
-    /// Gets the largest possible value of IntPtr.
-    /// </summary>
     public static nint MaxValue => unchecked((nint)long.MaxValue);
-    
-    /// <summary>
-    /// Gets the smallest possible value of IntPtr.
-    /// </summary>
     public static nint MinValue => unchecked((nint)long.MinValue);
-
-
-    /// <summary>
-    /// Gets the size of this instance.
-    /// </summary>
+    
     public static int Size => sizeof(long);
 
 #pragma warning disable 169
@@ -40,5 +25,29 @@ public readonly struct IntPtr
     {
         _value = (nint)value;
     }
+    
+    public long ToInt64()
+    {
+        return _value;
+    }
 
+    public override bool Equals(object obj)
+    {
+        if (obj is IntPtr value)
+        {
+            return _value == value._value;
+        }
+        return false;
+    }
+    
+    public override int GetHashCode()
+    {
+        return ToInt64().GetHashCode();
+    }
+
+    public override string ToString()
+    {
+        return ToInt64().ToString();
+    }
+    
 }
