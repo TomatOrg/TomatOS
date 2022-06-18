@@ -53,8 +53,10 @@ typedef union cr4 {
         uint32_t SMEP:1;         ///< SMEP Enable.
         uint32_t SMAP:1;         ///< SMAP Enable.
         uint32_t PKE:1;          ///< Protection-Key Enable.
-        uint32_t _reserved5:9;   ///< Reserved.
+        uint32_t CET:1;          ///< Control-flow Enforcement Technology
+        uint32_t PKS:1;          ///< Enable Protection Keys for Supervisor-Mode Pages
+        uint32_t _reserved5:7;   ///< Reserved.
     };
     uint32_t packed;
 } PACKED cr4_t;
-STATIC_ASSERT(sizeof(cr0_t) == sizeof(uint32_t));
+STATIC_ASSERT(sizeof(cr4_t) == sizeof(uint32_t));

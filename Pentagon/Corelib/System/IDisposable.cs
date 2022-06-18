@@ -1,9 +1,5 @@
-#if !LOCALTEST
+namespace System;
 
-namespace System {
-	public interface IDisposable {
-		void Dispose();
-	}
+public interface IDisposable {
+	void Dispose();
 }
-
-#endif

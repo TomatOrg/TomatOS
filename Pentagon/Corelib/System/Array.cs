@@ -6,13 +6,21 @@ namespace System;
 [StructLayout(LayoutKind.Sequential)]
 public class Array
 {
+    
+    public static int MaxLength => int.MaxValue;
 
+    #region Instance
+    
     private readonly int _length;
 
     public int Length => _length;
     public long LongLength => _length;
     public int Rank => 1;
-    
+
+    private Array() {}
+
+    #endregion
+
     #region Copy
 
     public static void Clear(Array array)
@@ -68,6 +76,16 @@ public class Array
     private static extern void CopyInternal(Array sourceArray, long sourceIndex, Array destinationArray, long destinationIndex, long length);
 
     #endregion
+    
+    private static class EmptyArray<T>
+    {
+        internal static readonly T[] Value = new T[0];
+    }
+
+    public static T[] Empty<T>()
+    {
+        return EmptyArray<T>.Value;
+    }
 
     #region IndexOF
 
