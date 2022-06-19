@@ -87,6 +87,23 @@ public class Array
         return EmptyArray<T>.Value;
     }
 
+    #region Fill
+
+    public static void Fill<T>(T[] array, T value)
+    {
+        Fill(array, value, 0, array.Length);
+    }
+    
+    public static void Fill<T>(T[] array, T value, int startIndex, int count)
+    {
+        for (var i = startIndex; i < startIndex + count; i++)
+        {
+            array[i] = value;
+        }
+    }
+
+    #endregion
+    
     #region IndexOF
 
     public static int IndexOf<T>(T[] array, T value, int startIndex)

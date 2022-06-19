@@ -13,6 +13,25 @@ namespace System
         private byte _reserved3;
         private uint _typeIndex;
 
+        #region Internal state modification
+
+        // TODO: do we want to put this in a critical path? I think it is not needed
+        //       since this only will be used once the object is fully destroyed, so 
+        //       as long as someone got a reference it is alive or inside the finalizer
+        //       which is still considered alive
+        
+        internal void ReRegisterForFinalize()
+        {
+            flags |= (1 << 3);
+        }
+
+        internal void SuppressFinalize()
+        {
+            flags &= unchecked((byte)~(1 << 3));
+        }
+
+        #endregion
+        
         [MethodImpl(MethodImplOptions.InternalCall)]
         public extern Type GetType();
         

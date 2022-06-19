@@ -16,6 +16,10 @@
       <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
+    <ItemGroup>
+      <Folder Include="System\Threading\Tasks" />
+    </ItemGroup>
+
     <Target Name="CustomizeReferences" BeforeTargets="BeforeCompile" AfterTargets="FindReferenceAssembliesForReferences">
         <ItemGroup>
             <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)" />
