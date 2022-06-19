@@ -1,33 +1,61 @@
+using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace System;
 
 [StructLayout(LayoutKind.Sequential)]
-public class String
+public class String : IEnumerable<char>
 {
 
-    /// <summary>
-    /// Represents the empty string. This field is read-only.
-    /// </summary>
     public static readonly string Empty = "";
 
     private readonly int _length;
-    private readonly char _chars;
 
-    /// <summary>
-    /// Gets the number of characters in the current String object.
-    /// </summary>
     public int Length => _length;
+
+    [IndexerName("Chars")]
+    public char this[int index]
+    {
+        
+        get
+        {
+            if ((uint)index > (uint)Length) throw new IndexOutOfRangeException();
+            return GetCharInternal(index);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.InternalCall | MethodImplOptions.AggressiveInlining)]
+    private extern char GetCharInternal(int index);
     
-    /// <summary>
-    /// Indicates whether the specified string is null or an empty string ("").
-    /// </summary>
-    /// <param name="value">The string to test.</param>
-    /// <returns>true if the value parameter is null or an empty string (""); otherwise, false.</returns>
+    public CharEnumerator GetEnumerator()
+    {
+        return new CharEnumerator(this);
+    }
+    
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
+    }
+    
+    IEnumerator<char> IEnumerable<char>.GetEnumerator()
+    {
+        return new CharEnumerator(this);
+    }
+
+    public override string ToString()
+    {
+        return this;
+    }
+
+    public override int GetHashCode()
+    {
+        return base.GetHashCode();
+    }
+    
     public static bool IsNullOrEmpty(string value)
     {
         return value == null || value.Length == 0;
     }
-
 }

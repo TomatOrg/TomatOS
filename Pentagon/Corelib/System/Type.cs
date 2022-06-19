@@ -15,6 +15,7 @@ public abstract class Type : MemberInfo
     private MethodInfo[] _methods;
     private Type _elementType;
     private uint _attributes;
+    private int _metadataToken;
     private bool _isArray;
     private bool _isByRef;
 
@@ -27,6 +28,7 @@ public abstract class Type : MemberInfo
     private int _packingSize;
 
     private unsafe int* _managedPointersOffsets;
+    private bool _isSetup;
     private bool _isFilled;
     private bool _isValueType;
     private MethodInfo[] _virtualMethods;
