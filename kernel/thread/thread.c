@@ -103,6 +103,9 @@ waiting_thread_t* acquire_waiting_thread() {
 }
 
 void release_waiting_thread(waiting_thread_t* wt) {
+    // clear the context before doing anything else with it
+    memset(wt, 0, sizeof(*wt));
+
     // we disable interrupts in here so we can do stuff
     // atomically on the current core
     scheduler_preempt_disable();
@@ -393,6 +396,11 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     vsnprintf(thread->name, sizeof(thread->name), fmt, ap);
     va_end(ap);
 
+    // thread starts with a single reference that is considered to belong to the scheduler
+    // that means that the caller should not actually release the thread on its own, but only
+    // if he plans to continue using it after the thread_ready
+    thread->ref_count = 1;
+
     // Reset the thread save state:
     //  - set the rip as the thread entry
     //  - set the rflags for ALWAYS_1 | IF | ID
@@ -435,27 +443,33 @@ void thread_exit() {
     scheduler_drop_current();
 }
 
-void free_thread(thread_t* thread) {
-    thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
+thread_t* put_thread(thread_t* thread) {
+    thread->ref_count++;
+    return thread;
+}
 
-    // change the status to dead
-    cas_thread_state(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_DEAD);
+void release_thread(thread_t* thread) {
+    if (--thread->ref_count == 0) {
+        ASSERT(thread->status == THREAD_STATUS_DEAD);
 
-    // add to the list
-    thread_list_push(free_threads, thread);
-    m_free_threads_count++;
+        thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
 
-    // if we have too many threads locally on the cpu
-    // move some of them to the global threads list
-    if (m_free_threads_count >= 64) {
-        spinlock_lock(&m_global_free_threads_lock);
-        while (m_free_threads_count >= 32) {
-            thread = thread_list_pop(free_threads);
-            m_free_threads_count--;
-            thread_list_push(&m_global_free_threads, thread);
-            m_global_free_threads_count++;
+        // add to the list
+        thread_list_push(free_threads, thread);
+        m_free_threads_count++;
+
+        // if we have too many threads locally on the cpu
+        // move some of them to the global threads list
+        if (m_free_threads_count >= 64) {
+            spinlock_lock(&m_global_free_threads_lock);
+            while (m_free_threads_count >= 32) {
+                thread = thread_list_pop(free_threads);
+                m_free_threads_count--;
+                thread_list_push(&m_global_free_threads, thread);
+                m_global_free_threads_count++;
+            }
+            spinlock_unlock(&m_global_free_threads_lock);
         }
-        spinlock_unlock(&m_global_free_threads_lock);
     }
 }
 

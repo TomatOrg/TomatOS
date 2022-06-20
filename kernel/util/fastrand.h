@@ -1,0 +1,16 @@
+#pragma once
+
+#include <util/defs.h>
+#include <arch/idt.h>
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// a function to generate a pseudo-random number in a fast manner, works in both
+// irq context and non-irq context the same way.
+// Essentially implements https://github.com/wangyi-fudan/wyhash
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+INTERRUPT uint32_t fastrand();
+
+INTERRUPT uint32_t fastrandn(uint32_t n);
+
+INTERRUPT uint64_t fastrand64();

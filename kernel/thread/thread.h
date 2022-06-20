@@ -138,9 +138,14 @@ typedef struct thread_control_block {
     gc_thread_data_t gc_data;
 } thread_control_block_t;
 
+typedef struct waiting_thread waiting_thread_t;
+
 typedef struct thread {
     // the thread name
     char name[64];
+
+    // ref count
+    size_t ref_count;
 
     //
     // The thread context
@@ -169,21 +174,35 @@ typedef struct thread {
     // Link for the scheduler
     struct thread* sched_link;
 
+    //
+    // Waitable
+    //
+
+    // the waiting thread structure that caused the thread to wakeup
+    waiting_thread_t* waker;
+
+    _Atomic(uint32_t) select_done;
+
     // a spinlock we want to unlock once we start waiting
     spinlock_t* wait_lock;
 } thread_t;
 
-typedef struct waiting_thread {
+struct waiting_thread {
     thread_t* thread;
 
     // only used in the cache
-    struct waiting_thread* next;
+    waiting_thread_t* next;
+    waiting_thread_t* prev;
 
     uint32_t ticket;
 
-    struct waiting_thread* wait_link;
-    struct waiting_thread* wait_tail;
-} waiting_thread_t;
+    waiting_thread_t* wait_link;
+    waiting_thread_t* wait_tail;
+
+    bool is_select;
+    bool success;
+    void* waitable;
+};
 
 /**
  * For thread-locals
@@ -229,13 +248,16 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...);
 void thread_exit();
 
 /**
+ * Increases the ref count of a thread
+ */
+thread_t* put_thread(thread_t* thread);
+
+/**
  * Free a thread
  *
  * Must be called from a context with no preemption
- *
- * @param thread    [IN] The thread to free
  */
-void free_thread(thread_t* thread);
+void release_thread(thread_t* thread);
 
 /**
  * Reclaims free threads from the global free list, useful

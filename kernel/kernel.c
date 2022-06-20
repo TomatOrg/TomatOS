@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "thread/waitable.h"
 
 #include <limine.h>
 

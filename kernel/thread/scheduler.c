@@ -36,6 +36,7 @@
 #include "timer.h"
 
 #include <sync/spinlock.h>
+#include <util/fastrand.h>
 #include <arch/intrin.h>
 #include <util/stb_ds.h>
 #include <time/timer.h>
@@ -212,7 +213,7 @@ INTERRUPT static void wake_cpu() {
     } else {
         // send an ipi to schedule threads from the global run queue
         // to the found cpu
-        lapic_send_ipi(IRQ_SCHEDULE, cpu_id);
+        lapic_send_ipi(IRQ_PREEMPT, cpu_id);
     }
 }
 
@@ -332,9 +333,6 @@ INTERRUPT static void run_queue_put(thread_t* thread, bool next) {
 
         // if we failed with fast path try the slow path
         if (run_queue_put_slow(thread, head, tail)) {
-            // we put threads on the global queue, wakeup a cpu if
-            // possible to run them
-            wake_cpu();
             return;
         }
 
@@ -497,6 +495,8 @@ bool scheduler_can_spin(int i) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void scheduler_ready_thread(thread_t* thread) {
+    thread->sched_link = NULL;
+
     scheduler_preempt_disable();
 
     ASSERT((get_thread_status(thread) & ~THREAD_SUSPEND) == THREAD_STATUS_WAITING);
@@ -506,6 +506,9 @@ void scheduler_ready_thread(thread_t* thread) {
 
     // Put in the run queue
     run_queue_put(thread, true);
+
+    // in case someone can steal
+    wake_cpu();
 
     scheduler_preempt_enable();
 }
@@ -746,23 +749,6 @@ INTERRUPT static uint32_t random_enum_position(random_enum_t* e) {
     return e->pos;
 }
 
-static uint64_t CPU_LOCAL m_fast_rand;
-
-static INTERRUPT __uint128_t mul64(uint64_t a, uint64_t b) {
-    return (__uint128_t)a * b;
-}
-
-/**
- * Implements wyrand
- */
-static INTERRUPT uint32_t fastrandom() {
-    m_fast_rand += 0xa0761d6478bd642f;
-    __uint128_t i = mul64(m_fast_rand, m_fast_rand ^ 0xe7037ed1a0b428db);
-    uint64_t hi = (uint64_t)(i >> 64);
-    uint64_t lo = (uint64_t)i;
-    return (uint32_t)(hi ^ lo);
-}
-
 //----------------------------------------------------------------------------------------------------------------------
 // Scheduler itself
 //----------------------------------------------------------------------------------------------------------------------
@@ -826,7 +812,7 @@ INTERRUPT static thread_t* steal_work(int64_t* now, int64_t* poll_until, bool* r
         // on the last round try to steal next
         bool steal_next = i == 4 - 1;
 
-        for (random_enum_t e = random_order_start(fastrandom()); !random_enum_done(&e); random_enum_next(&e)) {
+        for (random_enum_t e = random_order_start(fastrand()); !random_enum_done(&e); random_enum_next(&e)) {
             // get the cpu to steal from
             int cpu = random_enum_position(&e);
             if (cpu == get_cpu_id()) {
@@ -888,12 +874,13 @@ INTERRUPT static thread_t* steal_work(int64_t* now, int64_t* poll_until, bool* r
 static void cpu_put_idle() {
     // clear if there are no timers
     update_cpu_timers_mask();
+    mask_set(m_idle_cpus, get_cpu_id());
     atomic_fetch_add(&m_idle_cpus_count, 1);
 }
 
 static void cpu_wake_idle() {
     set_has_timers(get_cpu_id());
-    mask_set(m_idle_cpus, get_cpu_id());
+    mask_clear(m_idle_cpus, get_cpu_id());
     atomic_fetch_sub(&m_idle_cpus_count, 1);
 }
 
@@ -1138,8 +1125,8 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
-    // check if we are sleeping and this was just a quick wakeup
-    // for the cpu to check for work stealing or gc work
+    // if we are coming from preempt and there is no currently running thread
+    // it means that we are actually coming to check for work
     if (from_preempt && current_thread == NULL) {
         return;
     }
@@ -1197,13 +1184,6 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
 
     // unlock a spinlock if needed
     if (current_thread->wait_lock != NULL) {
-        // this is a bit of a special case, because we are unlocking the lock
-        // on behalf of the thread, we need to store its interrupt lock status
-        // aside so the thread will have interrupts again
-//        current_thread->save_state.rflags |= current_thread->wait_lock->status ? BIT9 : 0;
-//        current_thread->wait_lock->status = false;
-
-        // unlock it properly now
         spinlock_unlock(current_thread->wait_lock);
         current_thread->wait_lock = NULL;
     }
@@ -1219,7 +1199,11 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     if (current_thread != NULL) {
-        free_thread(current_thread);
+        // change the status to dead
+        cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_DEAD);
+
+        // release the reference that the scheduler has
+        release_thread(current_thread);
     }
 
     schedule(ctx);
