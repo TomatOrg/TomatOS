@@ -15,6 +15,8 @@ typedef struct waitable {
     wait_queue_t wait_queue;
     wait_queue_t send_queue;
     spinlock_t lock;
+
+    atomic_size_t ref_count;
 } waitable_t;
 
 typedef enum waitable_result {
@@ -27,6 +29,24 @@ typedef enum waitable_result {
  * Create a new waitable of the given size
  */
 waitable_t* create_waitable(size_t size);
+
+/**
+ * Increase the ref count
+ */
+waitable_t* put_waitable(waitable_t* waitable);
+
+/**
+ * Decrease the ref count, and free if needed
+ */
+void release_waitable(waitable_t* waitable);
+
+#define SAFE_RELEASE_WAITABLE(waitable) \
+    do { \
+        if (waitable != NULL) { \
+            release_waitable(waitable); \
+            waitable = NULL; \
+        } \
+    } while (0)
 
 /**
  * Send/Write/Signal the w
@@ -48,3 +68,10 @@ void waitable_close(waitable_t* waitable);
  * to be ready
  */
 int waitable_select(waitable_t** waitables, int send_count, int wait_count, bool block);
+
+/**
+ * TODO: better name?
+ * Create a waitable that will get triggered after the specified
+ * amount of time has passed
+ */
+waitable_t* after(int64_t microseconds);

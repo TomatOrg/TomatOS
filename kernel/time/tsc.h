@@ -2,10 +2,12 @@
 
 #include <util/except.h>
 
+#define MICROSECONDS_PER_SECOND 1000000
+
 /**
- * Initialize the timer
+ * Initialize the relative time
  */
-err_t init_timer();
+err_t init_rsc();
 
 /**
  * Gets the TSC frequency

@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdatomic.h>
 
 typedef void (*timer_func_t)(void* arg, uintptr_t now);
 
@@ -53,7 +54,7 @@ typedef struct timer {
 
  	// Timer wakes up at when, and then at when+period, ... (period > 0 only)
 	// each time calling func(arg, now) in the timer thread, so func must be
-	// a well-behaved function and not block.
+	// a well-behaved function and not block. Values are in microsecond
 	//
 	// when must be positive on an active timer.
     int64_t when;
@@ -69,9 +70,18 @@ typedef struct timer {
     _Atomic(timer_status_t) status;
 
     // how many references we have for this
-    _Atomic(uint32_t) ref_count;
+    atomic_size_t ref_count;
 } timer_t;
 
+/**
+ * Create a new timer
+ *
+ * @remark
+ * After you create it you should set the following fields:
+ *  - when: when the timer should stop
+ *  - func+arg: for the callback
+ *  - period (optionally): if you want this timer to happen more than once
+ */
 timer_t* create_timer();
 
 void timer_start(timer_t* timer);
@@ -100,22 +110,20 @@ bool timer_modify(timer_t* timer, int64_t when, int64_t period, timer_func_t fun
 /**
  * Increments the reference count of the timer
  */
-timer_t* timer_put(timer_t* timer);
+timer_t* put_timer(timer_t* timer);
 
 /**
  * Decrements the reference count, will be deleted when reference count reaches 0
  */
-void free_timer(timer_t* timer);
+void release_timer(timer_t* timer);
 
-#define SAFE_FREE_TIMER(timer) \
+#define SAFE_RELEASE_TIMER(timer) \
     do { \
         if (timer != NULL) { \
-            free_timer(timer); \
+            release_timer(timer); \
             timer = NULL; \
         } \
     } while (0)
-
-// TODO: freeing timer properly
 
 void check_timers(int cpu, int64_t* now, int64_t* poll_until, bool* ran);
 

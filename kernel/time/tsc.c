@@ -1,4 +1,4 @@
-#include "timer.h"
+#include "tsc.h"
 #include "delay.h"
 
 #include <arch/cpuid.h>
@@ -28,7 +28,7 @@ static void calibrate_tsc() {
     m_tsc_micro_freq = (end_value - begin_value) / 1000;
 }
 
-err_t init_timer() {
+err_t init_rsc() {
     err_t err = NO_ERROR;
 
     // make sure we actually have a non-variant tsc

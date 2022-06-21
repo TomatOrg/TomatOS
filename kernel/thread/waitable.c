@@ -1,5 +1,7 @@
 #include "waitable.h"
 #include "scheduler.h"
+#include "timer.h"
+#include "time/tsc.h"
 
 #include <mem/malloc.h>
 
@@ -11,6 +13,18 @@ waitable_t* create_waitable(size_t size) {
     waitable->size = size;
     waitable->lock = INIT_SPINLOCK();
     return waitable;
+}
+
+waitable_t* put_waitable(waitable_t* waitable) {
+    atomic_fetch_add(&waitable->ref_count, 1);
+    return waitable;
+}
+
+void release_waitable(waitable_t* waitable) {
+    if (atomic_fetch_sub(&waitable->ref_count, 1) == 1) {
+        ASSERT(waitable->closed);
+        SAFE_FREE(waitable);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -255,3 +269,44 @@ int waitable_select(waitable_t** waitables, int send_count, int wait_count, bool
     return -1;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void send_timer(waitable_t* waitable, uintptr_t now) {
+    // non-blocking send
+    waitable_send(waitable, false);
+
+    // close the waitable since we are not going to use it anymore
+    waitable_close(waitable);
+
+    // release it, we no longer own it
+    release_waitable(waitable);
+}
+
+waitable_t* after(int64_t microseconds) {
+    // create the waitable
+    waitable_t* waitable = create_waitable(1);
+    if (waitable == NULL) return NULL;
+
+    // create the timer
+    timer_t* timer = create_timer();
+    if (timer == NULL) {
+        SAFE_RELEASE_WAITABLE(waitable);
+        return NULL;
+    }
+
+    // setup the timer
+    timer->when = (int64_t)microtime() + microseconds;
+    timer->func = (timer_func_t)send_timer;
+    timer->arg = waitable;
+
+    // start it
+    timer_start(timer);
+
+    // we don't care about our reference, now it only lives
+    // on the timer heap
+    release_timer(timer);
+
+    // we return the user its own reference he should release on its own
+    // we keep one reference for the send_timer function
+    return put_waitable(waitable);
+}

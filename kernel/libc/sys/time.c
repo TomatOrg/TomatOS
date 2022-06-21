@@ -1,6 +1,6 @@
 #include "time.h"
 #include "libc/assert.h"
-#include "time/timer.h"
+#include "time/tsc.h"
 
 int gettimeofday(struct timeval *restrict tv, struct timezone *restrict tz) {
     ASSERT(tz == NULL);

@@ -23,7 +23,7 @@
 #include <mem/vmm.h>
 
 #include <time/delay.h>
-#include <time/timer.h>
+#include <time/tsc.h>
 #include <acpi/acpi.h>
 
 #include <arch/intrin.h>
@@ -264,7 +264,7 @@ void _start(void) {
     // initialize misc kernel utilities
     CHECK_AND_RETHROW(init_acpi());
     CHECK_AND_RETHROW(init_delay());
-    CHECK_AND_RETHROW(init_timer());
+    CHECK_AND_RETHROW(init_rsc());
 
     //
     // Do SMP startup

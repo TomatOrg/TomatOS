@@ -35,7 +35,7 @@
 #include "scheduler.h"
 #include "cpu_local.h"
 #include "util/stb_ds.h"
-#include "time/timer.h"
+#include "time/tsc.h"
 
 #include <mem/malloc.h>
 
@@ -224,7 +224,7 @@ INTERRUPT static void do_add_timer(timers_t* timers, timer_t* timer) {
 
     // push the timer, make sure to update the ref count
     int i = arrlen(timers->timers);
-    arrpush(timers->timers, timer_put(timer));
+    arrpush(timers->timers, put_timer(timer));
 
     // place the timer in the correct place
     siftup_timer(timers->timers, i);
@@ -297,7 +297,7 @@ static void clean_timers(timers_t* timers) {
 
                 status = TIMER_REMOVING;
                 ASSERT(atomic_compare_exchange_strong(&timer->status, &status, TIMER_REMOVED));
-                SAFE_FREE_TIMER(timer);
+                SAFE_RELEASE_TIMER(timer);
 
                 atomic_fetch_sub(&timers->deleted_timers, 1);
             } break;
@@ -373,7 +373,7 @@ INTERRUPT static void adjust_timers(timers_t* timers, int64_t now) {
 
                     status = TIMER_REMOVING;
                     ASSERT(atomic_compare_exchange_strong(&timer->status, &status, TIMER_REMOVED));
-                    SAFE_FREE_TIMER(timer);
+                    SAFE_RELEASE_TIMER(timer);
 
                     atomic_fetch_sub(&timers->deleted_timers, 1);
 
@@ -460,7 +460,7 @@ INTERRUPT static void run_one_timer(timers_t* timers, timer_t* timer, int64_t no
         // Remove from heap.
         do_delete_timer0(timers);
         ASSERT(atomic_compare_exchange_strong(&timer->status, &status, TIMER_NO_STATUS));
-        SAFE_FREE_TIMER(timer);
+        SAFE_RELEASE_TIMER(timer);
     }
 
     // run it without the timers lock held
@@ -509,7 +509,7 @@ INTERRUPT static int64_t run_timer(timers_t* timers, int64_t now) {
 
                 status = TIMER_REMOVING;
                 ASSERT(atomic_compare_exchange_strong(&timer->status, &status, TIMER_REMOVED));
-                SAFE_FREE_TIMER(timer);
+                SAFE_RELEASE_TIMER(timer);
 
                 atomic_fetch_sub(&timers->deleted_timers, 1);
                 if (arrlen(timers->timers) == 0) {
@@ -526,7 +526,7 @@ INTERRUPT static int64_t run_timer(timers_t* timers, int64_t now) {
                 do_delete_timer0(timers);
                 status = TIMER_REMOVING;
                 ASSERT(atomic_compare_exchange_strong(&timer->status, &status, TIMER_REMOVED));
-                SAFE_FREE_TIMER(timer);
+                SAFE_RELEASE_TIMER(timer);
 
                 atomic_fetch_add(&timers->deleted_timers, 1);
                 if (arrlen(timers->timers) == 0) {
@@ -631,7 +631,7 @@ INTERRUPT static void clear_deleted_timers(timers_t* timers) {
     // Remove the timer slots from the heap
 
     for (int i = to; i < arrlen(timers->timers); i++) {
-        SAFE_FREE_TIMER(timers->timers[i]);
+        SAFE_RELEASE_TIMER(timers->timers[i]);
     }
 
     atomic_fetch_sub(&timers->deleted_timers, cdel);
@@ -859,12 +859,12 @@ got_timer:
     return pending;
 }
 
-timer_t* timer_put(timer_t* timer) {
+timer_t* put_timer(timer_t* timer) {
     atomic_fetch_add(&timer->ref_count, 1);
     return timer;
 }
 
-INTERRUPT void free_timer(timer_t* timer) {
+INTERRUPT void release_timer(timer_t* timer) {
     if (atomic_fetch_sub(&timer->ref_count, 1) == 1) {
         // this was the last ref, delete
         free(timer);

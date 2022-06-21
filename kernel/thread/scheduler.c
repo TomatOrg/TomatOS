@@ -39,7 +39,7 @@
 #include <util/fastrand.h>
 #include <arch/intrin.h>
 #include <util/stb_ds.h>
-#include <time/timer.h>
+#include <time/tsc.h>
 #include <arch/apic.h>
 #include <arch/msr.h>
 #include <kernel.h>
@@ -1037,34 +1037,34 @@ INTERRUPT static thread_t* find_runnable() {
 
             // TODO: we don't have a polling system yet
             // decide how much to sleep
-            int32_t wait_ms;
+            int32_t wait_us;
             if (delay < 0) {
                 // block indefinitely
-                wait_ms = -1;
+                wait_us = -1;
             } else if (delay == 0) {
                 // no blocking
                 // TODO: not really helping
-                wait_ms = 0;
+                wait_us = 0;
             } else if (delay < 1000) {
                 // the delay is smaller than 1ms, round up
-                wait_ms = 1;
+                wait_us = 1;
             } else if (delay < 1000000000000) {
                 // turn the
-                wait_ms = (int32_t)(delay / 1000);
+                wait_us = (int32_t)(delay / 1000);
             } else {
                 // An arbitrary cap on how long to wait for a timer.
                 // 1e9 ms == ~11.5 days
-                wait_ms = 1000000000;
+                wait_us = 1000000000;
             }
 
             // TODO: what we wanna do in reality is have a poll
-            //       that has a timeout of wait_ms, but for now
+            //       that has a timeout of wait_us, but for now
             //       we are just gonna sleep for that time
-            if (wait_ms > 0) {
+            if (wait_us > 0) {
                 // we want to sleep, so sleep for the given amount of
                 // time or when an interrupt happens
                 atomic_store(&m_polling_cpu, get_cpu_id());
-                lapic_set_timeout(wait_ms);
+                lapic_set_timeout(wait_us);
                 __asm__ ("sti; hlt; cli");
                 atomic_store(&m_polling_cpu, -1);
             }

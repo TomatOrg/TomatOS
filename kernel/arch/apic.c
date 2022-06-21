@@ -2,7 +2,7 @@
 
 #include "intrin.h"
 #include "msr.h"
-#include "time/timer.h"
+#include "time/tsc.h"
 #include "cpuid.h"
 
 #include <util/defs.h>

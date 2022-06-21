@@ -34,7 +34,7 @@
 
 #include <thread/scheduler.h>
 #include <util/except.h>
-#include <time/timer.h>
+#include <time/tsc.h>
 
 #include <stdatomic.h>
 

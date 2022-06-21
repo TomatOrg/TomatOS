@@ -145,7 +145,7 @@ typedef struct thread {
     char name[64];
 
     // ref count
-    size_t ref_count;
+    atomic_size_t ref_count;
 
     //
     // The thread context

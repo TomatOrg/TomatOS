@@ -16,7 +16,7 @@ void* realloc(void* ptr, size_t size);
 
 void free(void* ptr);
 
-#define FREE(ptr) \
+#define SAFE_FREE(ptr) \
     do { \
         if (ptr != NULL) { \
             free(ptr); \

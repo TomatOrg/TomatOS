@@ -40,7 +40,7 @@
 
 #include <sync/mutex.h>
 
-#include <time/timer.h>
+#include <time/tsc.h>
 
 #include <arch/apic.h>
 #include <arch/msr.h>
@@ -444,12 +444,13 @@ void thread_exit() {
 }
 
 thread_t* put_thread(thread_t* thread) {
-    thread->ref_count++;
+    atomic_fetch_add(&thread->ref_count, 1);
     return thread;
 }
 
 void release_thread(thread_t* thread) {
-    if (--thread->ref_count == 0) {
+    if (atomic_fetch_sub(&thread->ref_count, 1) == 1) {
+        // the last ref should only come after the thread is dead
         ASSERT(thread->status == THREAD_STATUS_DEAD);
 
         thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
