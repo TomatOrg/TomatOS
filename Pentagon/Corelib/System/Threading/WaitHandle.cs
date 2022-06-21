@@ -58,6 +58,13 @@ public abstract class WaitHandle : IDisposable
         foreach (var handle in waitHandles)
         {
             handle.WaitOne();
+
+            // edge case, we need to make sure that manual reset
+            // even will keep being set...
+            if (handle is EventWaitHandle { _mode: EventResetMode.ManualReset } eventWaitHandle)
+            {
+                eventWaitHandle.Set();
+            }
         }
 
         return true;
@@ -77,7 +84,18 @@ public abstract class WaitHandle : IDisposable
         // TODO: verify no duplicates
         // TODO: verify no nulls
 
-        return WaitAnyInternal(waitHandles);
+        var i = WaitAnyInternal(waitHandles);
+
+        // edge case, we need to make sure that manual reset
+        // even will keep being set...
+        if (waitHandles[i] is EventWaitHandle { _mode: EventResetMode.ManualReset } eventWaitHandle)
+        {
+            eventWaitHandle.Set();
+        }
+
+        // TODO: wait any timeout
+        
+        return i;
     }
 
     [MethodImpl(MethodImplOptions.InternalCall)]
@@ -89,10 +107,7 @@ public abstract class WaitHandle : IDisposable
     
     public virtual bool WaitOne()
     {
-        if (Waitable == 0) 
-            throw new ObjectDisposedException();
-        
-        return WaitableWait(Waitable, true) == 2;
+        return WaitOneInternal();
     }
 
     public virtual bool WaitOne(int millisecondsTimeout)
@@ -107,6 +122,19 @@ public abstract class WaitHandle : IDisposable
     }
 
     public virtual bool WaitOne(TimeSpan timeout)
+    {
+        return WaitOneInternal(timeout);
+    }
+
+    internal bool WaitOneInternal()
+    {
+        if (Waitable == 0) 
+            throw new ObjectDisposedException();
+        
+        return WaitableWait(Waitable, true) == 2;
+    }
+
+    internal bool WaitOneInternal(TimeSpan timeout)
     {
         if (Waitable == 0) 
             throw new ObjectDisposedException();

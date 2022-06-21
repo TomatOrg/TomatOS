@@ -21,6 +21,22 @@ public class EventWaitHandle : WaitHandle
         }
     }
 
+    public override bool WaitOne()
+    {
+        var success = WaitOneInternal();
+        if (_mode == EventResetMode.ManualReset) 
+            Set();
+        return success;
+    }
+
+    public override bool WaitOne(TimeSpan timeout)
+    {
+        var success = WaitOneInternal(timeout);
+        if (_mode == EventResetMode.ManualReset) 
+            Set();
+        return success;
+    }
+
     public bool Set()
     {
         if (Waitable == 0) 
