@@ -20,9 +20,9 @@ typedef struct waitable {
 } waitable_t;
 
 typedef enum waitable_result {
-    WAITABLE_EMPTY,
-    WAITABLE_CLOSED,
-    WAITABLE_SUCCESS,
+    WAITABLE_EMPTY = 0,
+    WAITABLE_CLOSED = 1,
+    WAITABLE_SUCCESS = 2,
 } waitable_result_t;
 
 /**

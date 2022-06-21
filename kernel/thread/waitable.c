@@ -23,7 +23,9 @@ waitable_t* put_waitable(waitable_t* waitable) {
 
 void release_waitable(waitable_t* waitable) {
     if (atomic_fetch_sub(&waitable->ref_count, 1) == 1) {
-        ASSERT(waitable->closed);
+        if (!waitable->closed) {
+            waitable_close(waitable);
+        }
         SAFE_FREE(waitable);
     }
 }

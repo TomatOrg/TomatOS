@@ -17,6 +17,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <Folder Include="System\IO" />
       <Folder Include="System\Threading\Tasks" />
     </ItemGroup>
 
