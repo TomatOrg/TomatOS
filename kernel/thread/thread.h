@@ -181,11 +181,17 @@ typedef struct thread {
     // the waiting thread structure that caused the thread to wakeup
     waiting_thread_t* waker;
 
+    // list of waiting threads structures that point to this thread
+    waiting_thread_t* waiting;
+
+    // are we participating in a select and did someone win the race?
     _Atomic(uint32_t) select_done;
 
     // a spinlock we want to unlock once we start waiting
     spinlock_t* wait_lock;
 } thread_t;
+
+struct waitable;
 
 struct waiting_thread {
     thread_t* thread;
@@ -201,7 +207,7 @@ struct waiting_thread {
 
     bool is_select;
     bool success;
-    void* waitable;
+    struct waitable* waitable;
 };
 
 /**

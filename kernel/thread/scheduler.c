@@ -34,6 +34,7 @@
 
 #include "cpu_local.h"
 #include "timer.h"
+#include "waitable.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -1181,6 +1182,20 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
 
     // put the thread into a waiting state
     cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);
+
+    // unlock all of the waitables that we are now waiting on
+    if (current_thread->waiting != NULL) {
+        waitable_t* last_w = NULL;
+        for (waiting_thread_t* wt = current_thread->waiting; wt != NULL; wt = wt->wait_link) {
+            if (wt->waitable != last_w && last_w != NULL) {
+                spinlock_unlock(&last_w->lock);
+            }
+            last_w = wt->waitable;
+        }
+        if (last_w != NULL) {
+            spinlock_unlock(&last_w->lock);
+        }
+    }
 
     // unlock a spinlock if needed
     if (current_thread->wait_lock != NULL) {

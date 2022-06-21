@@ -2,6 +2,7 @@
 #include "scheduler.h"
 #include "timer.h"
 #include "time/tsc.h"
+#include "util/fastrand.h"
 
 #include <mem/malloc.h>
 
@@ -77,6 +78,41 @@ static waiting_thread_t* wait_queue_dequeue(wait_queue_t* q) {
     }
 }
 
+static void wait_queue_dequeue_wt(wait_queue_t* q, waiting_thread_t* wt) {
+    waiting_thread_t* x = wt->prev;
+    waiting_thread_t* y = wt->next;
+    if (x != NULL) {
+        if (y != NULL) {
+            // middle of queue
+            x->next = y;
+            y->prev = x;
+            wt->next = NULL;
+            wt->prev = NULL;
+            return;
+        }
+        // end of queue
+        x->next = NULL;
+        q->last = x;
+        wt->prev = NULL;
+        return;
+    }
+
+    if (y != NULL) {
+        // start of queue
+        y->prev = NULL;
+        q->first = y;
+        wt->next = NULL;
+        return;
+    }
+
+    // x == y == NULL. Either wt is the only element in the queue,
+    // or it ha already been removed. Use q.first to disambiguate.
+    if (q->first == wt) {
+        q->first = NULL;
+        q->last = NULL;
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static bool waitable_full(waitable_t* w) {
@@ -102,6 +138,7 @@ bool waitable_send(waitable_t* w, bool block) {
 
     if (w->closed) {
         spinlock_unlock(&w->lock);
+        WARN("waitable: send on closed waitable");
         return false;
     }
 
@@ -120,7 +157,7 @@ bool waitable_send(waitable_t* w, bool block) {
     }
 
     if (w->count < w->size) {
-        // Space is available in the channel. Enqueue to send.
+        // Space is available in the waitable. Enqueue to send.
         w->count++;
         spinlock_unlock(&w->lock);
         return true;
@@ -131,7 +168,7 @@ bool waitable_send(waitable_t* w, bool block) {
         return false;
     }
 
-    // Block on the channel. Some waiter will complete our operation for us.
+    // Block on the waitable. Some waiter will complete our operation for us.
     thread_t* thread = get_current_thread();
     wt = acquire_waiting_thread();
     wt->thread = thread;
@@ -147,6 +184,7 @@ bool waitable_send(waitable_t* w, bool block) {
     release_waiting_thread(wt);
 
     if (closed) {
+        WARN("waitable: send wakeup on closed waitable");
         return false;
     }
 
@@ -215,7 +253,7 @@ void waitable_close(waitable_t* w) {
 
     if (w->closed) {
         spinlock_unlock(&w->lock);
-        ASSERT(!"Close of closed channel");
+        WARN("waitable: close an already closed waitable");
         return;
     }
 
@@ -265,8 +303,232 @@ void waitable_close(waitable_t* w) {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-int waitable_select(waitable_t** waitables, int send_count, int wait_count, bool block) {
-    return -1;
+static void waitable_select_lock(waitable_t** waitables, const uint16_t* lockorder, int waitables_count) {
+    waitable_t* last_w = NULL;
+    for (int i = 0; i < waitables_count; i++) {
+        waitable_t* w = waitables[lockorder[i]];
+        if (last_w != w) {
+            last_w = w;
+            spinlock_lock(&w->lock);
+        }
+    }
+}
+
+static void waitable_select_unlock(waitable_t** waitables, const uint16_t* lockorder, int waitables_count) {
+    for (int i = waitables_count - 1; i >= 0; i--) {
+        waitable_t* w = waitables[lockorder[i]];
+        if (i > 0 && w == waitables[lockorder[i - 1]]) {
+            // will unlock it on the next iteration
+            continue;
+        }
+        spinlock_unlock(&w->lock);
+    }
+}
+
+selected_waitable_t waitable_select(waitable_t** waitables, int send_count, int wait_count, bool block) {
+    int waitable_count = send_count + wait_count;
+    ASSERT(waitable_count < UINT16_MAX);
+
+    uint16_t pollorder[waitable_count];
+    uint16_t lockorder[waitable_count];
+
+    // generate permuted order
+    for (int i = 0; i < waitable_count; i++) {
+        uint32_t j = fastrandn(i + 1);
+        pollorder[i] = pollorder[j];
+        pollorder[j] = i;
+    }
+
+    // sort the cases by waitable address to get the locking order.
+    // simple heap sort, to guarantee n log n time and constant stack footprint.
+    for (int i = 0; i < waitable_count; i++) {
+        int j = i;
+
+        waitable_t* w = waitables[pollorder[i]];
+        while (j > 0 && waitables[lockorder[(j - 1) / 2]] < w) {
+            int k = (j - 1) / 2;
+            lockorder[j] = lockorder[k];
+            j = k;
+        }
+        lockorder[j] = pollorder[i];
+    }
+
+    for (int i = waitable_count - 1; i >= 0; i--) {
+        int o = lockorder[i];
+        waitable_t* w = waitables[o];
+        lockorder[i] = lockorder[0];
+        int j = 0;
+        while (true) {
+            int k = j * 2 + 1;
+            if (k >= i) {
+                break;
+            }
+            if (k + 1 < i && waitables[lockorder[k]] < waitables[lockorder[k + 1]]) {
+                k++;
+            }
+            if (w < waitables[lockorder[k]]) {
+                lockorder[j] = lockorder[k];
+                j = k;
+                continue;
+            }
+            break;
+        }
+        lockorder[j] = o;
+    }
+
+    // lock all the waitables involved in the select
+    waitable_select_lock(waitables, lockorder, waitable_count);
+
+    //
+    // pass 1 - look for something already waiting
+    //
+    for (int o = 0; o < waitable_count; o++) {
+        int i = pollorder[o];
+        waitable_t* w = waitables[i];
+
+        if (i >= send_count) {
+            waiting_thread_t* wt = wait_queue_dequeue(&w->send_queue);
+            if (wt != NULL) {
+                // can receive from sleeping sender
+                waitable_select_unlock(waitables, lockorder, waitable_count);
+                wt->thread->waker = wt;
+                wt->success = true;
+                scheduler_ready_thread(wt->thread);
+                return (selected_waitable_t) { .index = i, .success = true };
+            }
+
+            if (w->count > 0) {
+                // can receieve from waitable
+                w->count--;
+                waitable_select_unlock(waitables, lockorder, waitable_count);
+                return (selected_waitable_t) { .index = i, .success = true };
+            }
+
+            if (w->closed) {
+                // read at end of closed waitable
+                waitable_select_unlock(waitables, lockorder, waitable_count);
+                return (selected_waitable_t) { .index = i, .success = false };
+            }
+
+        } else {
+            if (w->closed != 0) {
+                waitable_select_unlock(waitables, lockorder, waitable_count);
+                WARN("waitable: select send on closed waitable");
+                return (selected_waitable_t) { .index = i, .success = false };
+            }
+
+            waiting_thread_t* wt = wait_queue_dequeue(&w->wait_queue);
+            if (wt != NULL) {
+                waitable_select_unlock(waitables, lockorder, waitable_count);
+                wt->thread->waker = wt;
+                wt->success = true;
+                scheduler_ready_thread(wt->thread);
+                return (selected_waitable_t) { .index = i, .success = true };
+            }
+
+            if (w->count < w->size) {
+                // can send to waitable
+                w->count++;
+                waitable_select_unlock(waitables, lockorder, waitable_count);
+                return (selected_waitable_t) { .index = i, .success = true };
+            }
+        }
+    }
+
+    if (!block) {
+        waitable_select_unlock(waitables, lockorder, waitable_count);
+        return (selected_waitable_t) { .index = -1, .success = false };
+    }
+
+    //
+    // pass 2 - enqueue on all chans
+    //
+
+    thread_t* thread = get_current_thread();
+    ASSERT(thread->waiting == NULL);
+
+    waiting_thread_t** nextp = &thread->waiting;
+    for (int o = 0; o < waitable_count; o++) {
+        int i = lockorder[o];
+        waitable_t* w = waitables[i];
+
+        waiting_thread_t* wt = acquire_waiting_thread();
+        wt->thread = thread;
+        wt->is_select = true;
+        wt->waitable = w;
+
+        // Construct waiting list in lock order.
+        *nextp = wt;
+        nextp = &wt->wait_link;
+
+        if (i < send_count) {
+            wait_queue_enqueue(&w->send_queue, wt);
+        } else {
+            wait_queue_enqueue(&w->wait_queue, wt);
+        }
+    }
+
+    // wait for someone to wake us up
+    thread->waker = NULL;
+    scheduler_park();
+
+    waitable_select_lock(waitables, lockorder, waitable_count);
+
+    thread->select_done = 0;
+    waiting_thread_t* wt = thread->waker;
+    thread->waker = NULL;
+
+    //
+    // pass 3 - dequeue from unsuccessful waitables
+    //
+
+    waiting_thread_t* wtl = thread->waiting;
+    thread->waiting = NULL;
+
+    int waitable_i = -1;
+    waitable_t* waitable = NULL;
+    bool success = false;
+    for (int o = 0; o < waitable_count; o++) {
+        int i = lockorder[o];
+        waitable_t* w = waitables[i];
+        if (wt == wtl) {
+            // wt has already been dequeued by the thread that woke us up.
+            waitable_i = i;
+            waitable = w;
+            success = wt->success;
+        } else {
+            if (i < send_count) {
+                wait_queue_dequeue_wt(&w->send_queue, wtl);
+            } else {
+                wait_queue_dequeue_wt(&w->wait_queue, wtl);
+            }
+        }
+
+        waiting_thread_t* wtn = wtl->wait_link;
+        wtl->wait_link = NULL;
+        release_waiting_thread(wtl);
+        wtl = wtn;
+    }
+
+    ASSERT(waitable != NULL);
+
+    selected_waitable_t selected = {
+        .index = waitable_i,
+        .success = true
+    };
+
+    if (waitable_i < send_count) {
+        if (!success) {
+            WARN("waitable: select send wakeup on closed waitable");
+            selected.success = false;
+        }
+    } else {
+        selected.success = success;
+    }
+
+    waitable_select_unlock(waitables, lockorder, waitable_count);
+
+    return selected;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

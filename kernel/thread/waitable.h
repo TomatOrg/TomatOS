@@ -63,11 +63,16 @@ waitable_result_t waitable_wait(waitable_t* waitable, bool block);
  */
 void waitable_close(waitable_t* waitable);
 
+typedef struct selected_waitable {
+    int index;
+    bool success;
+} selected_waitable_t;
+
 /**
  * Waits on all the given waitables and waits for one of them
  * to be ready
  */
-int waitable_select(waitable_t** waitables, int send_count, int wait_count, bool block);
+selected_waitable_t waitable_select(waitable_t** waitables, int send_count, int wait_count, bool block);
 
 /**
  * TODO: better name?
