@@ -15,7 +15,8 @@ public class Kernel
     
     public static int Main()
     {
-        return DoIt((x, y) => x + y);
+        int a = 123;
+        return Interlocked.Add(ref a, 123);
     }
     
 }
