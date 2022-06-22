@@ -24,6 +24,8 @@ public abstract class Type : MemberInfo
     private int _genericParmaeterPosition;
     private Type[] _genericArguments;
 
+    private MethodInfo _delegateSignature;
+
     private int _classSize;
     private int _packingSize;
 
