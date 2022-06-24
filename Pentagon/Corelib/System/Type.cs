@@ -18,6 +18,7 @@ public abstract class Type : MemberInfo
     private int _metadataToken;
     private bool _isArray;
     private bool _isByRef;
+    private bool _isBoxed;
 
     private Type _genericTypeDefinition;
     private int _genericTypeAttributes;
@@ -50,6 +51,7 @@ public abstract class Type : MemberInfo
     private Type _arrayType;
     private Type _byRefType;
     private Type _boxedType;
+    private Type _unboxedType;
     private Type _nextGenericInstance;
 
     private Type _nextNestedType;

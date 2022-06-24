@@ -74,35 +74,6 @@ public abstract class WaitHandle : IDisposable
 
     #endregion
     
-    #region Wait Any
-
-    public static int WaitAny(WaitHandle[] waitHandles)
-    {
-        if (waitHandles == null)
-            throw new ArgumentNullException(nameof(waitHandles));
-        
-        // TODO: verify no duplicates
-        // TODO: verify no nulls
-
-        var i = WaitAnyInternal(waitHandles);
-
-        // edge case, we need to make sure that manual reset
-        // even will keep being set...
-        if (waitHandles[i] is EventWaitHandle { _mode: EventResetMode.ManualReset } eventWaitHandle)
-        {
-            eventWaitHandle.Set();
-        }
-
-        // TODO: wait any timeout
-        
-        return i;
-    }
-
-    [MethodImpl(MethodImplOptions.InternalCall)]
-    private static extern int WaitAnyInternal(WaitHandle[] waitHandles);
-
-    #endregion
-    
     #region Wait One
     
     public virtual bool WaitOne()
@@ -118,7 +89,7 @@ public abstract class WaitHandle : IDisposable
         if (millisecondsTimeout < 0)
             throw new ArgumentOutOfRangeException(nameof(millisecondsTimeout), "Number must be either non-negative and less than or equal to Int32.MaxValue or -1.");
 
-        return WaitOne(TimeSpan.FromMilliseconds(millisecondsTimeout));
+        return WaitOne(new TimeSpan(millisecondsTimeout * TimeSpan.TicksPerMillisecond));
     }
 
     public virtual bool WaitOne(TimeSpan timeout)
@@ -140,7 +111,7 @@ public abstract class WaitHandle : IDisposable
             throw new ObjectDisposedException();
 
         // create the timeout, we take the value in imcroseconds
-        var timeoutWaitable = WaitableAfter(timeout.Ticks / (TimeSpan.TicksPerMillisecond * 1000));
+        var timeoutWaitable = WaitableAfter(timeout.Ticks / TimeSpan.TicksPerMillisecond * 1000);
                 
         // wait on both of them
         var selected = WaitableSelect2(Waitable, timeoutWaitable, true);
