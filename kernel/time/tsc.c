@@ -48,8 +48,15 @@ uint64_t get_tsc_freq() {
     return m_tsc_micro_freq;
 }
 
-INTERRUPT uint64_t microtime() {
-    uint64_t value = _rdtsc() / m_tsc_micro_freq;
+uint64_t get_tsc() {
+    _mm_mfence();
     _mm_lfence();
+    uint64_t value = _rdtsc();
+    _mm_lfence();
+    return value;
+}
+
+INTERRUPT uint64_t microtime() {
+    uint64_t value = get_tsc() / m_tsc_micro_freq;
     return value;
 }

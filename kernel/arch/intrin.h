@@ -131,8 +131,12 @@ static inline INTRIN_ATTR void _fxrstor64(void* p) {
 
 #define _rdtsc() __rdtsc()
 
-static inline INTRIN_ATTR void _mm_lfence(void) {
-    __atomic_thread_fence(__ATOMIC_RELEASE);
+static inline __attribute__((always_inline, artificial)) void _mm_lfence(void) {
+    __builtin_ia32_lfence();
+}
+
+static inline __attribute__((always_inline, artificial)) void _mm_mfence(void) {
+    __builtin_ia32_mfence();
 }
 
 #undef INTRIN_ATTR
