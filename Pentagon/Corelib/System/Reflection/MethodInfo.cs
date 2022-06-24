@@ -10,6 +10,7 @@ public class MethodInfo : MethodBase
     private bool _isFilled;
     private int _vtableOffset;
     private unsafe void* _mirFunc;
+    private unsafe void* _mirUnboxerFunc;
     private unsafe void* _mirProto;
     private MethodInfo _nextGenericInstance;
 
