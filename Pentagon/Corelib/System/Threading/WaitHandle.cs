@@ -139,10 +139,10 @@ public abstract class WaitHandle : IDisposable
     private static extern ulong CreateWaitable(int count);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
-    private static extern ulong WaitableAfter(long timeout);
+    internal static extern ulong WaitableAfter(long timeoutMicro);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
-    private static extern void ReleaseWaitable(ulong waitable);
+    internal static extern void ReleaseWaitable(ulong waitable);
 
     #endregion
 

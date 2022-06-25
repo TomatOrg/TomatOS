@@ -13,18 +13,18 @@ typedef enum thread_status {
      * Means this thread was just allocated and has not
      * yet been initialized
      */
-    THREAD_STATUS_IDLE,
+    THREAD_STATUS_IDLE = 0,
 
     /**
      * Means this thread is on a run queue. It is
      * not currently executing user code.
      */
-    THREAD_STATUS_RUNNABLE,
+    THREAD_STATUS_RUNNABLE = 1,
 
     /**
      * Means this thread may execute user code.
      */
-    THREAD_STATUS_RUNNING,
+    THREAD_STATUS_RUNNING = 2,
 
     /**
      * Means this thread is blocked in the runtime.
@@ -32,7 +32,7 @@ typedef enum thread_status {
      * but should be recorded somewhere so it can be scheduled
      * when necessary.
      */
-    THREAD_STATUS_WAITING,
+    THREAD_STATUS_WAITING = 3,
 
     /**
      * Means the thread stopped itself for a suspend
@@ -41,14 +41,14 @@ typedef enum thread_status {
      * suspend must CAS the status to THREAD_STATUS_WAITING
      * to take responsibility for readying this thread
      */
-    THREAD_STATUS_PREEMPTED,
+    THREAD_STATUS_PREEMPTED = 4,
 
     /**
      * Means this thread is currently unused. It may be
      * just exited, on a free list, or just being initialized.
      * It is not executing user code.
      */
-    THREAD_STATUS_DEAD,
+    THREAD_STATUS_DEAD = 5,
 
     /**
      * Indicates someone wants to suspend this thread (probably the
@@ -136,6 +136,9 @@ typedef struct thread_control_block {
 
     // The per-thread data for the gc
     gc_thread_data_t gc_data;
+
+    // the managed thread instance for this thread
+    void* managed_thread;
 } thread_control_block_t;
 
 typedef struct waiting_thread waiting_thread_t;
