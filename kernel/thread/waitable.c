@@ -12,6 +12,7 @@ waitable_t* create_waitable(size_t size) {
         return NULL;
     }
     waitable->size = size;
+    waitable->ref_count = 1;
     waitable->lock = INIT_SPINLOCK();
     return waitable;
 }
