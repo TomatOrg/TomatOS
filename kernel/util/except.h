@@ -7,37 +7,37 @@ typedef enum err {
     /**
       * There was no error, everything is good
       */
-    NO_ERROR,
+    NO_ERROR = 0,
 
     /**
      * Some check failed, basically an internal error
      */
-    ERROR_CHECK_FAILED,
+    ERROR_CHECK_FAILED = 1,
 
     /**
      * The requested item was not found
      */
-    ERROR_NOT_FOUND,
+    ERROR_NOT_FOUND = 2,
 
     /**
      * The function ran out of resources to continue
      */
-    ERROR_OUT_OF_MEMORY,
+    ERROR_OUT_OF_MEMORY = 3,
 
     /**
      * Got a bad format, most likely when parsing file
      */
-    ERROR_BAD_FORMAT,
+    ERROR_BAD_FORMAT = 4,
 
     /**
      * The runtime found an invalid opcode
      */
-    ERROR_INVALID_OPCODE,
+    ERROR_INVALID_OPCODE = 5,
 
     /**
      * The current thread does not own the lock for the specified object
      */
-    ERROR_SYNCHRONIZATION_LOCK,
+    ERROR_SYNCHRONIZATION_LOCK = 6,
 } err_t;
 
 /**
