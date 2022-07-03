@@ -19,6 +19,9 @@ public class Array
 
     private Array() {}
 
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal extern ulong GetDataPtr();
+
     #endregion
 
     #region Copy

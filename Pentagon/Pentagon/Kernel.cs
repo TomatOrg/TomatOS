@@ -11,13 +11,13 @@ public class Kernel
 {
     public static int Main()
     {
-        var task = MyOtherAsyncMethod();
-        YieldAwaitable.StupidContinuation(); // continue and yield back, this is a test
-        return task.Result;
-    }
-    private static async Task<int> MyOtherAsyncMethod()
-    {
-        await Task.Yield();
-        return 6;
+        var arr = new int[3];
+        arr[0] = 1;
+        arr[1] = 2;
+        arr[2] = 3;
+
+        var span = new Span<int>(arr);
+        arr[0] = 123;
+        return span[0];
     }
 }
