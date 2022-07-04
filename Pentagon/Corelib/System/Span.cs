@@ -34,6 +34,21 @@ public readonly ref struct Span<T>
         }
     }
 
+    public Span(T[] array, int start, int length)
+    {
+        if (array == null)
+        {
+            if (start != 0 || length != 0)
+                throw new ArgumentOutOfRangeException();
+
+            this = default;
+        }
+        else
+        {
+            this = new Span<T>(array).Slice(start, length);
+        }
+    }
+    
     [MethodImpl(MethodImplOptions.InternalCall)]
     private extern ref T GetItemInternal(int index);
     
@@ -145,9 +160,7 @@ public readonly ref struct Span<T>
     {
         return new Span<T>(array);
     }
-
-    #region Enumerator
-
+    
     public ref struct Enumerator
     {
 
@@ -173,7 +186,5 @@ public readonly ref struct Span<T>
         }
         
     }
-
-    #endregion
     
 }
