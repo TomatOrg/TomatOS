@@ -8,13 +8,14 @@ public sealed class AutoResetEvent : EventWaitHandle
     {
     }
 
-    public override bool WaitOne()
+    public override bool Set()
     {
-        return WaitOneInternal();
+        return SetAutoReset();
     }
 
-    public override bool WaitOne(TimeSpan timeout)
+    public override bool Reset()
     {
-        return WaitOneInternal(timeout);
+        return ResetAutoReset();
     }
+    
 }

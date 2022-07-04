@@ -8,18 +8,14 @@ public sealed class ManualResetEvent : EventWaitHandle
     {
     }
 
-    public override bool WaitOne()
+    public override bool Set()
     {
-        var success = WaitOneInternal();
-        Set();
-        return success;
+        return SetManualReset();
     }
-    
-    public override bool WaitOne(TimeSpan timeout)
+
+    public override bool Reset()
     {
-        var success = WaitOneInternal(timeout);
-        Set();
-        return success;
+        return ResetManualReset();
     }
 
 }

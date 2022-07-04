@@ -9,15 +9,40 @@ namespace Pentagon;
 
 public class Kernel
 {
+
+    public static ManualResetEvent Event = new(false);
+
+    public static void Lol()
+    {
+        // sleep a little
+        Thread.Sleep(1000);
+        
+        // then set it 
+        Event.Set();
+        
+        // sleep a little
+        Thread.Sleep(1000);
+        
+        // then set it 
+        Event.Set();
+    }
+    
     public static int Main()
     {
-        var arr = new int[3];
-        arr[0] = 1;
-        arr[1] = 2;
-        arr[2] = 3;
+        var thread = new Thread(Lol);
+        thread.Start();
 
-        var span = new Span<int>(arr);
-        arr[0] = 123;
-        return span[0];
+        // wait for it 
+        Event.WaitOne();
+        Event.WaitOne();
+        Event.WaitOne();
+        Event.WaitOne();
+
+        Event.Reset();
+        
+        // again 
+        Event.WaitOne();
+
+        return 1;
     }
 }

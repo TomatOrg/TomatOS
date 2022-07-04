@@ -45,35 +45,6 @@ public abstract class WaitHandle : IDisposable
         Waitable = 0;
     }
 
-    #region Wait All
-
-    public static bool WaitAll(WaitHandle[] waitHandles)
-    {
-        if (waitHandles == null)
-            throw new ArgumentNullException(nameof(waitHandles));
-
-        // TODO: verify no duplicates
-        // TODO: verify no nulls
-        
-        foreach (var handle in waitHandles)
-        {
-            handle.WaitOne();
-
-            // edge case, we need to make sure that manual reset
-            // even will keep being set...
-            if (handle is EventWaitHandle { _mode: EventResetMode.ManualReset } eventWaitHandle)
-            {
-                eventWaitHandle.Set();
-            }
-        }
-
-        return true;
-    }
-    
-    // TODO: wait all timeout 
-
-    #endregion
-    
     #region Wait One
     
     public virtual bool WaitOne()
@@ -110,14 +81,18 @@ public abstract class WaitHandle : IDisposable
         if (Waitable == 0) 
             throw new ObjectDisposedException();
 
+        // get the waitable, increase ref-count
+        var waitable = PutWaitable(Waitable);
+
         // create the timeout, we take the value in imcroseconds
         var timeoutWaitable = WaitableAfter(timeout.Ticks / TimeSpan.TicksPerMillisecond * 1000);
                 
         // wait on both of them
-        var selected = WaitableSelect2(Waitable, timeoutWaitable, true);
+        var selected = WaitableSelect2(waitable, timeoutWaitable, true);
 
-        // release the timeout variable
+        // release both refs
         ReleaseWaitable(timeoutWaitable);
+        ReleaseWaitable(waitable);
 
         return selected == 0;
     }
@@ -133,13 +108,19 @@ public abstract class WaitHandle : IDisposable
     internal static extern int WaitableWait(ulong waitable, bool block);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
-    private static extern int WaitableSelect2(ulong waitable1, ulong waitable2, bool block);
+    internal static extern void WaitableClose(ulong waitable);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
-    private static extern ulong CreateWaitable(int count);
+    internal static extern int WaitableSelect2(ulong waitable1, ulong waitable2, bool block);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern ulong CreateWaitable(int count);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern ulong WaitableAfter(long timeoutMicro);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern ulong PutWaitable(ulong waitable);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern void ReleaseWaitable(ulong waitable);
