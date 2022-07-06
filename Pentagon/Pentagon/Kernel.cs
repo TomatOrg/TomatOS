@@ -10,39 +10,11 @@ namespace Pentagon;
 public class Kernel
 {
 
-    public static ManualResetEvent Event = new(false);
-
-    public static void Lol()
-    {
-        // sleep a little
-        Thread.Sleep(1000);
-        
-        // then set it 
-        Event.Set();
-        
-        // sleep a little
-        Thread.Sleep(1000);
-        
-        // then set it 
-        Event.Set();
-    }
-    
     public static int Main()
     {
-        var thread = new Thread(Lol);
-        thread.Start();
-
-        // wait for it 
-        Event.WaitOne();
-        Event.WaitOne();
-        Event.WaitOne();
-        Event.WaitOne();
-
-        Event.Reset();
-        
-        // again 
-        Event.WaitOne();
-
-        return 1;
+        var framebufferOwner = MemoryServices.MapPages(0x00000000FD000000, 1);
+        framebufferOwner.Dispose();
+        return Unsafe.SizeOf<int>();
     }
+    
 }

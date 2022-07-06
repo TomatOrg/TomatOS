@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "thread/waitable.h"
+#include "runtime/dotnet/internal_calls.h"
 
 #include <limine.h>
 
@@ -195,6 +196,7 @@ static void kernel_startup() {
     CHECK_AND_RETHROW(init_gc());
     CHECK_AND_RETHROW(init_heap());
     CHECK_AND_RETHROW(init_jit());
+    CHECK_AND_RETHROW(init_kernel_internal_calls());
 
     // load the corelib
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_file.address, m_corelib_file.size));

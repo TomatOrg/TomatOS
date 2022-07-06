@@ -9,7 +9,7 @@ public readonly ref struct Span<T>
 
     public static Span<T> Empty => new();
 
-    private readonly ulong _ptr;
+    internal readonly ulong _ptr;
     private readonly int _length;
 
     public bool IsEmpty => _length == 0;
