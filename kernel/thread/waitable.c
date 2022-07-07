@@ -178,8 +178,7 @@ bool waitable_send(waitable_t* w, bool block) {
     wait_queue_enqueue(&w->send_queue, wt);
 
     // park and release the lock for the waitable
-    thread->wait_lock = &w->lock;
-    scheduler_park();
+    scheduler_park((void*)spinlock_unlock, &w->lock);
 
     // someone woke us up
 
@@ -242,8 +241,7 @@ waitable_result_t waitable_wait(waitable_t* w, bool block) {
     wt->thread = thread;
     wait_queue_enqueue(&w->wait_queue, wt);
 
-    thread->wait_lock = &w->lock;
-    scheduler_park();
+    scheduler_park((void*)spinlock_unlock, &w->lock);
 
     // someone woke us up
     bool success = wt->success;
@@ -325,6 +323,20 @@ static void waitable_select_unlock(waitable_t** waitables, const uint16_t* locko
             continue;
         }
         spinlock_unlock(&w->lock);
+    }
+}
+
+static void waitable_select_park(thread_t* thread) {
+    waitable_t* last_w = NULL;
+    for (waiting_thread_t* wt = thread->waiting; wt != NULL; wt = wt->wait_link) {
+        if (wt->waitable != last_w && last_w != NULL) {
+            spinlock_unlock(&last_w->lock);
+        }
+        last_w = wt->waitable;
+    }
+
+    if (last_w != NULL) {
+        spinlock_unlock(&last_w->lock);
     }
 }
 
@@ -473,7 +485,7 @@ selected_waitable_t waitable_select(waitable_t** waitables, int send_count, int 
 
     // wait for someone to wake us up
     thread->waker = NULL;
-    scheduler_park();
+    scheduler_park((void*)waitable_select_park, thread);
 
     waitable_select_lock(waitables, lockorder, waitable_count);
 

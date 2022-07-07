@@ -132,8 +132,7 @@ void semaphore_acquire(semaphore_t* semaphore, bool lifo) {
         semaphore_queue(semaphore, wt, lifo);
 
         // park the thread, making sure to unlock our lock
-        wt->thread->wait_lock = &semaphore->lock;
-        scheduler_park();
+        scheduler_park((void*)spinlock_unlock, &semaphore->lock);
 
         if (wt->ticket != 0 || semaphore_can_acquire(semaphore)) {
             break;

@@ -66,8 +66,7 @@ void notify_list_wait(notify_list_t* list, uint32_t ticket) {
     list->tail = wt;
 
     // mark the lock for unlocking and park
-    wt->thread->wait_lock = &list->lock;
-    scheduler_park();
+    scheduler_park((void*)spinlock_unlock, &list->lock);
 
     release_waiting_thread(wt);
 }

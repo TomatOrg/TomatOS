@@ -1183,24 +1183,9 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
     // put the thread into a waiting state
     cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);
 
-    // unlock all of the waitables that we are now waiting on
-    if (current_thread->waiting != NULL) {
-        waitable_t* last_w = NULL;
-        for (waiting_thread_t* wt = current_thread->waiting; wt != NULL; wt = wt->wait_link) {
-            if (wt->waitable != last_w && last_w != NULL) {
-                spinlock_unlock(&last_w->lock);
-            }
-            last_w = wt->waitable;
-        }
-        if (last_w != NULL) {
-            spinlock_unlock(&last_w->lock);
-        }
-    }
-
-    // unlock a spinlock if needed
-    if (current_thread->wait_lock != NULL) {
-        spinlock_unlock(current_thread->wait_lock);
-        current_thread->wait_lock = NULL;
+    // check if we need to call a callback before we schedule
+    if (ctx->rdi != 0) {
+        ((void(*)(uint64_t))ctx->rdi)(ctx->rsi);
     }
 
     // schedule a new thread
@@ -1249,11 +1234,13 @@ void scheduler_yield() {
         : "memory");
 }
 
-void scheduler_park() {
+void scheduler_park(void(*callback)(void* arg), void* arg) {
     __asm__ volatile (
         "int %0"
         :
         : "i"(IRQ_PARK)
+        , "D"(callback)
+        , "S"(arg)
         : "memory");
 }
 

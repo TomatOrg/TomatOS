@@ -107,7 +107,7 @@ void scheduler_yield();
 /**
  * Park the current thread, putting us into sleep and not putting us to the run-queue
  */
-void scheduler_park();
+void scheduler_park(void(*callback)(void* arg), void* arg);
 
 /**
  * Drop the current thread and schedule a new one instead

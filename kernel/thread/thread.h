@@ -189,9 +189,6 @@ typedef struct thread {
 
     // are we participating in a select and did someone win the race?
     _Atomic(uint32_t) select_done;
-
-    // a spinlock we want to unlock once we start waiting
-    spinlock_t* wait_lock;
 } thread_t;
 
 struct waitable;
