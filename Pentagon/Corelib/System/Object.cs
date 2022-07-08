@@ -7,11 +7,7 @@ namespace System
     public class Object
     {
         private unsafe void* _vtable;
-        private byte flags;
-        private byte _reserved1;
-        private byte _reserved2;
-        private byte _reserved3;
-        private uint _typeIndex;
+        private ulong _typeFlags;
 
         #region Internal state modification
 
@@ -22,12 +18,12 @@ namespace System
         
         internal void ReRegisterForFinalize()
         {
-            flags |= (1 << 3);
+            _typeFlags |= (1ul << 51);
         }
 
         internal void SuppressFinalize()
         {
-            flags &= unchecked((byte)~(1 << 3));
+            _typeFlags &= unchecked((byte)~(1ul << 51));
         }
 
         #endregion

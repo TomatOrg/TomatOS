@@ -35,16 +35,18 @@ public abstract class Type : MemberInfo
     private bool _isSetup;
     private bool _isFilled;
     private bool _isValueType;
-    private MethodInfo[] _virtualMethods;
     private MethodInfo _finalize;
     private int _managedSize;
     private int _managedAlignment;
     private int _stackSize;
     private int _stackAlignment;
-    private unsafe void* _vtable;
     private int _stackType;
     private MethodInfo _staticCtor;
-        
+
+    private MethodInfo[] _virtualMethods;
+    private unsafe void* _vtable;
+    private int _vtableSize;
+
     private InterfaceImpl[] _interfaceImpl;
     private MethodImpl[] _methodImpls;
     private unsafe void* _mirType;

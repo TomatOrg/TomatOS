@@ -10,6 +10,21 @@ namespace Pentagon;
 public class Kernel
 {
 
+    interface A
+    {
+        
+    }
+
+    interface B : A
+    {
+        
+    }
+
+    interface C : B
+    {
+        
+    }
+    
     public static int Main()
     {
         var framebufferOwner = MemoryServices.MapPages(0x00000000FD000000, 1);

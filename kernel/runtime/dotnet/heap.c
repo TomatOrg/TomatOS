@@ -711,18 +711,18 @@ static void heap_dump_callback(System_Object object) {
     }
 
     printf("[*] \t\t%p - ", object);
-    if (object->vtable == NULL) {
-        printf("<no vtable>");
+    if (object->type == 0) {
+        printf("<no type>");
     } else {
         strbuilder_t vtable = strbuilder_new();
-        type_print_full_name(object->vtable->type, &vtable);
+        type_print_full_name(OBJECT_TYPE(object), &vtable);
         printf("%s", strbuilder_get(&vtable));
         strbuilder_free(&vtable);
     }
     printf(": %s", m_color_str[object->color]);
 
     if (object->vtable != NULL) {
-        System_Type type = object->vtable->type;
+        System_Type type = OBJECT_TYPE(object);
 
         if (type == tSystem_String) {
             printf(" - \"%U\"", (System_String)object);
