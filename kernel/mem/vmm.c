@@ -259,6 +259,9 @@ bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
 err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
+    CHECK(((uintptr_t)va % 4096) == 0);
+    CHECK(((uintptr_t)pa % 4096) == 0);
+
     for (uintptr_t cva = (uintptr_t)va; cva < (uintptr_t)va + page_count * PAGE_SIZE; cva += PAGE_SIZE, pa += PAGE_SIZE) {
         // calculate the indexes of each of these
         size_t pml4i = (cva >> 39) & 0x1FFull;
@@ -295,6 +298,8 @@ cleanup:
 err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
+    CHECK(((uintptr_t)va % 4096) == 0);
+
     // simply iterate all the indexes and free them
     for (int i = 0; i < page_count; i++, va += PAGE_SIZE) {
         size_t pml1i = ((uintptr_t)va >> 12) & 0xFFFFFFFFFull;
@@ -321,6 +326,8 @@ cleanup:
 err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
     void* cva = NULL;
+
+    CHECK(((uintptr_t)va % 4096) == 0);
 
     for (cva = va; cva < va + page_count * PAGE_SIZE; cva += PAGE_SIZE) {
         uintptr_t page = vmm_alloc_page();

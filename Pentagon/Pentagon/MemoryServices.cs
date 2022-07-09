@@ -30,8 +30,13 @@ public static class MemoryServices
     /// </summary>
     internal static IMemoryOwner<byte> MapPages(ulong ptr, int pages)
     {
+        if (pages < 0)
+            throw new ArgumentOutOfRangeException(nameof(pages));
+        if (ptr % 4096 != 0)
+            throw new ArgumentException(null, nameof(ptr));
+
         var holder = new MappedMemoryHolder();
-        var mapped = MapMemory(ptr, (ulong)pages * 4096);
+        var mapped = MapMemory(ptr, (ulong)pages);
         UpdateMemory(ref holder._memory, holder, mapped, pages * 4096);
         return holder;
     }
@@ -97,7 +102,7 @@ public static class MemoryServices
     private static extern void FreeMemory(ulong ptr);
     
     [MethodImpl(MethodImplOptions.InternalCall)]
-    private static extern ulong MapMemory(ulong ptr, ulong size);
+    private static extern ulong MapMemory(ulong ptr, ulong pages);
     
     #endregion
 

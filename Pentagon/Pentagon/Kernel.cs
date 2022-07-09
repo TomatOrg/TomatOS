@@ -5,14 +5,10 @@ namespace Pentagon;
 public class Kernel
 {
 
-    public static object Lol(Nullable<int> a)
-    {
-        return a;
-    }
-    
     public static int Main()
     {
-        return Lol(123) == null ? 1 : 0;
+        using var pci = MemoryServices.MapPages(0x00000000B0000000, 256 * 64);
+        return pci.Memory.Length;
     }
     
 }
