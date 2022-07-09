@@ -91,7 +91,7 @@ public readonly ref struct Span<T>
             return false;
         }
 
-        if (_ptr < destination._ptr && destination._ptr < _ptr + (ulong)_length * (ulong)typeof(T).StackSize)
+        if (_ptr < destination._ptr && destination._ptr < _ptr + (ulong)_length * (ulong)Unsafe.SizeOf<T>())
         {
             for (var i = _length - 1; i >= 0; i--)
             {
@@ -122,7 +122,7 @@ public readonly ref struct Span<T>
         if ((uint)start > (uint)Length)
             throw new ArgumentOutOfRangeException();
         
-        return new Span<T>(_ptr + (ulong)typeof(T).StackSize * (ulong)start, Length - start);
+        return new Span<T>(_ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, Length - start);
     }
 
     public Span<T> Slice(int start, int length)
@@ -130,7 +130,7 @@ public readonly ref struct Span<T>
         if ((ulong)(uint)start + (ulong)(uint)length > (ulong)(uint)_length)
             throw new ArgumentOutOfRangeException();
 
-        return new Span<T>(_ptr + (ulong)typeof(T).StackSize * (ulong)start, length);
+        return new Span<T>(_ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, length);
     }
 
     public T[] ToArray()

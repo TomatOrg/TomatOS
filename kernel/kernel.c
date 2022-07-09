@@ -211,8 +211,6 @@ static void kernel_startup() {
     CHECK(result.exception == NULL, "Got exception: \"%U\" (of type `%U`)", result.exception->Message, OBJECT_TYPE(result.exception)->Name);
     TRACE("Kernel output: %d", result.value);
 
-    vmm_map(0xB0000000, PHYS_TO_DIRECT(0xB0000000), 256 * 64, MAP_WRITE);
-
 cleanup:
     ASSERT(!IS_ERROR(err));
     TRACE("Kernel initialization finished!");

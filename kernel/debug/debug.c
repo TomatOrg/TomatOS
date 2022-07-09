@@ -1,6 +1,8 @@
 #include "debug.h"
 #include "util/stb_ds.h"
 #include "kernel.h"
+#include "mem/mem.h"
+#include "dotnet/jit/jit.h"
 
 #include <util/elf64.h>
 #include <util/trace.h>
@@ -20,7 +22,17 @@ static ZyanStatus ZydisFormatterPrintAddressAbsolute(const ZydisFormatter* forma
     ZYAN_CHECK(ZydisCalcAbsoluteAddress(context->instruction, context->operand,
                                         context->runtime_address, &address));
 
-    symbol_t* symbol = debug_lookup_symbol(address);
+    // look up the symbol
+    symbol_t* symbol = NULL;
+    if ((context->instruction->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_GS) || (context->instruction->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_FS)) {
+        symbol = debug_lookup_symbol(address);
+    } else {
+        // check if in kernel
+        if (KERNEL_BASE <= address && address < KERNEL_BASE + SIZE_8MB) {
+            symbol = debug_lookup_symbol(address);
+        }
+    }
+
     if (symbol != NULL) {
         ZYAN_CHECK(ZydisFormatterBufferAppend(buffer, ZYDIS_TOKEN_SYMBOL));
         ZyanString* string;
@@ -131,14 +143,33 @@ void debug_disasm_at(void* ptr, int opcodes) {
 //    }
 //}
 
-static void insert_symbol(symbol_t symbol) {
-    for (int i = 0; i < arrlen(m_symbols); i++) {
-        if (m_symbols[i].address > symbol.address) {
-            arrins(m_symbols, i, symbol);
-            return;
+static int find_symbol_insert_index(uintptr_t address) {
+    int start = 0;
+    int end = arrlen(m_symbols) - 1;
+
+    while (start <= end) {
+        int mid = (start + end) / 2;
+        if (m_symbols[mid].address == address) {
+            return -1;
+        } else if (m_symbols[mid].address < address) {
+            start = mid + 1;
+        } else {
+            end = mid - 1;
         }
     }
-    arrpush(m_symbols, symbol);
+
+    return end + 1;
+}
+
+static void insert_symbol(symbol_t symbol) {
+    int idx = find_symbol_insert_index(symbol.address);
+    if (idx != -1) {
+        if (idx < arrlen(m_symbols)) {
+            arrins(m_symbols, idx, symbol);
+        } else {
+            arrpush(m_symbols, symbol);
+        }
+    }
 }
 
 static char* strdup(const char* str) {

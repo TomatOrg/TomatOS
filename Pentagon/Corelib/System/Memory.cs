@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace System;
@@ -62,7 +63,7 @@ public readonly struct Memory<T>
         if ((uint)start > (uint)Length)
             throw new ArgumentOutOfRangeException();
         
-        return new Memory<T>(_obj, _ptr + (ulong)typeof(T).StackSize * (ulong)start, Length - start);
+        return new Memory<T>(_obj, _ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, Length - start);
     }
 
     public Memory<T> Slice(int start, int length)
@@ -70,7 +71,7 @@ public readonly struct Memory<T>
         if ((ulong)(uint)start + (ulong)(uint)length > (ulong)(uint)_length)
             throw new ArgumentOutOfRangeException();
 
-        return new Memory<T>(_obj, _ptr + (ulong)typeof(T).StackSize * (ulong)start, length);
+        return new Memory<T>(_obj, _ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, length);
     }
 
     public T[] ToArray()

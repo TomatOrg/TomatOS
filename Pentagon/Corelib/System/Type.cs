@@ -59,9 +59,7 @@ public abstract class Type : MemberInfo
 
     private Type _nextNestedType;
     private Type _nestedTypes;
-
-    internal int StackSize => _stackSize;
-
+    
     [MethodImpl(MethodImplOptions.InternalCall)]
     public static extern Type GetTypeFromHandle(RuntimeTypeHandle handle);
 
