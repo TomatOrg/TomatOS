@@ -2,7 +2,7 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Pentagon;
+namespace Pentagon.HAL;
 
 public static class MemoryServices
 {
@@ -93,7 +93,13 @@ public static class MemoryServices
     /// because the Corelib abstractions hide the raw access to the pointer
     /// </summary>
     [MethodImpl(MethodImplOptions.InternalCall)]
-    private static extern void UpdateMemory(ref Memory<byte> memory, object holder, ulong ptr, int size);
+    internal static extern void UpdateMemory(ref Memory<byte> memory, object holder, ulong ptr, int size);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern ulong GetSpanPtr(ref Span<byte> memory);
+    
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern ref T UnsafePtrToRef<T>(ulong ptr);
     
     [MethodImpl(MethodImplOptions.InternalCall)]
     private static extern ulong AllocateMemory(ulong size);

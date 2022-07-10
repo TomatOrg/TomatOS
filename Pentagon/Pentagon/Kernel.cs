@@ -1,29 +1,35 @@
 using System;
+using System.Collections.Generic;
+using Pentagon.HAL;
 
 namespace Pentagon;
 
 public class Kernel
 {
 
-    public struct Lol
+    interface IA
     {
-        public int a;
-        public int b;
+        int IA();
     }
 
-    public static void A(Lol[] a, Lol b)
+    public class A : IA
     {
-        a[0] = b;
+        public int IA()
+        {
+            return 123;
+        }
     }
     
     public static int Main()
     {
-        var lol = new Lol();
-        lol.a = 123;
-        lol.b = 456;
-        var lolArr = new Lol[10];
-        A(lolArr, lol);
-        return lolArr[0].a + lolArr[0].b;
+        var memory = new Memory<byte>(new byte[10]);
+        var region = new Region(memory);
+        var int0 = region.CreateField<int>(0);
+        var int1 = region.CreateField<int>(4);
+        var long0 = region.CreateField<long>(0);
+        int0.Value = 123;
+        int1.Value = 456;
+        return (int)long0.Value;
     }
     
 }
