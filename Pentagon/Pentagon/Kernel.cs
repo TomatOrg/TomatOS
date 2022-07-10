@@ -29,7 +29,7 @@ public class Kernel
         var long0 = region.CreateField<long>(0);
         int0.Value = 123;
         int1.Value = 456;
-        return (int)long0.Value;
+        return (int)(long0.Value >> 32);
     }
     
 }

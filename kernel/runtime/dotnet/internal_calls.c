@@ -3,6 +3,7 @@
 #include "dotnet/gc/gc.h"
 #include "mem/phys.h"
 #include "mem/mem.h"
+#include "dotnet/loader.h"
 
 typedef struct System_Memory {
     System_Object Object;
@@ -47,8 +48,50 @@ static void jit_MemoryServices_GetSpanPtr(MIR_context_t ctx) {
     MIR_new_export(ctx, fname);
 }
 
+static err_t pentagon_gen(MIR_context_t ctx, System_Reflection_MethodInfo method) {
+    err_t err = NO_ERROR;
+
+    if (method->GenericMethodDefinition != NULL) {
+        if (string_equals_cstr( method->GenericMethodDefinition->Name, "UnsafePtrToRef")) {
+            MIR_reg_t this = MIR_reg(ctx, "arg0", method->MirFunc->u.func);
+            MIR_append_insn(ctx, method->MirFunc,
+                            MIR_new_ret_insn(ctx, 2,
+                                             MIR_new_int_op(ctx, 0),
+                                             MIR_new_reg_op(ctx, this)));
+        } else {
+            CHECK_FAIL("%U", method->Name);
+        }
+    } else {
+        CHECK_FAIL("%U", method->Name);
+    }
+
+cleanup:
+    return err;
+}
+
+static bool pentagon_can_gen(System_Reflection_MethodInfo method) {
+    System_Type type = method->DeclaringType;
+    if (string_equals_cstr(type->Namespace, "Pentagon.HAL")) {
+        if (string_equals_cstr(type->Name, "MemoryServices")) {
+            if (method->GenericMethodDefinition != NULL) {
+                method = method->GenericMethodDefinition;
+                if (string_equals_cstr(method->Name, "UnsafePtrToRef")) return true;
+            }
+        }
+    }
+    return false;
+}
+
+static jit_generic_extern_hook_t m_jit_extern_hook = {
+    .can_gen = pentagon_can_gen,
+    .gen = pentagon_gen,
+};
+
 err_t init_kernel_internal_calls() {
     err_t err = NO_ERROR;
+
+    jit_add_extern_whitelist("Pentagon.dll");
+    jit_add_generic_extern_hook( &m_jit_extern_hook);
 
     MIR_context_t ctx = jit_get_mir_context();
 

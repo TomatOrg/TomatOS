@@ -9,15 +9,15 @@ public readonly struct Memory<T>
 
     public static Memory<T> Empty { get; } = new();
 
-    private readonly object _obj;
-    private readonly ulong _ptr;
+    internal readonly object _obj;
+    internal readonly ulong _ptr;
     private readonly int _length;
 
     public bool IsEmpty => _length == 0;
     public int Length => _length;
     public Span<T> Span => new(_ptr, _length);
 
-    private Memory(object obj, ulong ptr, int length)
+    internal Memory(object obj, ulong ptr, int length)
     {
         _obj = obj;
         _ptr = ptr;

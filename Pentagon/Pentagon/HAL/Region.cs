@@ -23,6 +23,13 @@ public class Region
         return new Field<T>(this, offset);
     }
 
+    public Memory<T> CreateMemory<T>(int offset, int count)
+        where T : unmanaged
+    {
+        var sliced = _memory.Slice(offset, count * Unsafe.SizeOf<T>());
+        return MemoryMarshal.Cast<byte, T>(sliced);
+    }
+
     public Span<T> AsSpan<T>(int offset, int count)
         where T : unmanaged
     {

@@ -24,6 +24,18 @@ public static class MemoryMarshal
         return new Span<TTo>(span._ptr, toLength);
     }
 
+    public static Memory<TTo> Cast<TFrom, TTo>(Memory<TFrom> mem)
+        where TFrom : unmanaged
+        where TTo : unmanaged
+    {
+        var fromSize = (uint)Unsafe.SizeOf<TFrom>();
+        var toSize = (uint)Unsafe.SizeOf<TTo>();
+        var fromLength = (uint)mem.Length;
+        // TODO: checked
+        var toLength = (int)((ulong)fromLength * (ulong)fromSize / (ulong)toSize);
+        return new Memory<TTo>(mem._obj, mem._ptr, toLength);
+    }
+
     // TODO: readonly
     
     public static T Read<T>(Span<byte> source)
