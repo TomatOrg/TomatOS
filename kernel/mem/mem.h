@@ -19,8 +19,8 @@
 #define DIRECT_MAP_END                  (HIGHER_HALF_START + DIRECT_MAP_SIZE)
 
 // the buddy tree used for the physical allocator of the kernel
-// This only needs ~4GB but we will give it twice as much just for the lols
-#define BUDDY_TREE_SIZE                 (SIZE_8GB)
+// This only needs ~64MB but we will give it twice as much just in case
+#define BUDDY_TREE_SIZE                 (SIZE_128MB)
 #define BUDDY_TREE_START                (DIRECT_MAP_END + SIZE_1GB)
 #define BUDDY_TREE_END                  (BUDDY_TREE_START + BUDDY_TREE_SIZE)
 
