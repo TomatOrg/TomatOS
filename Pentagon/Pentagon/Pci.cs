@@ -37,9 +37,9 @@ namespace Pentagon
             EcamSlice = ecamSlice;
         }
         
-        public ushort VendorId { get => Read16(0); }
-        public ushort DeviceId { get => Read16(2); }
-        public ushort HeaderType { get => Read16(14); }
+        public ushort VendorId => Read16(0);
+        public ushort DeviceId => Read16(2);
+        public ushort HeaderType => Read16(14);
 
         public Bar MapBar(byte bir)
         {
@@ -88,11 +88,16 @@ namespace Pentagon
             
             internal Bar(PciDevice a, byte bir)
             {
+                if (bir > 5)
+                {
+                    throw new IndexOutOfRangeException();
+                }
                 var off = 16 + bir * 4;
                 var bar = a.Read32(off);
                 IsIo = (bar & 1) > 0;
                 if (IsIo)
                 {
+                    // TODO
                 }
                 else
                 {
