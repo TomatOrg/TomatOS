@@ -7,6 +7,8 @@ namespace Pentagon.HAL;
 public static class MemoryServices
 {
 
+    public static int PageSize => 4096;
+    
     /// <summary>
     /// Allocate pages, which are aligned to the allocation size rounded to the next power of two,
     /// so it is at least page aligned
@@ -17,10 +19,12 @@ public static class MemoryServices
             throw new ArgumentOutOfRangeException(nameof(pages));
 
         var holder = new AllocatedMemoryHolder();
-        holder._ptr = AllocateMemory((ulong)pages * 4096);
+        holder._ptr = AllocateMemory((ulong)pages * (ulong)PageSize);
         if (holder._ptr == 0)
             throw new OutOfMemoryException();
-        UpdateMemory(ref holder._memory, holder, holder._ptr, pages * 4096);
+        
+        UpdateMemory(ref holder._memory, holder, holder._ptr, pages * PageSize);
+        
         return holder;
     }
     
@@ -32,12 +36,29 @@ public static class MemoryServices
     {
         if (pages < 0)
             throw new ArgumentOutOfRangeException(nameof(pages));
-        if (ptr % 4096 != 0)
+        if (ptr % (ulong)PageSize != 0)
             throw new ArgumentException(null, nameof(ptr));
 
         var holder = new MappedMemoryHolder();
         var mapped = MapMemory(ptr, (ulong)pages);
-        UpdateMemory(ref holder._memory, holder, mapped, pages * 4096);
+        UpdateMemory(ref holder._memory, holder, mapped, pages * PageSize);
+        return holder;
+    }
+
+    internal static IMemoryOwner<byte> Map(ulong ptr, int size)
+    {
+        if (size < 0)
+            throw new ArgumentOutOfRangeException(nameof(size));
+        
+        // TODO: chcked
+        var start = KernelUtils.AlignDown(ptr, (ulong)PageSize);
+        var end = KernelUtils.AlignDown(ptr + (ulong)size, (ulong)PageSize);
+
+        // map, we are going to map the whole page range but only give a reference
+        // to the range that we want from it 
+        var holder = new MappedMemoryHolder();
+        var mapped = MapMemory(start, (end - start) / (ulong)PageSize);
+        UpdateMemory(ref holder._memory, holder, mapped + (ptr - start), size);
         return holder;
     }
 
