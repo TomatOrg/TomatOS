@@ -88,3 +88,20 @@ typedef struct acpi_1_0_fadt {
 #define ACPI_1_0_RTC_S4        BIT7
 #define ACPI_1_0_TMR_VAL_EXT   BIT8
 #define ACPI_1_0_DCK_CAP       BIT9
+
+// TODO: check if this is ACPI 3.0
+#define ACPI_3_0_MCFG_SIGNATURE  SIGNATURE_32('M', 'C', 'F', 'G')
+
+typedef struct acpi_3_0_mcfg_allocation {
+    uint64_t base;
+    uint16_t segment;
+    uint8_t start_bus;
+    uint8_t end_bus;
+    uint32_t _reserved1;
+} PACKED acpi_3_0_mcfg_allocation_t;
+
+typedef struct acpi_3_0_mcfg {
+    acpi_descriptor_header_t header;
+    uint64_t _reserved1;
+    acpi_3_0_mcfg_allocation_t allocations[];
+} PACKED acpi_3_0_mcfg_t;

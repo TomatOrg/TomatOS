@@ -35,6 +35,11 @@ public class Region
         return new Region(_memory.Slice(offset, size));
     }
 
+    public Region CreateRegion(int offset)
+    {
+        return new Region(_memory.Slice(offset));
+    }
+
     public Span<T> AsSpan<T>(int offset, int count)
         where T : unmanaged
     {

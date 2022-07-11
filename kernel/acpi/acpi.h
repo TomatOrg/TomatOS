@@ -18,3 +18,9 @@ err_t init_acpi();
  * @param signature [IN] The signature of the table
  */
 void* acpi_get_table(uint32_t signature);
+
+
+/**
+ * Get the RSDT physical address, for use inside the dotnet part
+ */
+uint64_t acpi_get_rsdt_phys();
