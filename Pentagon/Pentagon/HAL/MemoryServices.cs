@@ -51,14 +51,17 @@ public static class MemoryServices
             throw new ArgumentOutOfRangeException(nameof(size));
         
         // TODO: chcked
-        var start = KernelUtils.AlignDown(ptr, (ulong)PageSize);
-        var end = KernelUtils.AlignDown(ptr + (ulong)size, (ulong)PageSize);
+        var rangeStart = KernelUtils.AlignDown(ptr, (ulong)PageSize);
+        var rangeEnd = KernelUtils.AlignUp(ptr + (ulong)size, (ulong)PageSize);
 
+        var offset = ptr - rangeStart;
+        var pageCount = (rangeEnd - rangeStart) / (ulong)PageSize;
+        
         // map, we are going to map the whole page range but only give a reference
         // to the range that we want from it 
         var holder = new MappedMemoryHolder();
-        var mapped = MapMemory(start, (end - start) / (ulong)PageSize);
-        UpdateMemory(ref holder._memory, holder, mapped + (ptr - start), size);
+        var mapped = MapMemory(rangeStart, pageCount);
+        UpdateMemory(ref holder._memory, holder, mapped + offset, size);
         return holder;
     }
 

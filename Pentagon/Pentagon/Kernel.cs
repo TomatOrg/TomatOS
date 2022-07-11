@@ -22,14 +22,8 @@ public class Kernel
     
     public static int Main()
     {
-        var memory = new Memory<byte>(new byte[10]);
-        var region = new Region(memory);
-        var int0 = region.CreateField<int>(0);
-        var int1 = region.CreateField<int>(4);
-        var long0 = region.CreateField<long>(0);
-        int0.Value = 123;
-        int1.Value = 456;
-        return (int)(long0.Value >> 32);
+        using var memory = MemoryServices.Map(10, 10);
+        return memory.Memory.Length;
     }
     
 }
