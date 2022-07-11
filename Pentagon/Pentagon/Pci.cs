@@ -28,6 +28,7 @@ namespace Pentagon
         {
             return ecam.CreateRegion(((bus - startBus) << 20) + (dev << 15) + (fn << 12), 4096);
         }
+        
         public PciDevice(byte bus, byte dev, byte fn, Region ecamSlice)
         {
             Bus = bus;
@@ -35,6 +36,7 @@ namespace Pentagon
             Function = fn;
             EcamSlice = ecamSlice;
         }
+        
         public ushort VendorId { get => Read16(0); }
         public ushort DeviceId { get => Read16(2); }
         public ushort HeaderType { get => Read16(14); }
@@ -43,7 +45,6 @@ namespace Pentagon
         {
             return new Bar(this, bir);
         }
-
 
         /// <summary>
         /// Get PCI capability linked list 
@@ -58,11 +59,13 @@ namespace Pentagon
             var p = EcamSlice.Span.Slice(offset);
             return p[0];
         }
+
         public ushort Read16(int offset)
         {
             var p = MemoryMarshal.Cast<byte, ushort>(EcamSlice.Span.Slice(offset));
             return p[0];
         }
+
         public uint Read32(int offset)
         {
             var p = MemoryMarshal.Cast<byte, uint>(EcamSlice.Span.Slice(offset));
@@ -74,6 +77,7 @@ namespace Pentagon
             var p = MemoryMarshal.Cast<byte, uint>(EcamSlice.Span.Slice(offset));
             p[0] = value;
         }
+
         /// <summary>
         /// Class representing a base address register, whic can be either IO ports or memory.
         /// </summary>
@@ -110,6 +114,7 @@ namespace Pentagon
                 }
             }
         }
+
         /// <summary>
         /// Class representing a capability with iteration to the next one
         /// </summary>
@@ -117,11 +122,13 @@ namespace Pentagon
         {
             private readonly PciDevice _addr;
             private ushort _off;
+
             internal Capability(PciDevice a)
             {
                 _addr = a;
                 _off = Read8(0x34);
             }
+
             public bool Next()
             {
                 ushort next = Read8(1);
@@ -159,6 +166,7 @@ namespace Pentagon
             var length = ((int)(_endBus + 1) - _startBus) << 20; // NOTE: McfgAllocation.EndBus is inclusive
             _ecam = HAL.MemoryServices.MapPages(phys, length / 4096);
         }
+
         /// <summary>
         /// Add driver to supported list
         /// </summary>
@@ -166,6 +174,7 @@ namespace Pentagon
         {
             _drivers.Add(driver);
         }
+        
         /// <summary>
         /// Scans all PCI buses 
         /// </summary>

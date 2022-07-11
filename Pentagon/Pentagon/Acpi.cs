@@ -15,6 +15,7 @@ namespace Pentagon
     public class Acpi
     {
         internal Region[] _pointers;
+        
         public Acpi()
         {
             var rsdtPhys = GetRsdt();
@@ -29,6 +30,7 @@ namespace Pentagon
                 _pointers[i] = rgn;
             }
         }
+
         public Region FindTable(uint signature)
         {
             for (int i = 0; i < _pointers.Length; i++)
@@ -45,11 +47,15 @@ namespace Pentagon
 
 
         #region Native functions
+        
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern ulong GetRsdt();
+        
         #endregion
 
+
         #region ACPI tables
+        
         public class DescriptorHeader
         {
             internal Field<uint> Signature;
@@ -60,6 +66,7 @@ namespace Pentagon
                 Length = r.CreateField<uint>(4);
             }
         }
+
         public class Rsdt
         {
             internal DescriptorHeader DHdr;
@@ -91,6 +98,7 @@ namespace Pentagon
                 private uint _0;
             }
         }
+        
         #endregion
     }
 }
