@@ -19,6 +19,10 @@
 static void fflush(void* file) {}
 typedef int64_t ssize_t;
 
+// increase alignment to a block size, should be more efficient as we only really
+// care for allocating at page intervals in the pmm
+#define BUDDY_ALLOC_ALIGN (PAGE_SIZE)
+
 // include the implementation
 #define BUDDY_ALLOC_IMPLEMENTATION
 #include <buddy_alloc/buddy_alloc.h>
