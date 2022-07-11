@@ -30,6 +30,11 @@ public class Region
         return MemoryMarshal.Cast<byte, T>(sliced);
     }
 
+    public Region CreateRegion(int offset, int size)
+    {
+        return new Region(_memory.Slice(offset, size));
+    }
+
     public Span<T> AsSpan<T>(int offset, int count)
         where T : unmanaged
     {

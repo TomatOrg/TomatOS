@@ -14,4 +14,8 @@
       <ProjectReference Include="..\Corelib\Corelib.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="HAL\Bootloader" />
+    </ItemGroup>
+
 </Project>
