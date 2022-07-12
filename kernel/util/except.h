@@ -60,7 +60,7 @@ typedef enum err {
     do { \
         if (!(check)) { \
            ERROR("Assert failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
-           while (1) asm("cli; hlt"); \
+           while (1) __asm__("cli; hlt"); \
         } \
     } while(0)
 

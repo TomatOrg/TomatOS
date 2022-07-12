@@ -15,6 +15,6 @@ err_t init_palloc();
  */
 err_t palloc_reclaim();
 
-void* palloc(size_t size);
+void* palloc(size_t size) __attribute__((alloc_size(1)));
 
 void pfree(void* base);

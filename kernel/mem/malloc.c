@@ -46,6 +46,10 @@ void* malloc(size_t size) {
 }
 
 void* malloc_aligned(size_t size, size_t alignment) {
+    if (alignment == 0) {
+        alignment = 16;
+    }
+
     irq_spinlock_lock(&m_tlsf_lock);
     void* ptr = tlsf_memalign(m_tlsf, alignment, size);
     irq_spinlock_unlock(&m_tlsf_lock);
