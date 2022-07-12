@@ -93,6 +93,8 @@ static void mutex_lock_slow(mutex_t* mutex) {
         }
 
         if (awoke) {
+            ASSERT(new & MUTEX_WOKEN);
+
             // The thread has been woken from sleep,
             // so we need to reset the flag in either case.
             new &= ~MUTEX_WOKEN;
@@ -118,6 +120,7 @@ static void mutex_lock_slow(mutex_t* mutex) {
                 // ownership was handed off to us but mutex is in somewhat
                 // inconsistent state: MUTEX_LOCKED is not set and we are still
                 // accounted as waiter. Fix that.
+                ASSERT((old & (MUTEX_LOCKED | MUTEX_WOKEN)) == 0 && (old >> MUTEX_WAITER_SHIFT) != 0);
                 int32_t delta = MUTEX_LOCKED - (1 << MUTEX_WAITER_SHIFT);
                 if (!starving || (old >> MUTEX_WAITER_SHIFT) == 1) {
                     // Exit starvation mode.
@@ -132,6 +135,9 @@ static void mutex_lock_slow(mutex_t* mutex) {
             }
             awoke = true;
             iter = 0;
+        } else {
+            // update the old value
+            old = mutex->state;
         }
     }
 }

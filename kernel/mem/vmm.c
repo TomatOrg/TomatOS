@@ -198,7 +198,7 @@ void init_vmm_per_cpu() {
 // Implementation details of the vmm
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void vmm_unmap_direct_page(uintptr_t pa) {
+static void unmap_direct_page(uintptr_t pa) {
     uintptr_t va = (uintptr_t)PHYS_TO_DIRECT(pa);
     size_t pml4i = (va >> 39) & 0x1FFull;
     size_t pml3i = (va >> 30) & 0x3FFFFull;
@@ -210,6 +210,12 @@ void vmm_unmap_direct_page(uintptr_t pa) {
     if (!PAGE_TABLE_PML1[pml1i].present) return;
     PAGE_TABLE_PML1[pml1i] = (page_entry_t){ 0 };
     __invlpg((void*)va);
+}
+
+void vmm_unmap_direct_page(uintptr_t pa) {
+    irq_spinlock_lock(&m_vmm_spinlock);
+    unmap_direct_page(pa);
+    irq_spinlock_unlock(&m_vmm_spinlock);
 }
 
 /**
@@ -233,19 +239,16 @@ static uintptr_t vmm_alloc_page() {
     }
 
     // unmap from the direct map
-    vmm_unmap_direct_page(new_phys);
+    unmap_direct_page(new_phys);
 
     // return the new address
     return new_phys;
 }
 
 static bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
-    irq_spinlock_lock(&m_vmm_spinlock);
-
     if (!pml[index].present) {
         uintptr_t frame = vmm_alloc_page();
         if (frame == INVALID_PHYS_ADDR) {
-            irq_spinlock_unlock(&m_vmm_spinlock);
             return false;
         }
 
@@ -262,12 +265,10 @@ static bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t in
         memset(page, 0, PAGE_SIZE);
     }
 
-    irq_spinlock_unlock(&m_vmm_spinlock);
-
     return true;
 }
 
-err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
+static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
     CHECK(((uintptr_t)va % 4096) == 0);
@@ -298,7 +299,7 @@ err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
 
         // unmap the direct page if we need to
         if (perms & MAP_UNMAP_DIRECT) {
-            vmm_unmap_direct_page(pa);
+            unmap_direct_page(pa);
         }
     }
 
@@ -306,8 +307,22 @@ cleanup:
     return err;
 }
 
+static err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
+    err_t err = NO_ERROR;
+
+    irq_spinlock_lock(&m_vmm_spinlock);
+
+    CHECK_AND_RETHROW(do_map(pa, va, page_count, perms));
+
+cleanup:
+    irq_spinlock_unlock(&m_vmm_spinlock);
+    return err;
+}
+
 err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
+
+    irq_spinlock_lock(&m_vmm_spinlock);
 
     CHECK(((uintptr_t)va % 4096) == 0);
 
@@ -322,7 +337,7 @@ err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
 
         // unmap if needed
         if (perms & MAP_UNMAP_DIRECT) {
-            vmm_unmap_direct_page(PAGE_TABLE_PML1[pml1i].frame << 12);
+            unmap_direct_page(PAGE_TABLE_PML1[pml1i].frame << 12);
         }
 
         // invalidate the TLB entry
@@ -331,6 +346,9 @@ err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
     }
 
 cleanup:
+
+    irq_spinlock_unlock(&m_vmm_spinlock);
+
     return err;
 }
 
@@ -338,16 +356,19 @@ err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
     void* cva = NULL;
 
+    irq_spinlock_lock(&m_vmm_spinlock);
+
     CHECK(((uintptr_t)va % 4096) == 0);
 
     for (cva = va; cva < va + page_count * PAGE_SIZE; cva += PAGE_SIZE) {
         uintptr_t page = vmm_alloc_page();
         CHECK(page != INVALID_PHYS_ADDR);
-        CHECK_AND_RETHROW(vmm_map(page, cva, 1, perms));
+        CHECK_AND_RETHROW(do_map(page, cva, 1, perms));
     }
 
 cleanup:
     // TODO: proper cleanup of this function
+    irq_spinlock_unlock(&m_vmm_spinlock);
 
     return err;
 }

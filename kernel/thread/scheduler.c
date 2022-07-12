@@ -640,6 +640,7 @@ static size_t CPU_LOCAL m_preempt_disable_depth;
 
 void scheduler_preempt_disable(void) {
     if (m_preempt_disable_depth++ == 0) {
+        _disable();
         __writecr8(PRIORITY_NO_PREEMPT);
     }
 }
@@ -647,6 +648,7 @@ void scheduler_preempt_disable(void) {
 void scheduler_preempt_enable(void) {
     if (--m_preempt_disable_depth == 0) {
         __writecr8(PRIORITY_NORMAL);
+        _enable();
     }
 }
 
