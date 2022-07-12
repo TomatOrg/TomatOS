@@ -142,6 +142,11 @@ err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms);
 void vmm_unmap(void* va, size_t page_count, uintptr_t* phys);
 
 /**
+ * Checks if the given address is mapped
+ */
+bool vmm_is_mapped(uintptr_t ptr);
+
+/**
  * The phys fault handler for the system, the VMM will check if the request should
  * do any COW or on demand mapping and handle it
  *

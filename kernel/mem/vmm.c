@@ -14,6 +14,7 @@
 #include "early.h"
 
 #include "arch/intrin.h"
+#include "sync/irq_spinlock.h"
 
 // The recursive page table addresses
 #define PAGE_TABLE_PML1            ((page_entry_t*)0xFFFFFF0000000000ull)
@@ -30,6 +31,11 @@ static uintptr_t m_pml4_pa = INVALID_PHYS_ADDR;
  * Should we use the early memory allocator
  */
 static bool m_early_alloc = true;
+
+/**
+ * The spinlock for the vmm
+ */
+static irq_spinlock_t m_vmm_spinlock = INIT_IRQ_SPINLOCK();
 
 /**
  * Get the name of the given stivale memory map entry type
@@ -209,7 +215,7 @@ void vmm_unmap_direct_page(uintptr_t pa) {
 /**
  * Allocate a page for the vmm to use
  */
-uintptr_t vmm_alloc_page() {
+static uintptr_t vmm_alloc_page() {
     uintptr_t new_phys = INVALID_PHYS_ADDR;
 
     if (m_early_alloc) {
@@ -233,10 +239,13 @@ uintptr_t vmm_alloc_page() {
     return new_phys;
 }
 
-bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
+static bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
+    irq_spinlock_lock(&m_vmm_spinlock);
+
     if (!pml[index].present) {
         uintptr_t frame = vmm_alloc_page();
         if (frame == INVALID_PHYS_ADDR) {
+            irq_spinlock_unlock(&m_vmm_spinlock);
             return false;
         }
 
@@ -252,6 +261,8 @@ bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
         __invlpg(page);
         memset(page, 0, PAGE_SIZE);
     }
+
+    irq_spinlock_unlock(&m_vmm_spinlock);
 
     return true;
 }
@@ -359,6 +370,15 @@ void vmm_unmap(void* va, size_t page_count, uintptr_t* phys) {
         }
     }
 
+}
+
+bool vmm_is_mapped(uintptr_t ptr) {
+    // make sure it is present
+    if (!PAGE_TABLE_PML4[PML4_INDEX(ptr)].present) return false;
+    if (!PAGE_TABLE_PML3[PML3_INDEX(ptr)].present) return false;
+    if (!PAGE_TABLE_PML2[PML2_INDEX(ptr)].present) return false;
+    if (!PAGE_TABLE_PML1[PML1_INDEX(ptr)].present) return false;
+    return true;
 }
 
 err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present) {

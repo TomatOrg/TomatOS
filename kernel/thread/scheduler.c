@@ -36,6 +36,7 @@
 #include "timer.h"
 #include "waitable.h"
 #include "sync/irq_spinlock.h"
+#include "mem/mem.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -675,6 +676,10 @@ static void scheduler_set_deadline() {
     lapic_set_timeout(10 * 1000);
 }
 
+static void validate_context(interrupt_context_t* ctx) {
+    ASSERT(STACK_POOL_START <= ctx->rsp && ctx->rsp < STACK_POOL_END);
+}
+
 /**
  * Execute the thread on the current cpu
  *
@@ -696,6 +701,7 @@ INTERRUPT static void execute(interrupt_context_t* ctx, thread_t* thread) {
 
     // set the gprs context
     restore_thread_context(thread, ctx);
+    validate_context(ctx);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1138,6 +1144,7 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt
     ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
 
     // save the state and set the thread to runnable
+    validate_context(ctx);
     save_thread_context(current_thread, ctx);
 
     // put the thread on the global run queue
