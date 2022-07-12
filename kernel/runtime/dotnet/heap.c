@@ -113,12 +113,12 @@ static int calc_object_size(uintptr_t obj) {
 
 void heap_dump_mapping() {
     TRACE("\t%p-%p (%S): Object heap", OBJECT_HEAP_START, OBJECT_HEAP_END, OBJECT_HEAP_END - OBJECT_HEAP_START);
-    size_t size = 16;
-    for (int i = 0; i < POOL_COUNT; i++) {
-        uintptr_t base = OBJECT_HEAP_START + i * SIZE_512GB;
-        TRACE("\t\t%p-%p (%S): %S objects", base, base + SIZE_512GB, SIZE_512GB, size);
-        size *= 2;
-    }
+//    size_t size = 16;
+//    for (int i = 0; i < POOL_COUNT; i++) {
+//        uintptr_t base = OBJECT_HEAP_START + i * SIZE_512GB;
+//        TRACE("\t\t%p-%p (%S): %S objects", base, base + SIZE_512GB, SIZE_512GB, size);
+//        size *= 2;
+//    }
 }
 
 System_Object heap_find(uintptr_t ptr) {

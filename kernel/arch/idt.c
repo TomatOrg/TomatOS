@@ -339,15 +339,39 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     ERROR("FS =%016p GS =%016p", __readmsr(MSR_IA32_FS_BASE), __readmsr(MSR_IA32_GS_BASE));
     ERROR("CR0=%08x CR2=%016p CR3=%016p CR4=%08x", __readcr0(), __readcr2(), __readcr3(), __readcr4());
 
-    // decode some opcodes for better debugging
-    if (ctx->int_num != 0xE || !page_fault_code.instruction_fetch) {
-        ERROR("");
+    ERROR("");
 
-        char buffer[256] = { 0 };
-        debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
-
-        ERROR("Code: %s", buffer);
+    // print the opcode for nicer debugging
+    char buffer[256] = { 0 };
+    debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
+    ERROR("Code: %s", buffer);
+    if (vmm_is_mapped(ctx->rip)) {
         debug_disasm_at((void*)ctx->rip, 1);
+    }
+
+    ERROR("");
+
+    // stack trace
+    ERROR("Stack trace:");
+    size_t* base_ptr = (size_t*)ctx->rbp;
+    while (true) {
+        if (!vmm_is_mapped((uintptr_t)base_ptr)) {
+            break;
+        }
+
+        size_t old_bp = base_ptr[0];
+        size_t ret_addr = base_ptr[1];
+        if (ret_addr == 0) {
+            break;
+        }
+
+        debug_format_symbol(ret_addr, buffer, sizeof(buffer));
+        TRACE("\t> %s", buffer);
+
+        if (old_bp == 0) {
+            break;
+        }
+        base_ptr = (size_t*)old_bp;
     }
 
     ERROR("");

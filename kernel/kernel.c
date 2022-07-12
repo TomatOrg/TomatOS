@@ -245,9 +245,9 @@ void _start(void) {
     TRACE("Kernel address map:");
     TRACE("\t%p-%p (%S): Kernel direct map", DIRECT_MAP_START, DIRECT_MAP_END, DIRECT_MAP_SIZE);
     TRACE("\t%p-%p (%S): Buddy Tree", BUDDY_TREE_START, BUDDY_TREE_END, BUDDY_TREE_SIZE);
+    TRACE("\t%p-%p (%S): Stack pool", STACK_POOL_START, STACK_POOL_END, STACK_POOL_SIZE);
     heap_dump_mapping();
     TRACE("\t%p-%p (%S): Recursive paging", RECURSIVE_PAGING_START, RECURSIVE_PAGING_END, RECURSIVE_PAGING_SIZE);
-    TRACE("\t%p-%p (%S): Stack pool", STACK_POOL_START, STACK_POOL_END, STACK_POOL_SIZE);
     TRACE("\t%p-%p (%S): Kernel heap", KERNEL_HEAP_START, KERNEL_HEAP_END, KERNEL_HEAP_SIZE);
 
     // initialize the whole memory subsystem for the current CPU,
