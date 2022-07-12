@@ -18,6 +18,7 @@ BUILD_DIR	:= $(OUT_DIR)/build
 
 CFLAGS 		:= -target x86_64-pc-none-elf
 CFLAGS		+= -Werror -std=gnu11
+CFLAGS 		+= -Wno-unused-function
 CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
@@ -26,6 +27,7 @@ ifeq ($(DEBUG),1)
 	CFLAGS	+= -O0 -g
 	CFLAGS	+= -fsanitize=undefined
 	CFLAGS 	+= -fno-sanitize=alignment
+	CFLAGS 	+= -fstack-protector-all
 else
 	CFLAGS	+= -O3 -g0 -flto
 	CFLAGS 	+= -DNDEBUG
@@ -112,10 +114,15 @@ $(BUILD_DIR)/lib/zydis/%.c.o: lib/zydis/%.c
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) -D__posix -Ilib/zydis/src -MMD -c $< -o $@
 
-$(BUILD_DIR)/%.c.o: %.c
+$(BUILD_DIR)/lib/tinydotnet/lib/mir/%.c.o: lib/tinydotnet/lib/mir/%.c
 	@echo CC $@
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) -MMD -c $< -o $@
+
+$(BUILD_DIR)/%.c.o: %.c
+	@echo CC $@
+	@mkdir -p $(@D)
+	@$(CC) -Wall $(CFLAGS) -MMD -c $< -o $@
 
 clean:
 	rm -rf out

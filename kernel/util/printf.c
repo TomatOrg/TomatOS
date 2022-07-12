@@ -33,6 +33,7 @@
 #include "printf.h"
 #include "except.h"
 #include "stb_ds.h"
+#include "sync/irq_spinlock.h"
 
 #include <dotnet/types.h>
 
@@ -1023,10 +1024,10 @@ static NO_SANITIZE int _vsnprintf(out_fct_type out, char* buffer, const size_t m
 
 ///////////////////////////////////////////////////////////////////////////////
 
-static spinlock_t m_printf_lock = INIT_SPINLOCK();
+static irq_spinlock_t m_printf_lock = INIT_IRQ_SPINLOCK();
 
 void reset_trace_lock() {
-    m_printf_lock = INIT_SPINLOCK();
+    m_printf_lock = INIT_IRQ_SPINLOCK();
 }
 
 int printf_(const char* format, ...)
@@ -1034,9 +1035,9 @@ int printf_(const char* format, ...)
   va_list va;
   va_start(va, format);
   char buffer[1];
-    spinlock_lock(&m_printf_lock);
+    irq_spinlock_lock(&m_printf_lock);
   const int ret = _vsnprintf(_out_char, buffer, (size_t)-1, format, va);
-    spinlock_unlock(&m_printf_lock);
+    irq_spinlock_unlock(&m_printf_lock);
   va_end(va);
   return ret;
 }
@@ -1065,9 +1066,9 @@ int snprintf_(char* buffer, size_t count, const char* format, ...)
 int vprintf_(const char* format, va_list va)
 {
   char buffer[1];
-    spinlock_lock(&m_printf_lock);
+    irq_spinlock_lock(&m_printf_lock);
   int ret = _vsnprintf(_out_char, buffer, (size_t)-1, format, va);
-    spinlock_unlock(&m_printf_lock);
+    irq_spinlock_unlock(&m_printf_lock);
   return ret;
 }
 

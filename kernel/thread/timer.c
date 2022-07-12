@@ -693,7 +693,7 @@ bool timer_stop(timer_t* timer) {
                     scheduler_preempt_enable();
 
                     // report that we have marked this as deleted to the given cpu
-                    timers_t* timers = get_cpu_base(timer->cpu, &m_timers);
+                    timers_t* timers = get_cpu_base(cpu, &m_timers);
                     atomic_fetch_add(&timers->deleted_timers, 1);
 
                     // Timer was not yet run

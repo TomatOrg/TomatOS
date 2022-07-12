@@ -1,4 +1,4 @@
-#pragma
+#pragma once
 
 #define STACK_SIZE SIZE_2MB
 
