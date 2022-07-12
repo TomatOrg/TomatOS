@@ -36,6 +36,7 @@ err_t init_cpu_locals() {
 
     // set the current cpu pointer in the array
     m_cpu_id = get_apic_id();
+    CHECK(get_cpu_id() < get_cpu_count());
     m_per_cpu_base_list[get_cpu_id()] = ptr;
 
 cleanup:

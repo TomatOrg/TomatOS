@@ -35,6 +35,7 @@
 #include "cpu_local.h"
 #include "timer.h"
 #include "waitable.h"
+#include "sync/irq_spinlock.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -110,7 +111,7 @@ static _Atomic(size_t) m_idle_cpus[256 / (sizeof(size_t) * 8)];
 static _Atomic(uint32_t) m_idle_cpus_count;
 
 // spinlock to protect the scheduler internal stuff
-static spinlock_t m_scheduler_lock = INIT_SPINLOCK();
+static irq_spinlock_t m_scheduler_lock = INIT_IRQ_SPINLOCK();
 
 /**
  * Put a batch of runnable threads on the global runnable queue.
@@ -182,11 +183,11 @@ INTERRUPT static thread_t* global_run_queue_get(int max) {
 }
 
 INTERRUPT static void lock_scheduler() {
-    spinlock_lock(&m_scheduler_lock);
+    irq_spinlock_lock(&m_scheduler_lock);
 }
 
 INTERRUPT static void unlock_scheduler() {
-    spinlock_unlock(&m_scheduler_lock);
+    irq_spinlock_unlock(&m_scheduler_lock);
 }
 
 /**
@@ -1111,7 +1112,9 @@ INTERRUPT static void schedule(interrupt_context_t* ctx) {
     thread_t* thread = find_runnable();
 
     if (m_spinning) {
-        // TODO: reset spinning
+        m_spinning = false;
+        atomic_fetch_sub(&m_number_spinning, 1);
+        wake_cpu();
     }
 
     // actually run the new thread

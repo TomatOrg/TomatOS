@@ -323,9 +323,12 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
         thread_t* thread = get_current_thread();
         if (thread != NULL) {
             ERROR("Thread: `%.*s`", sizeof(thread->name), thread->name);
-            ERROR("");
+        } else {
+            ERROR("Thread: <non>");
         }
     }
+    ERROR("CPU: #%d", get_apic_id());
+    ERROR("");
 
     // registers
     ERROR("RAX=%016p RBX=%016p RCX=%016p RDX=%016p", ctx->rax, ctx->rbx, ctx->rcx, ctx->rdx);
@@ -367,7 +370,7 @@ void common_exception_handler(exception_context_t* ctx) {
         default_exception_handler(ctx);
     }
 
-    cleanup:
+cleanup:
     if (IS_ERROR(err)) {
         default_exception_handler(ctx);
     }

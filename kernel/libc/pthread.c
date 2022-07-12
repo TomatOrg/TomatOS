@@ -4,12 +4,14 @@
 
 #include <string.h>
 
+static int m_pthread_unique_name_gen = 0;
+
 int pthread_create(pthread_t *restrict thread,
                    const pthread_attr_t *restrict attr,
                    void *(*start_routine)(void *),
                    void *restrict arg) {
     // create the thread
-    thread_t* new_thread = create_thread((void*)start_routine, arg, "pthread");
+    thread_t* new_thread = create_thread((void*)start_routine, arg, "pthread-%d", m_pthread_unique_name_gen++);
     if (new_thread == NULL) {
         return -1;
     }

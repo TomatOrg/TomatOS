@@ -71,11 +71,6 @@
  */
 static spinlock_t* m_heap_locks;
 
-/**
- * Locks for the top level
- */
-static spinlock_t m_top_level_locks[POOL_COUNT];
-
 err_t init_heap() {
     err_t err = NO_ERROR;
 
