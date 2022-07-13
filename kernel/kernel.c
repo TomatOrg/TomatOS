@@ -179,6 +179,11 @@ static struct limine_file m_kernel_file;
 
 // TODO: driver files
 
+static void self_test() {
+    TRACE("Running self-test");
+    semaphore_self_test();
+}
+
 static void kernel_startup() {
     err_t err = NO_ERROR;
 
@@ -189,6 +194,9 @@ static void kernel_startup() {
 
     // reclaim bootloader memory
     CHECK_AND_RETHROW(palloc_reclaim());
+
+    // TODO: not all the time
+    self_test();
 
     TRACE("Entered kernel thread!");
 
