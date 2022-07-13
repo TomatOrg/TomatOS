@@ -6,13 +6,13 @@ typedef enum priority {
     /**
      * Normal running priority, allows the GC to be called
      */
-    PRIORITY_NORMAL = 0x5,
+    PRIORITY_NORMAL = 0x1,
 
     /**
      * Priority that does not have preemption, useful for cases where you don't
      * want to disable interrupts
      */
-    PRIORITY_NO_PREEMPT = 0x6,
+    PRIORITY_NO_PREEMPT = 0x2,
 } priority_t;
 
 /**
@@ -23,7 +23,13 @@ typedef enum irq {
      * Preempting IRQ, comes from a time slice preemption, this is
      * blocked by GC priority and above
      */
-    IRQ_PREEMPT     = 0x60,
+    IRQ_PREEMPT     = 0x20,
+
+    /**
+     * Wakeup the scheduler so it will run, does not actually run
+     * anything, just used to wakeup the core from hlt.
+     */
+    IRQ_WAKEUP      = 0x30,
 
     /**
      * Schedule irq, will schedule a new thread, see the

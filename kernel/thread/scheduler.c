@@ -216,7 +216,7 @@ INTERRUPT static void wake_cpu() {
     } else {
         // send an ipi to schedule threads from the global run queue
         // to the found cpu
-        lapic_send_ipi(IRQ_PREEMPT, cpu_id);
+        lapic_send_ipi(IRQ_WAKEUP, cpu_id);
     }
 }
 
@@ -1135,17 +1135,29 @@ INTERRUPT static void schedule(interrupt_context_t* ctx) {
 // Scheduler callbacks
 //----------------------------------------------------------------------------------------------------------------------
 
-INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt) {
+/**
+ * Enter the scheduler, increases the priority to no preemption
+ */
+static void enter_scheduler() {
+    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
+    __writecr8(PRIORITY_NO_PREEMPT);
+}
+
+/**
+ * Exit from the scheduler, decreases the priority to normal
+ */
+static void exit_scheduler() {
+    __writecr8(PRIORITY_NORMAL);
+}
+
+INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
-    // if we are coming from preempt and there is no currently running thread
-    // it means that we are actually coming to check for work
-    if (from_preempt && current_thread == NULL) {
-        return;
-    }
+    enter_scheduler();
 
-    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
+    // we should only get preempt/schedule when we have a thread running
+    ASSERT(current_thread != NULL);
 
     // save the state and set the thread to runnable
     validate_context(ctx);
@@ -1166,13 +1178,15 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt
 
     // now schedule a new thread
     schedule(ctx);
+
+    exit_scheduler();
 }
 
 INTERRUPT void scheduler_on_yield(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
-    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
+    enter_scheduler();
 
     // save the state and set the thread to runnable
     save_thread_context(current_thread, ctx);
@@ -1183,13 +1197,15 @@ INTERRUPT void scheduler_on_yield(interrupt_context_t* ctx) {
 
     // schedule a new thread
     schedule(ctx);
+
+    exit_scheduler();
 }
 
 INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
-    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
+    enter_scheduler();
 
     // save the state and set the thread to runnable
     save_thread_context(current_thread, ctx);
@@ -1204,13 +1220,15 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
 
     // schedule a new thread
     schedule(ctx);
+
+    exit_scheduler();
 }
 
 INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
 
-    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
+    enter_scheduler();
 
     if (current_thread != NULL) {
         // change the status to dead
@@ -1221,6 +1239,8 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
     }
 
     schedule(ctx);
+
+    exit_scheduler();
 }
 
 //----------------------------------------------------------------------------------------------------------------------
