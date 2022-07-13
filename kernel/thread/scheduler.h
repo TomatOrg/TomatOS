@@ -17,6 +17,8 @@ bool scheduler_can_spin(int i);
 
 err_t init_scheduler();
 
+void scheduler_self_test();
+
 /**
  * Wakes up the CPU sleeping in the poller if it isn't going
  * to wake up before the when argument, or it wakes an idle CPU
