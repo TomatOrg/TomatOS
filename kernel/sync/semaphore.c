@@ -31,6 +31,7 @@
  */
 
 #include "semaphore.h"
+#include "thread/waitable.h"
 
 #include <thread/scheduler.h>
 
@@ -67,6 +68,10 @@ void semaphore_queue(semaphore_t* semaphore, waiting_thread_t* wt, bool lifo) {
 
 waiting_thread_t* semaphore_dequeue(semaphore_t* semaphore) {
     waiting_thread_t* wt = semaphore->waiters;
+    if (wt == NULL) {
+        return NULL;
+    }
+
     if (wt->wait_link != NULL) {
         waiting_thread_t* t = wt->wait_link;
         // Substitute t, for wt in the root
@@ -162,27 +167,77 @@ void semaphore_release(semaphore_t* semaphore, bool handoff) {
     }
 
     waiting_thread_t* wt = semaphore_dequeue(semaphore);
-    atomic_fetch_sub(&semaphore->nwait, 1);
+    if (wt != NULL) {
+        atomic_fetch_sub(&semaphore->nwait, 1);
+    }
     spinlock_unlock(&semaphore->lock);
 
-    if (handoff && semaphore_can_acquire(semaphore)) {
-        wt->ticket = 1;
+    // May be slow or even yield, so unlock first
+    if (wt != NULL) {
+        ASSERT(wt->ticket == 0 && "corrupted semaphore ticket");
+
+        if (handoff && semaphore_can_acquire(semaphore)) {
+            wt->ticket = 1;
+        }
+
+        scheduler_ready_thread(wt->thread);
+
+        if (wt->ticket == 1) {
+            // Direct thread handoff
+            // scheduler_ready_thread has added the waiter thread as run next in the
+            // current cpu, we now call the scheduler so that we start running the
+            // waiter thread immediately.
+            // Note that the waiter inherits our time slice: this is desirable to avoid
+            // having a highly contended semaphore hog the cpu indefinitely. scheduler_yield
+            // is like scheduler_schedule, but it puts the current thread on the local run queue
+            // instead of the global one. We only do this in the starving regime (handoff=true),
+            // as in non-starving case it is possible for a different waiter to acquire the semaphore
+            // while we are yielding/scheduling, and this would be wasteful. We wait instead to enter
+            // starving regime, and then we do direct handoffs of ticket and cpu.
+            scheduler_yield();
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Self test
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void hammer_semaphore(semaphore_t* s, int loops, waitable_t* wdone) {
+    TRACE("Starting to ack-rel on %s", get_current_thread()->name);
+    for (int i = 0; i < loops; i++) {
+        TRACE("Acquire");
+        semaphore_acquire(s, false);
+
+        TRACE("Release");
+        semaphore_release(s, false);
+    }
+    waitable_send(wdone, true);
+}
+
+static void test_semaphore() {
+    semaphore_t s = { .value = 1 };
+    waitable_t* w = create_waitable(0);
+
+    for (int i = 0; i < 10; i++) {
+        thread_t* t = create_thread((void*)hammer_semaphore, NULL, "test-%d", i);
+        t->save_state.rdi = (uintptr_t)&s;
+        t->save_state.rsi = 1000;
+        t->save_state.rdx = (uintptr_t)w;
+
+        TRACE("Starting #%d", i);
+        scheduler_ready_thread(t);
     }
 
-    scheduler_ready_thread(wt->thread);
-
-    if (wt->ticket == 1) {
-        // Direct thread handoff
-        // scheduler_ready_thread has added the waiter thread as run next in the
-        // current cpu, we now call the scheduler so that we start running the
-        // waiter thread immediately.
-        // Note that the waiter inherits our time slice: this is desirable to avoid
-        // having a highly contended semaphore hog the cpu indefinitely. scheduler_yield
-        // is like scheduler_schedule, but it puts the current thread on the local run queue
-        // instead of the global one. We only do this in the starving regime (handoff=true),
-        // as in non-starving case it is possible for a different waiter to acquire the semaphore
-        // while we are yielding/scheduling, and this would be wasteful. We wait instead to enter
-        // starving regime, and then we do direct handoffs of ticket and cpu.
-        scheduler_yield();
+    for (int i = 0; i < 10; i++) {
+        TRACE("Waiting to finish #%d", i);
+        waitable_wait(w, true);
     }
+
+    release_waitable(w);
+}
+
+void semaphore_self_test() {
+    TRACE("\tSemaphore self-test");
+    test_semaphore();
 }

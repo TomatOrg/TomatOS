@@ -14,3 +14,5 @@ typedef struct semaphore {
 void semaphore_acquire(semaphore_t* semaphore, bool lifo);
 
 void semaphore_release(semaphore_t* semaphore, bool handoff);
+
+void semaphore_self_test();

@@ -1035,9 +1035,9 @@ int printf_(const char* format, ...)
   va_list va;
   va_start(va, format);
   char buffer[1];
-    irq_spinlock_lock(&m_printf_lock);
+  irq_spinlock_lock(&m_printf_lock);
   const int ret = _vsnprintf(_out_char, buffer, (size_t)-1, format, va);
-    irq_spinlock_unlock(&m_printf_lock);
+  irq_spinlock_unlock(&m_printf_lock);
   va_end(va);
   return ret;
 }

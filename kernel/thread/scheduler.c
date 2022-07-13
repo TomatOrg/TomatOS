@@ -240,6 +240,7 @@ INTERRUPT static local_run_queue_t* get_run_queue() {
 
 __attribute__((const))
 INTERRUPT static local_run_queue_t* get_run_queue_of(int cpu_id) {
+    ASSERT(cpu_id < get_cpu_count());
     return &m_run_queues[cpu_id];
 }
 
@@ -402,8 +403,8 @@ INTERRUPT static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t 
 
     while (true) {
         // get the head and tail
-        uint32_t h = atomic_load_explicit(&orq->head, memory_order_acquire);
-        uint32_t t = atomic_load_explicit(&orq->tail, memory_order_acquire);
+        uint32_t h = atomic_load_explicit(&orq->head, memory_order_acquire); // load-acquire, synchronize with other consumers
+        uint32_t t = atomic_load_explicit(&orq->tail, memory_order_acquire); // load-acquire, synchronize with the producer
 
         // calculate the amount to take
         uint32_t n = t - h;
@@ -438,7 +439,7 @@ INTERRUPT static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t 
         }
 
         // Try and increment the head since we taken from the queue
-        if (atomic_compare_exchange_weak(&orq->head, &h, h + n)) {
+        if (atomic_compare_exchange_weak_explicit(&orq->head, &h, h + n, memory_order_release, memory_order_relaxed)) {
             return n;
         }
     }
@@ -727,9 +728,10 @@ INTERRUPT static uint32_t gcd(uint32_t a, uint32_t b) {
     return a;
 }
 
-INTERRUPT static void random_order_init(int count) {
+INTERRUPT static void random_order_reset(int count) {
     m_random_order_count = count;
-    for (int i = 0; i <= count; i++) {
+    arrsetlen(m_random_order_coprimes, 0);
+    for (int i = 1; i <= count; i++) {
         if (gcd(i, count) == 1) {
             arrpush(m_random_order_coprimes, i);
         }
@@ -740,7 +742,7 @@ INTERRUPT static random_enum_t random_order_start(uint32_t i) {
     return (random_enum_t) {
         .count = m_random_order_count,
         .pos = i % m_random_order_count,
-        .inc = m_random_order_coprimes[i % arrlen(m_random_order_coprimes)]
+        .inc = m_random_order_coprimes[i / m_random_order_count % arrlen(m_random_order_coprimes)]
     };
 }
 
@@ -813,12 +815,14 @@ void scheduler_wake_poller(int64_t when) {
     }
 }
 
+#define STEAL_TRIES 4
+
 INTERRUPT static thread_t* steal_work(int64_t* now, int64_t* poll_until, bool* ran_timers) {
     *ran_timers = false;
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < STEAL_TRIES; i++) {
         // on the last round try to steal next
-        bool steal_next = i == 4 - 1;
+        bool steal_next = i == STEAL_TRIES - 1;
 
         for (random_enum_t e = random_order_start(fastrand()); !random_enum_done(&e); random_enum_next(&e)) {
             // get the cpu to steal from
@@ -1282,7 +1286,7 @@ err_t init_scheduler() {
     err_t err = NO_ERROR;
 
     // initialize our random for the amount of cores we have
-    random_order_init(get_cpu_count());
+    random_order_reset(get_cpu_count());
 
     // set the last poll
     atomic_store(&m_last_poll, microtime());
