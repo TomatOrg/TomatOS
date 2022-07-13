@@ -227,7 +227,7 @@ INTERRUPT static void wake_cpu() {
 typedef struct local_run_queue {
     _Atomic(uint32_t) head;
     _Atomic(uint32_t) tail;
-    thread_t* queue[256];
+    thread_t* queue[RUN_QUEUE_LEN];
     _Atomic(thread_t*) next;
 } local_run_queue_t;
 
@@ -267,7 +267,7 @@ INTERRUPT static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32
         batch[i] = rq->queue[(head + i) % RUN_QUEUE_LEN];
     }
 
-    if (!atomic_compare_exchange_weak_explicit(&rq->head, &head, head + n, memory_order_release, memory_order_relaxed)) {
+    if (!atomic_compare_exchange_strong_explicit(&rq->head, &head, head + n, memory_order_release, memory_order_relaxed)) {
         return false;
     }
 
@@ -310,7 +310,7 @@ INTERRUPT static void run_queue_put(thread_t* thread, bool next) {
     if (next) {
         // try to change the old thread to the new one
         thread_t* old_next = rq->next;
-        while (!atomic_compare_exchange_weak(&rq->next, &old_next, thread));
+        while (!atomic_compare_exchange_strong(&rq->next, &old_next, thread));
 
         // no thread was supposed to run next, just return
         if (old_next == NULL) {
@@ -357,7 +357,7 @@ INTERRUPT static thread_t* run_queue_get() {
     // because other cpus can race to set run next to NULL, but only the current cpu can set it.
     // Hence, there's no need to retry this CAS if it falls.
     thread_t* temp_next = next;
-    if (next != NULL && atomic_compare_exchange_weak(&rq->next, &temp_next, NULL)) {
+    if (next != NULL && atomic_compare_exchange_strong(&rq->next, &temp_next, NULL)) {
         return next;
     }
 
@@ -368,7 +368,7 @@ INTERRUPT static thread_t* run_queue_get() {
             return NULL;
         }
         thread_t* thread = rq->queue[head % RUN_QUEUE_LEN];
-        if (atomic_compare_exchange_weak_explicit(&rq->head, &head, head + 1, memory_order_release, memory_order_relaxed)) {
+        if (atomic_compare_exchange_strong_explicit(&rq->head, &head, head + 1, memory_order_release, memory_order_relaxed)) {
             return thread;
         }
     }
@@ -417,7 +417,7 @@ INTERRUPT static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t 
                 // Try to steal from run_queue_next
                 thread_t* next = orq->next;
                 if (next != NULL) {
-                    if (!atomic_compare_exchange_weak(&orq->next, &next, NULL)) {
+                    if (!atomic_compare_exchange_strong(&orq->next, &next, NULL)) {
                         continue;
                     }
                     batch[batchHead % RUN_QUEUE_LEN] = next;
@@ -439,7 +439,7 @@ INTERRUPT static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t 
         }
 
         // Try and increment the head since we taken from the queue
-        if (atomic_compare_exchange_weak_explicit(&orq->head, &h, h + n, memory_order_release, memory_order_relaxed)) {
+        if (atomic_compare_exchange_strong_explicit(&orq->head, &h, h + n, memory_order_release, memory_order_relaxed)) {
             return n;
         }
     }
@@ -519,18 +519,18 @@ void scheduler_ready_thread(thread_t* thread) {
 
 INTERRUPT static bool cas_from_preempted(thread_t* thread) {
     thread_status_t old = THREAD_STATUS_PREEMPTED;
-    return atomic_compare_exchange_weak(&thread->status, &old, THREAD_STATUS_WAITING);
+    return atomic_compare_exchange_strong(&thread->status, &old, THREAD_STATUS_WAITING);
 }
 
 INTERRUPT static bool cas_to_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
     ASSERT(new == (old | THREAD_SUSPEND));
-    return atomic_compare_exchange_weak(&thread->status, &old, new);
+    return atomic_compare_exchange_strong(&thread->status, &old, new);
 }
 
 INTERRUPT static void cas_from_suspend(thread_t* thread, thread_status_t old, thread_status_t new) {
     bool success = false;
     if (new == (old & ~THREAD_SUSPEND)) {
-        if (atomic_compare_exchange_weak(&thread->status, &old, new)) {
+        if (atomic_compare_exchange_strong(&thread->status, &old, new)) {
             success = true;
         }
     }
