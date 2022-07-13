@@ -184,8 +184,10 @@ static struct limine_file m_kernel_file;
  */
 static inline void self_test() {
     TRACE("Running self-test");
+    waitable_self_test();
     scheduler_self_test();
     semaphore_self_test();
+    mutex_self_test();
     TRACE("self-test finished");
 }
 
@@ -202,7 +204,7 @@ static void kernel_startup() {
 
     // uncomment if you want to debug some stuff and
     // make sure that the kernel passes self-tests
-    //    self_test();
+//    self_test();
 
     TRACE("Entered kernel thread!");
 
