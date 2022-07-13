@@ -182,8 +182,8 @@ static struct limine_file m_kernel_file;
 static void self_test() {
     TRACE("Running self-test");
     scheduler_self_test();
-//    semaphore_self_test();
-
+    semaphore_self_test();
+    TRACE("self-test finished");
     while(1) asm("hlt");
 }
 

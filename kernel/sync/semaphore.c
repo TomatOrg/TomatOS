@@ -204,12 +204,8 @@ void semaphore_release(semaphore_t* semaphore, bool handoff) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static void hammer_semaphore(semaphore_t* s, int loops, waitable_t* wdone) {
-    TRACE("Starting to ack-rel on %s", get_current_thread()->name);
     for (int i = 0; i < loops; i++) {
-        TRACE("Acquire");
         semaphore_acquire(s, false);
-
-        TRACE("Release");
         semaphore_release(s, false);
     }
     waitable_send(wdone, true);
@@ -224,13 +220,10 @@ static void test_semaphore() {
         t->save_state.rdi = (uintptr_t)&s;
         t->save_state.rsi = 1000;
         t->save_state.rdx = (uintptr_t)w;
-
-        TRACE("Starting #%d", i);
         scheduler_ready_thread(t);
     }
 
     for (int i = 0; i < 10; i++) {
-        TRACE("Waiting to finish #%d", i);
         waitable_wait(w, true);
     }
 

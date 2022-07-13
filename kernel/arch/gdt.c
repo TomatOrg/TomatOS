@@ -139,9 +139,11 @@ err_t init_tss() {
     tss->ist1 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
     tss->ist2 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
     tss->ist3 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
+    tss->ist4 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
     CHECK_ERROR(tss->ist1 != 0, ERROR_OUT_OF_MEMORY);
     CHECK_ERROR(tss->ist2 != 0, ERROR_OUT_OF_MEMORY);
     CHECK_ERROR(tss->ist3 != 0, ERROR_OUT_OF_MEMORY);
+    CHECK_ERROR(tss->ist4 != 0, ERROR_OUT_OF_MEMORY);
 
     spinlock_lock(&m_tss_lock);
     m_gdt.entries->tss.length = sizeof(tss64_t);
