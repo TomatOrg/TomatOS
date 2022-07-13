@@ -376,6 +376,9 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
 
     ERROR("");
 
+    // verify the heap
+    check_malloc();
+
     // stop
     ERROR("Halting :(");
     irq_spinlock_unlock(&m_exception_lock);
