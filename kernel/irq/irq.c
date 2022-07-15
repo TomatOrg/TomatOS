@@ -86,7 +86,7 @@ void irq_dispatch(interrupt_context_t* ctx) {
     }
 
     // ready the thread
-    scheduler_schedule_thread(instance->waiting_thread);
+    scheduler_schedule_thread(ctx, instance->waiting_thread);
 
     // set the instance to NULL
     instance->waiting_thread = NULL;
