@@ -134,6 +134,8 @@ static bool waitable_empty(waitable_t* w) {
 }
 
 bool waitable_send(waitable_t* w, bool block) {
+    ASSERT(w != NULL);
+
     if (!block && !w->closed && waitable_full(w)) {
         return false;
     }

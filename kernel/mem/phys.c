@@ -53,56 +53,6 @@ static size_t offset_for_position(struct buddy_tree_pos pos) {
 }
 
 /**
- * Release the given range so it can be allocated
- */
-static err_t mark_range(uintptr_t base, size_t length) {
-    err_t err = NO_ERROR;
-
-    while (length > 0) {
-        // find the top most entry that can fit this
-        struct buddy_tree_pos pos = INVALID_POS;
-        struct buddy_tree_pos pos_to_try = deepest_position_for_offset(m_buddy, base);
-        do {
-            size_t pos_size = size_for_depth(m_buddy, pos_to_try.depth);
-            if (offset_for_position(pos_to_try) != base) {
-                break;
-            }
-
-            // this is exactly as much as we need, take it
-            if (length == pos_size) {
-                pos = pos_to_try;
-                break;
-            }
-
-            if (length < pos_size) {
-                // we need less than this, break
-                break;
-            } else {
-                // we need more than this, its a valid option
-                pos = pos_to_try;
-            }
-
-            // get the parent and try again
-            pos_to_try = buddy_tree_parent(pos_to_try);
-        } while (buddy_tree_valid(buddy_tree(m_buddy), pos_to_try));
-
-        CHECK(buddy_tree_valid(buddy_tree(m_buddy), pos));
-
-        // get the size and mark the position as used
-        size_t current_size = size_for_depth(m_buddy, pos.depth);
-        buddy_tree_mark(buddy_tree(m_buddy), pos);
-
-        base += current_size;
-        length -= current_size;
-    }
-
-    CHECK(length == 0);
-
-cleanup:
-    return err;
-}
-
-/**
  * Mark all unusable entries
  */
 static err_t mark_unusable_ranges() {
@@ -113,7 +63,7 @@ static err_t mark_unusable_ranges() {
         struct limine_memmap_entry* entry = g_limine_memmap.response->entries[i];
         if (entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE || entry->type == LIMINE_MEMMAP_USABLE) {
             // mark non-consecutive entries
-            CHECK_AND_RETHROW(mark_range(last_usable_end, entry->base - last_usable_end));
+            buddy_reserve_range(m_buddy, PHYS_TO_DIRECT(last_usable_end), entry->base - last_usable_end);
 
             // update the last usable range
             last_usable_end = entry->base + entry->length;
@@ -138,7 +88,7 @@ static err_t mark_bootloader_reclaim() {
     for (int i = 0; i < g_limine_memmap.response->entry_count; i++) {
         struct limine_memmap_entry* entry = g_limine_memmap.response->entries[i];
         if (entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) {
-            CHECK_AND_RETHROW(mark_range(entry->base, entry->length));
+            buddy_reserve_range(m_buddy, PHYS_TO_DIRECT(entry->base), entry->length);
         }
     }
 
@@ -206,20 +156,7 @@ err_t palloc_reclaim() {
     for (int i = 0; i < arrlen(to_reclaim); i++) {
         struct limine_memmap_entry* entry = &to_reclaim[i];
         TRACE("\t%p-%p: %S", entry->base, entry->base + entry->length, entry->length);
-
-        void* ptr = PHYS_TO_DIRECT(entry->base);
-        size_t length = entry->length;
-        while (length > 0) {
-            // get and free the entry
-            struct buddy_tree_pos pos = position_for_address(m_buddy, ptr);
-            CHECK(buddy_tree_valid(buddy_tree(m_buddy), pos));
-            buddy_tree_release(buddy_tree(m_buddy), pos);
-
-            // advance to next one
-            size_t size = size_for_depth(m_buddy, pos.depth);
-            ptr += size;
-            length -= size;
-        }
+        buddy_unsafe_release_range(m_buddy, PHYS_TO_DIRECT(entry->base), entry->length);
     }
 
 cleanup:

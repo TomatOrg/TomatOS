@@ -4,6 +4,7 @@
 #include "msr.h"
 #include "time/tsc.h"
 #include "cpuid.h"
+#include "irq/irq.h"
 
 #include <util/defs.h>
 #include <mem/mem.h>

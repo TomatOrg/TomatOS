@@ -6,6 +6,7 @@
 #include "intrin.h"
 #include "apic.h"
 #include "msr.h"
+#include "irq/irq.h"
 
 #include <sync/irq_spinlock.h>
 #include <thread/scheduler.h>
@@ -324,7 +325,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
         if (thread != NULL) {
             ERROR("Thread: `%.*s`", sizeof(thread->name), thread->name);
         } else {
-            ERROR("Thread: <non>");
+            ERROR("Thread: <none>");
         }
     }
     ERROR("CPU: #%d", get_apic_id());
@@ -412,8 +413,8 @@ __asm__(
     ".cfi_startproc simple\n"
     ".cfi_signal_frame\n"
     ".cfi_def_cfa %rsp, 0\n"
-    ".cfi_offset %rip, 16\n"
-    ".cfi_offset %rsp, 40\n"
+    ".cfi_offset %rip, 8\n"
+    ".cfi_offset %rsp, 32\n"
     "cld\n"
     "pushq %rax\n"
     ".cfi_adjust_cfa_offset 8\n"
@@ -748,24 +749,24 @@ INTERRUPT_HANDLER(0xff)
 
 __attribute__((used)) INTERRUPT
 void common_interrupt_handler(interrupt_context_t* ctx) {
-    err_t err = NO_ERROR;
-
     switch (ctx->int_num) {
         case IRQ_PREEMPT: {
             scheduler_on_schedule(ctx);
             lapic_eoi();
         } break;
 
+        // TODO: have this be a single empty iret
         case IRQ_WAKEUP: {
             lapic_eoi();
         } break;
 
-        case IRQ_SCHEDULE: {
-            scheduler_on_schedule(ctx);
+        case IRQ_ALLOC_BASE ... IRQ_ALLOC_END: {
+            irq_dispatch(ctx);
+            lapic_eoi();
         } break;
 
         case IRQ_YIELD: {
-            scheduler_on_yield(ctx);
+            scheduler_on_schedule(ctx);
         } break;
 
         case IRQ_PARK: {
@@ -776,15 +777,13 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
             scheduler_on_drop(ctx);
         } break;
 
-        default: {
-            CHECK_FAIL("Unknown interrupt %d", ctx->int_num);
+        case IRQ_SPURIOUS: {
+            WARN("Got spurious interrupt!");
         } break;
-    }
 
-cleanup:
-    if (IS_ERROR(err)) {
-        while (1)
-            __halt();
+        default: {
+            WARN("Got unassigned IRQ #%d", ctx->int_num);
+        } break;
     }
 }
 
@@ -870,7 +869,7 @@ void init_idt() {
     set_idt_entry(0x2d, interrupt_handle_0x2d, 0);
     set_idt_entry(0x2e, interrupt_handle_0x2e, 0);
     set_idt_entry(0x2f, interrupt_handle_0x2f, 0);
-    set_idt_entry(0x30, interrupt_handle_0x30, 0);
+    set_idt_entry(IRQ_WAKEUP, interrupt_handle_0x30, 0);
     set_idt_entry(0x31, interrupt_handle_0x31, 0);
     set_idt_entry(0x32, interrupt_handle_0x32, 0);
     set_idt_entry(0x33, interrupt_handle_0x33, 0);
@@ -1062,10 +1061,10 @@ void init_idt() {
     set_idt_entry(0xed, interrupt_handle_0xed, 0);
     set_idt_entry(0xee, interrupt_handle_0xee, 0);
     set_idt_entry(0xef, interrupt_handle_0xef, 0);
-    set_idt_entry(IRQ_SCHEDULE, interrupt_handle_0xf0, SCHEDULER_STACK);
-    set_idt_entry(IRQ_YIELD, interrupt_handle_0xf1, SCHEDULER_STACK);
-    set_idt_entry(IRQ_PARK, interrupt_handle_0xf2, SCHEDULER_STACK);
-    set_idt_entry(IRQ_DROP, interrupt_handle_0xf3, SCHEDULER_STACK);
+    set_idt_entry(IRQ_YIELD, interrupt_handle_0xf0, SCHEDULER_STACK);
+    set_idt_entry(IRQ_PARK, interrupt_handle_0xf1, SCHEDULER_STACK);
+    set_idt_entry(IRQ_DROP, interrupt_handle_0xf2, SCHEDULER_STACK);
+    set_idt_entry(0xf3, interrupt_handle_0xf3, 0);
     set_idt_entry(0xf4, interrupt_handle_0xf4, 0);
     set_idt_entry(0xf5, interrupt_handle_0xf5, 0);
     set_idt_entry(0xf6, interrupt_handle_0xf6, 0);

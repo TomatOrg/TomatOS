@@ -2,65 +2,6 @@
 
 #include "util/except.h"
 
-typedef enum priority {
-    /**
-     * Normal running priority, allows the GC to be called
-     */
-    PRIORITY_NORMAL = 0x1,
-
-    /**
-     * Priority that does not have preemption, useful for cases where you don't
-     * want to disable interrupts
-     */
-    PRIORITY_NO_PREEMPT = 0x2,
-} priority_t;
-
-/**
- * These are ordered by interrupt priority
- */
-typedef enum irq {
-    /**
-     * Preempting IRQ, comes from a time slice preemption, this is
-     * blocked by GC priority and above
-     */
-    IRQ_PREEMPT     = 0x20,
-
-    /**
-     * Wakeup the scheduler so it will run, does not actually run
-     * anything, just used to wakeup the core from hlt.
-     */
-    IRQ_WAKEUP      = 0x30,
-
-    /**
-     * Schedule irq, will schedule a new thread, see the
-     * scheduler on the difference from yield, comes from int
-     * so no need for eoi
-     */
-    IRQ_SCHEDULE    = 0xF0,
-
-    /**
-     * Yield irq, will yield the current thread, comes
-     * from a normal int so no need to eoi
-     */
-    IRQ_YIELD       = 0xF1,
-
-    /**
-     * Parks the current thread
-     */
-    IRQ_PARK        = 0xF2,
-
-    /**
-     * Startup the scheduler
-     */
-    IRQ_DROP     = 0xF3,
-
-    /**
-     * Spurious interrupt, have it the highest to
-     * just ignore it as quickly as possible
-     */
-    IRQ_SPURIOUS    = 0xFF,
-} irq_t;
-
 /**
  * Get the apic base for early printing
  */
