@@ -738,6 +738,12 @@ INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thr
     if (m_current_thread != NULL) {
         // save the interrupted thread
         save_current_thread(ctx, false);
+    } else {
+        // no thread running, meaning that the context we are
+        // destroying is the find_runnable context, so we need
+        // to restore the priority as well
+        ASSERT(__readcr8() == PRIORITY_NO_PREEMPT);
+        __writecr8(PRIORITY_NORMAL);
     }
 
     // set the thread state as runnable as we prepare to run it
