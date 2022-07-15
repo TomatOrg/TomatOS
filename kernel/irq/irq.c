@@ -60,11 +60,9 @@ cleanup:
     return err;
 }
 
-void irq_wait(uint8_t handler, void* ctx) {
+void irq_wait(uint8_t handler) {
     ASSERT(handler < ARRAY_LEN(m_irqs));
     ASSERT(m_irqs[handler].ops != NULL);
-
-    // TODO: gc protect the ctx?
 
     // set the waiting thread to us
     irq_instance_t* instance = &m_irqs[handler];
