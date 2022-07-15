@@ -37,6 +37,7 @@
 #include "waitable.h"
 #include "sync/irq_spinlock.h"
 #include "mem/mem.h"
+#include "irq/irq.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -705,6 +706,47 @@ INTERRUPT static void execute(interrupt_context_t* ctx, thread_t* thread) {
     validate_context(ctx);
 }
 
+static void save_current_thread(interrupt_context_t* ctx, bool park) {
+    ASSERT(m_current_thread != NULL);
+    thread_t* current_thread = m_current_thread;
+    m_current_thread = NULL;
+
+    // save the state and set the thread to runnable
+    validate_context(ctx);
+    save_thread_context(current_thread, ctx);
+
+    // put the thread back
+    if (!park) {
+        // put the thread on the global run queue
+        if (current_thread->preempt_stop) {
+            // set as preempted, don't add back to queue
+            cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_PREEMPTED);
+
+        } else {
+            // set the thread to be runnable
+            cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
+
+            // put in the local run queue
+            run_queue_put(current_thread, false);
+        }
+    } else {
+        cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);
+    }
+}
+
+INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thread) {
+    if (m_current_thread != NULL) {
+        // save the interrupted thread
+        save_current_thread(ctx, false);
+    }
+
+    // set the thread state as runnable as we prepare to run it
+    cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
+
+    // execute the new thread
+    execute(ctx, thread);
+}
+
 //----------------------------------------------------------------------------------------------------------------------
 // random order for randomizing work stealing
 //----------------------------------------------------------------------------------------------------------------------
@@ -794,7 +836,7 @@ static _Atomic(int) m_polling_cpu = -1;
 static void break_poller() {
     int poller = atomic_load(&m_polling_cpu);
     if (poller != -1) {
-        lapic_send_ipi(IRQ_SCHEDULE, poller);
+        lapic_send_ipi(IRQ_WAKEUP, poller);
     }
 }
 
@@ -1151,67 +1193,21 @@ static void exit_scheduler() {
 }
 
 INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
-    thread_t* current_thread = get_current_thread();
-    m_current_thread = NULL;
-
     enter_scheduler();
 
-    // we should only get preempt/schedule when we have a thread running
-    ASSERT(current_thread != NULL);
-
-    // save the state and set the thread to runnable
-    validate_context(ctx);
-    save_thread_context(current_thread, ctx);
-
-    // put the thread on the global run queue
-    if (current_thread->preempt_stop) {
-        // set as preempted, don't add back to queue
-        cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_PREEMPTED);
-
-    } else {
-        // set the thread to be runnable
-        cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
-
-        // put in the local run queue
-        run_queue_put(current_thread, false);
-    }
+    // save the current thread, don't park it
+    save_current_thread(ctx, false);
 
     // now schedule a new thread
     schedule(ctx);
 
     exit_scheduler();
 }
-
-INTERRUPT void scheduler_on_yield(interrupt_context_t* ctx) {
-    thread_t* current_thread = get_current_thread();
-    m_current_thread = NULL;
-
-    enter_scheduler();
-
-    // save the state and set the thread to runnable
-    save_thread_context(current_thread, ctx);
-    cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
-
-    // put the thread on the local run queue
-    run_queue_put(current_thread, false);
-
-    // schedule a new thread
-    schedule(ctx);
-
-    exit_scheduler();
-}
-
 INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
-    thread_t* current_thread = get_current_thread();
-    m_current_thread = NULL;
-
     enter_scheduler();
 
-    // save the state and set the thread to runnable
-    save_thread_context(current_thread, ctx);
-
-    // put the thread into a waiting state
-    cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);
+    // save the current thread, park it
+    save_current_thread(ctx, true);
 
     // check if we need to call a callback before we schedule
     if (ctx->rdi != 0) {
@@ -1246,14 +1242,6 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
 //----------------------------------------------------------------------------------------------------------------------
 // Interrupts to call the scheduler
 //----------------------------------------------------------------------------------------------------------------------
-
-void scheduler_schedule() {
-    __asm__ volatile (
-        "int %0"
-        :
-        : "i"(IRQ_SCHEDULE)
-        : "memory");
-}
 
 void scheduler_yield() {
     // don't preempt if we can't preempt

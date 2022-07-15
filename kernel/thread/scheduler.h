@@ -37,6 +37,11 @@ void scheduler_wake_poller(int64_t when);
  */
 void scheduler_ready_thread(thread_t* thread);
 
+/**
+ * Schedule a thread right now
+ */
+void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thread);
+
 typedef struct suspend_state {
     thread_t* thread;
     bool stopped;
@@ -84,8 +89,6 @@ bool scheduler_is_preemption(void);
 
 void scheduler_on_schedule(interrupt_context_t* ctx);
 
-void scheduler_on_yield(interrupt_context_t* ctx);
-
 void scheduler_on_park(interrupt_context_t* ctx);
 
 void scheduler_on_drop(interrupt_context_t* ctx);
@@ -93,12 +96,6 @@ void scheduler_on_drop(interrupt_context_t* ctx);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Call the scheduler to do stuff
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/**
- * Request the scheduler to schedule instead of the current thread, giving a new time-slice
- * to another thread, putting us into the global run-queue
- */
-void scheduler_schedule();
 
 /**
  * Request the scheduler to yield from our thread, passing our time-slice to the caller,
