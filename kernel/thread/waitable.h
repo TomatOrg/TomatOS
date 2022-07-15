@@ -80,3 +80,5 @@ selected_waitable_t waitable_select(waitable_t** waitables, int send_count, int 
  * amount of time has passed
  */
 waitable_t* after(int64_t microseconds);
+
+void waitable_self_test();

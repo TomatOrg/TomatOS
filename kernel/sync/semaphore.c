@@ -61,7 +61,7 @@ void semaphore_queue(semaphore_t* semaphore, waiting_thread_t* wt, bool lifo) {
                 t->wait_tail->wait_link = wt;
             }
             t->wait_tail = wt;
-            t->wait_link = NULL;
+            wt->wait_link = NULL;
         }
     }
 }
@@ -209,6 +209,7 @@ static void hammer_semaphore(semaphore_t* s, int loops, waitable_t* wdone) {
         semaphore_release(s, false);
     }
     waitable_send(wdone, true);
+    release_waitable(wdone);
 }
 
 static void test_semaphore() {
@@ -219,7 +220,7 @@ static void test_semaphore() {
         thread_t* t = create_thread((void*)hammer_semaphore, NULL, "test-%d", i);
         t->save_state.rdi = (uintptr_t)&s;
         t->save_state.rsi = 1000;
-        t->save_state.rdx = (uintptr_t)w;
+        t->save_state.rdx = (uintptr_t) put_waitable(w);
         scheduler_ready_thread(t);
     }
 
@@ -227,6 +228,7 @@ static void test_semaphore() {
         waitable_wait(w, true);
     }
 
+    waitable_close(w);
     release_waitable(w);
 }
 

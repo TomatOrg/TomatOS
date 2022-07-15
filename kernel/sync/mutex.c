@@ -31,6 +31,8 @@
  */
 
 #include "mutex.h"
+#include "thread/waitable.h"
+#include "time/delay.h"
 
 #include <thread/scheduler.h>
 #include <util/except.h>
@@ -61,7 +63,10 @@ static void mutex_lock_slow(mutex_t* mutex) {
             // Active spinning makes sense.
             // Try to set mutexWoken flag to inform Unlock
             // to not wake other blocked goroutines.
-            if (!awoke && (old & MUTEX_WOKEN) == 0 && (old >> MUTEX_WAITER_SHIFT) != 0 && atomic_compare_exchange_weak(&mutex->state, &old, old | MUTEX_WOKEN)) {
+            if (
+                !awoke && (old & MUTEX_WOKEN) == 0 && (old >> MUTEX_WAITER_SHIFT) != 0 &&
+                atomic_compare_exchange_weak(&mutex->state, &old, old | MUTEX_WOKEN)
+            ) {
                 awoke = true;
             }
 
@@ -71,6 +76,7 @@ static void mutex_lock_slow(mutex_t* mutex) {
             }
 
             iter++;
+            old = mutex->state;
             continue;
         }
 
@@ -93,10 +99,9 @@ static void mutex_lock_slow(mutex_t* mutex) {
         }
 
         if (awoke) {
-            ASSERT(new & MUTEX_WOKEN);
-
             // The thread has been woken from sleep,
             // so we need to reset the flag in either case.
+            ASSERT(new & MUTEX_WOKEN && "inconsistent mutex state");
             new &= ~MUTEX_WOKEN;
         }
 
@@ -120,7 +125,9 @@ static void mutex_lock_slow(mutex_t* mutex) {
                 // ownership was handed off to us but mutex is in somewhat
                 // inconsistent state: MUTEX_LOCKED is not set and we are still
                 // accounted as waiter. Fix that.
-                ASSERT((old & (MUTEX_LOCKED | MUTEX_WOKEN)) == 0 && (old >> MUTEX_WAITER_SHIFT) != 0);
+                if ((old & (MUTEX_LOCKED | MUTEX_WOKEN)) != 0 || (old >> MUTEX_WAITER_SHIFT) == 0) {
+                    ASSERT(!"inconsistent mutex state");
+                }
                 int32_t delta = MUTEX_LOCKED - (1 << MUTEX_WAITER_SHIFT);
                 if (!starving || (old >> MUTEX_WAITER_SHIFT) == 1) {
                     // Exit starvation mode.
@@ -170,7 +177,7 @@ bool mutex_try_lock(mutex_t* mutex) {
 }
 
 static void mutex_unlock_slow(mutex_t* mutex, int32_t new) {
-    ASSERT((new + MUTEX_LOCKED) & MUTEX_LOCKED);
+    ASSERT((new + MUTEX_LOCKED) & MUTEX_LOCKED && "unlock of unlocked mutex");
 
     if ((new & MUTEX_STARVING) == 0) {
         int32_t old = new;
@@ -191,6 +198,7 @@ static void mutex_unlock_slow(mutex_t* mutex, int32_t new) {
                 semaphore_release(&mutex->semaphore, false);
                 return;
             }
+            old = mutex->state;
         }
     } else {
         // Starving mode: handoff mutex ownership to the next waiter, and yield
@@ -210,4 +218,111 @@ void mutex_unlock(mutex_t* mutex) {
         // To hide unlockSlow during tracing we skip one extra frame when tracing GoUnblock.
         mutex_unlock_slow(mutex, new);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Self test
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void hammer_mutex(mutex_t* m, int loops, waitable_t* wdone) {
+    for (int i = 0; i < loops; i++) {
+        if (i % 3 == 0) {
+            if (mutex_try_lock(m)) {
+                mutex_unlock(m);
+            }
+            continue;
+        }
+        mutex_lock(m);
+        mutex_unlock(m);
+    }
+    waitable_send(wdone, true);
+    release_waitable(wdone);
+}
+
+static void test_mutex() {
+    TRACE("\t\tTest mutex");
+
+    mutex_t m = { 0 };
+    mutex_lock(&m);
+    ASSERT(!mutex_try_lock(&m) && "mutex_try_lock succeeded with mutex locked");
+    mutex_unlock(&m);
+    ASSERT(mutex_try_lock(&m) && "mutex_try_lock failed with mutex unlocked");
+    mutex_unlock(&m);
+
+    waitable_t* w = create_waitable(0);
+
+    for (int i = 0; i < 10; i++) {
+        thread_t* t = create_thread((void*)hammer_mutex, NULL, "test-%d", i);
+        t->save_state.rdi = (uintptr_t)&m;
+        t->save_state.rsi = 1000;
+        t->save_state.rdx = (uintptr_t) put_waitable(w);
+        scheduler_ready_thread(t);
+    }
+
+    for (int i = 0; i < 10; i++) {
+        ASSERT(waitable_wait(w, true) == WAITABLE_SUCCESS);
+    }
+
+    waitable_close(w);
+    release_waitable(w);
+}
+
+static void mutex_self_test_lock_for_long(mutex_t* mu, waitable_t* stop) {
+    while (true) {
+        mutex_lock(mu);
+        microdelay(100);
+        mutex_unlock(mu);
+
+        waitable_t* ws[] = { stop };
+        selected_waitable_t selected = waitable_select(ws, 0, 1, false);
+        if (selected.index == 0) {
+            release_waitable(stop);
+            return;
+        }
+    }
+}
+
+static void mutex_self_test_sleep_lock(mutex_t* mu, waitable_t* done) {
+    for (int i = 0; i < 10; i++) {
+        microdelay(100);
+        mutex_lock(mu);
+        mutex_unlock(mu);
+    }
+
+    ASSERT(waitable_send(done, true));
+    release_waitable(done);
+}
+
+static void test_mutex_fairness() {
+    TRACE("\t\tTest mutex fairness");
+
+    mutex_t mu = { 0 };
+    waitable_t* stop = create_waitable(0);
+
+    thread_t* t = create_thread((void*)mutex_self_test_lock_for_long, NULL, "test1");
+    t->save_state.rdi = (uintptr_t)&mu;
+    t->save_state.rsi = (uintptr_t) put_waitable(stop);
+    scheduler_ready_thread(t);
+
+    waitable_t* done = create_waitable(1);
+
+    t = create_thread((void*)mutex_self_test_sleep_lock, NULL, "test2");
+    t->save_state.rdi = (uintptr_t)&mu;
+    t->save_state.rsi = (uintptr_t) put_waitable(done);
+    scheduler_ready_thread(t);
+
+    waitable_t* ws[] = { done, after(10 * MICROSECONDS_PER_SECOND) };
+    selected_waitable_t selected = waitable_select(ws, 0, 2, true);
+    ASSERT(selected.index == 0 && "can't acquire Mutex in 10 seconds");
+
+    waitable_close(stop);
+    release_waitable(stop);
+
+    release_waitable(done);
+}
+
+void mutex_self_test() {
+    TRACE("\tMutex self-test");
+    test_mutex();
+    test_mutex_fairness();
 }

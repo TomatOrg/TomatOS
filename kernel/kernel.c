@@ -179,12 +179,16 @@ static struct limine_file m_kernel_file;
 
 // TODO: driver files
 
-static void self_test() {
+/**
+ * Can be used to run self testing, not called by default
+ */
+static inline void self_test() {
     TRACE("Running self-test");
+    waitable_self_test();
     scheduler_self_test();
     semaphore_self_test();
+    mutex_self_test();
     TRACE("self-test finished");
-    while(1) asm("hlt");
 }
 
 static void kernel_startup() {
@@ -198,8 +202,9 @@ static void kernel_startup() {
     // reclaim bootloader memory
     CHECK_AND_RETHROW(palloc_reclaim());
 
-    // TODO: not all the time
-    self_test();
+    // uncomment if you want to debug some stuff and
+    // make sure that the kernel passes self-tests
+//    self_test();
 
     TRACE("Entered kernel thread!");
 

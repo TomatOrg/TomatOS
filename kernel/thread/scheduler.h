@@ -82,7 +82,7 @@ bool scheduler_is_preemption(void);
 // Callbacks from interrupts to the scheduler
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void scheduler_on_schedule(interrupt_context_t* ctx, bool from_preempt);
+void scheduler_on_schedule(interrupt_context_t* ctx);
 
 void scheduler_on_yield(interrupt_context_t* ctx);
 

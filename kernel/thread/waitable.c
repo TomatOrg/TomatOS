@@ -3,6 +3,7 @@
 #include "timer.h"
 #include "time/tsc.h"
 #include "util/fastrand.h"
+#include "time/delay.h"
 
 #include <mem/malloc.h>
 
@@ -586,4 +587,139 @@ waitable_t* after(int64_t microseconds) {
     // we return the user its own reference he should release on its own
     // we keep one reference for the send_timer function
     return put_waitable(waitable);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Self test
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static bool m_self_test_recv = false;
+
+static void self_test_recv_func(waitable_t* w) {
+    ASSERT(waitable_wait(w, true) == WAITABLE_SUCCESS);
+    m_self_test_recv = true;
+    release_waitable(w);
+}
+
+static _Atomic(uint32_t) m_self_test_sent = 0;
+
+static void self_test_send_func(waitable_t* w) {
+    ASSERT(waitable_send(w, true));
+    atomic_store(&m_self_test_sent, 1);
+    release_waitable(w);
+}
+
+static void self_test_send(waitable_t* w, int count) {
+    for (int i = 0; i < count; i++) {
+        ASSERT(waitable_send(w, true));
+    }
+    release_waitable(w);
+}
+
+void waitable_self_test() {
+    int N = 200;
+
+    TRACE("\tWaitable self-test");
+
+    for (int waitable_cap = 0; waitable_cap < N; waitable_cap++) {
+        // Ensure that receive from empty waitable blocks.
+        {
+            waitable_t* w = create_waitable(waitable_cap);
+
+            m_self_test_recv = false;
+
+            thread_t* t = create_thread((void *) self_test_recv_func, put_waitable(w), "test");
+            put_thread(t);
+            scheduler_ready_thread(t);
+
+            // I know this is stupid but what can we do
+            microdelay(1000);
+
+            ASSERT(!m_self_test_recv && "receive from empty waitable");
+
+            // Ensure that non-blocking receive does not block.
+            waitable_t* waitables[] = { w };
+            selected_waitable_t selected = waitable_select(waitables, 0, 1, false);
+            ASSERT(selected.index == -1 && "receive from empty waitable");
+            waitable_send(w, true);
+
+            release_waitable(w);
+
+            while (get_thread_status(t) != THREAD_STATUS_DEAD);
+            release_thread(t);
+        }
+
+        // Ensure that send to full waitable blocks.
+        {
+            waitable_t* w = create_waitable(waitable_cap);
+            for (int i = 0; i < waitable_cap; i++) {
+                waitable_send(w, true);
+            }
+
+            m_self_test_sent = 0;
+
+            thread_t* t = create_thread((void*)self_test_send_func, put_waitable(w), "test");
+            put_thread(t);
+            scheduler_ready_thread(t);
+
+            microdelay(1000);
+            ASSERT (atomic_load(&m_self_test_sent) == 0 && "send to full waitable");
+
+            waitable_t* waitables[] = { w };
+            selected_waitable_t selected = waitable_select(waitables, 1, 0, false);
+            ASSERT(selected.index == -1 && "send to full waitable");
+
+            ASSERT(waitable_wait(w, true) == WAITABLE_SUCCESS);
+
+            release_waitable(w);
+
+            while (get_thread_status(t) != THREAD_STATUS_DEAD);
+            release_thread(t);
+        }
+
+        // Ensure that we receive 0 from closed chan.
+        {
+            // TODO: this
+        }
+
+        // Ensure that close unblocks receive.
+        {
+            // TODO: this
+        }
+
+        // Send 100
+        {
+            waitable_t* w = create_waitable(waitable_cap);
+
+            thread_t* t = create_thread((void*) self_test_send, put_waitable(w), "test");
+            t->save_state.rsi = 100;
+            scheduler_ready_thread(t);
+
+            for (int i = 0; i < 100; i++) {
+                ASSERT(waitable_wait(w, true) == WAITABLE_SUCCESS);
+            }
+
+            release_waitable(w);
+        }
+
+
+        // Send 1000 in 4 threads,
+        {
+            waitable_t* w = create_waitable(waitable_cap);
+
+            for (int i = 0; i < 4; i++) {
+                thread_t* t = create_thread((void*) self_test_send, put_waitable(w), "test");
+                t->save_state.rsi = 1000;
+                scheduler_ready_thread(t);
+            }
+
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 1000; j++) {
+                    ASSERT(waitable_wait(w, true) == WAITABLE_SUCCESS);
+                }
+            }
+
+            release_waitable(w);
+        }
+    }
 }
