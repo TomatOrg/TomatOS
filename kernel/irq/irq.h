@@ -73,8 +73,26 @@ typedef struct irq_handler {
     void (*unmask)(void* ctx);
 } irq_ops_t;
 
+/**
+ * Allocate a new IRQ for the device
+ *
+ * @param count     [IN]    How many irqs to allocate, sequentially
+ * @param ops       [IN]    The IRQ operations needed from the driver
+ * @param ctx       [IN]    The context to pass to the operations
+ * @param vector    [OUT]   The allocated base vector
+ */
 err_t alloc_irq(int count, irq_ops_t* ops, void* ctx, uint8_t* vector);
 
-void irq_wait(uint8_t handler, void* ctx);
+/**
+ * Wait for the given IRQ, passing in the context for the specific one
+ * @param vector    [IN]    The irq we are waiting on
+ */
+void irq_wait(uint8_t vector);
 
+/**
+ * Dispatches an IRQ, note that this may create a new thread and set a
+ * new thread context.
+ *
+ * @param ctx       [IN] The interrupt context of the current IRQ
+ */
 void irq_dispatch(interrupt_context_t* ctx);
