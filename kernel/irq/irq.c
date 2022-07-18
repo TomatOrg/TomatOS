@@ -28,31 +28,34 @@ err_t alloc_irq(int count, irq_ops_t* ops, void* ctx, uint8_t* vector) {
     spinlock_lock(&m_irq_spinlock);
 
     int found = 0;
-    int entry = 0;
-    for (entry = 0; entry < ARRAY_LEN(m_irqs); entry++) {
-        while (found != count) {
-            // check if entry is allocated, if it
-            // is, ignore it
-            if (m_irqs[entry].ops != NULL) {
-                found = 0;
-                break;
-            }
+    int entry_base = 0;
+    for (int entry = 0; entry < ARRAY_LEN(m_irqs) + 1; entry++) {
+        if (m_irqs[entry].ops != NULL) {
+            // bad entry, we will try the next one
+            entry_base = entry + 1;
+            continue;
+        }
 
-            // it is fine, increase by one
-            found++;
+        // this entry is good
+        found++;
+
+        // we found enough entries
+        if (found == count) {
+            break;
         }
     }
 
     // make sure we actually found an entry
     CHECK(found == count);
 
-    // go backwards and set all the entries
-    while (count--) {
-        m_irqs[entry--].ops = ops;
+    // set all the entries to this
+    for (int i = 0; i < count; i++) {
+        m_irqs[entry_base + i].ops = ops;
+        m_irqs[entry_base + i].ctx = ctx;
     }
 
-    // set the base
-    *vector = entry;
+    // return as a vector
+    *vector = entry_base + IRQ_ALLOC_BASE;
 
 cleanup:
     spinlock_unlock(&m_irq_spinlock);
@@ -61,6 +64,11 @@ cleanup:
 }
 
 void irq_wait(uint8_t handler) {
+    // turn the vector to an index
+    ASSERT(IRQ_ALLOC_BASE <= handler && handler <= IRQ_ALLOC_END);
+    handler -= IRQ_ALLOC_BASE;
+
+    // check the index range just in case
     ASSERT(handler < ARRAY_LEN(m_irqs));
     ASSERT(m_irqs[handler].ops != NULL);
 
@@ -73,6 +81,8 @@ void irq_wait(uint8_t handler) {
 }
 
 void irq_dispatch(interrupt_context_t* ctx) {
+    // just in case
+    ASSERT(IRQ_ALLOC_BASE <= ctx->int_num && ctx->int_num <= IRQ_ALLOC_END);
     int handler = ctx->int_num - IRQ_ALLOC_BASE;
 
     irq_instance_t* instance = &m_irqs[handler];
@@ -85,10 +95,10 @@ void irq_dispatch(interrupt_context_t* ctx) {
         WARN("irq: got IRQ #%d while no thread is waiting, invalid mask function?", ctx->int_num);
     }
 
-    // ready the thread
+    // schedule the thread right now
     scheduler_schedule_thread(ctx, instance->waiting_thread);
 
-    // set the instance to NULL
+    // no one is waiting on this anymore
     instance->waiting_thread = NULL;
 
     // mask the irq
