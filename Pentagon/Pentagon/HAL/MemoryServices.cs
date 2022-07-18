@@ -6,6 +6,10 @@ namespace Pentagon.HAL;
 
 public static class MemoryServices
 {
+    public static ulong GetPhys(IMemoryOwner<byte> b)
+    {
+        return ((AllocatedMemoryHolder)b)._ptr - 0xffff800000000000ul;
+    }
 
     public static int PageSize => 4096;
     

@@ -5,6 +5,7 @@
 #include "mem/mem.h"
 #include "dotnet/loader.h"
 #include "acpi/acpi.h"
+#include <irq/irq.h>
 
 // Uncomment this if you need to debug MamMemory-related stuff
 #define MAPMEMORY_TRACE
@@ -103,6 +104,18 @@ static method_result_t Pentagon_Acpi_GetRsdt() {
     return (method_result_t){ .exception = NULL, .value = acpi_get_rsdt_phys() };
 }
 
+static method_result_t Pentagon_HAL_Irq_InterruptInternal(System_Memory mem) {
+    uint8_t interrupt;
+    alloc_irq(1, irq_default_ops, (void*)(mem.Ptr), &interrupt);
+
+    return (method_result_t){ .exception = NULL, .value = interrupt };
+}
+
+static System_Exception Pentagon_HAL_Irq_WaitInternal(uint64_t irq) {
+    irq_wait(irq);
+    return NULL;
+}
+
 err_t init_kernel_internal_calls() {
     err_t err = NO_ERROR;
 
@@ -116,6 +129,8 @@ err_t init_kernel_internal_calls() {
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.HAL.MemoryServices::FreeMemory(uint64)", Pentagon_HAL_MemoryServices_FreeMemory);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.HAL.MemoryServices::MapMemory(uint64,uint64)", Pentagon_HAL_MemoryServices_MapMemory);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.HAL.Log::LogHex(uint64)", Pentagon_HAL_Log_LogHex);
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.HAL.Irq::InterruptInternal([Corelib-v1]System.Memory`1<uint32>)", Pentagon_HAL_Irq_InterruptInternal);
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.HAL.Irq::WaitInternal(uint64)", Pentagon_HAL_Irq_WaitInternal);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.Acpi::GetRsdt()", Pentagon_Acpi_GetRsdt);
 
     MIR_module_t pentagon = MIR_new_module(ctx, "pentagon");
