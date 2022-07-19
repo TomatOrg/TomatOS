@@ -206,7 +206,7 @@ namespace Pentagon
             public Field<uint> DriverFeature;
             public Field<ushort> MsixConfig;
             public Field<ushort> NumQueues;
-            public Field<byte> DeviceStatus;
+            public Field<DevStatus> DeviceStatus;
             public Field<byte> ConfigGeneration;
 
             // Queue-specific: put a queue number in QueueSelect to get that queue's regs
@@ -227,7 +227,7 @@ namespace Pentagon
                 DriverFeature = r.CreateField<uint>(12);
                 MsixConfig = r.CreateField<ushort>(16);
                 NumQueues = r.CreateField<ushort>(18);
-                DeviceStatus = r.CreateField<byte>(20);
+                DeviceStatus = r.CreateField<DevStatus>(20);
                 ConfigGeneration = r.CreateField<byte>(21);
 
                 QueueSelect = r.CreateField<ushort>(22);
@@ -238,6 +238,14 @@ namespace Pentagon
                 QueueDesc = r.CreateField<ulong>(32);
                 QueueDriver = r.CreateField<ulong>(40);
                 QueueDevice = r.CreateField<ulong>(48);
+            }
+
+            public enum DevStatus : byte
+            {
+                Acknowledge = 1,
+                Driver = 2,
+                FeaturesOk = 8,
+                DriverOk = 4,
             }
         }
 
@@ -252,27 +260,20 @@ namespace Pentagon
         {
             PciDevice.Capability _cap;
             public byte _0; // cap_len in the virtio spec
-            public byte Type;
+            public CfgType Type;
             public byte Bar;
             private byte _1, _2, _3;
             public uint Offset;
             public uint Length;
             public uint NotifyOffMultiplier;
+
+            public enum CfgType : byte
+            {
+                CommonCfg = 1,
+                NotifyCfg = 2
+            };
         }
 
-        const ushort CAP_CFG_TYPE = 3;
-        const ushort CAP_BAR = 4;
-        const ushort CAP_OFFSET = 8;
-        const ushort CAP_LENGTH = 12;
-        const ushort CAP_NOTIFY_MULT = 16;
-
-        const byte TYPE_COMMON_CFG = 1;
-        const byte TYPE_NOTIFY_CFG = 2;
-
-        const byte STATUS_ACKNOWLEDGE = 1;
-        const byte STATUS_DRIVER = 2;
-        const byte STATUS_FEATURES_OK = 8;
-        const byte STATUS_DRIVER_OK = 4;
         public VirtioPciDevice(PciDevice a)
         {
             _pci = a;
@@ -295,11 +296,11 @@ namespace Pentagon
                     var type = virtioCap.Span[0].Type;
 
                     var slice = new Region(bar.Memory.Memory.Slice((int)off, (int)len));
-                    if (type == TYPE_COMMON_CFG)
+                    if (type == Capability.CfgType.CommonCfg)
                     {
                         _common = new VirtioPciCommonCfg(slice);
                     }
-                    else if (type == TYPE_NOTIFY_CFG)
+                    else if (type == Capability.CfgType.NotifyCfg)
                     {
                         _notify = slice;
                         _notifyMultiplier = virtioCap.Span[0].NotifyOffMultiplier;
@@ -309,8 +310,8 @@ namespace Pentagon
 
 
             _common.DeviceStatus.Value = 0; // reset, not sure if needed
-            _common.DeviceStatus.Value |= STATUS_ACKNOWLEDGE; // it exists
-            _common.DeviceStatus.Value |= STATUS_DRIVER; // it can be loaded
+            _common.DeviceStatus.Value |= VirtioPciCommonCfg.DevStatus.Acknowledge; // it exists
+            _common.DeviceStatus.Value |= VirtioPciCommonCfg.DevStatus.Driver; // it can be loaded
 
             ulong requiredFeatures = (1ul << 32); // VIRTIO_F_VERSION_1
             ulong optionalFeatures = 0;
@@ -323,7 +324,7 @@ namespace Pentagon
             }
 
             // features acknowledged
-            _common.DeviceStatus.Value |= STATUS_FEATURES_OK;
+            _common.DeviceStatus.Value |= VirtioPciCommonCfg.DevStatus.FeaturesOk;
 
             for (int q = 0; q < 1; q++)
             {
@@ -343,7 +344,7 @@ namespace Pentagon
             }
 
             // ready to work
-            _common.DeviceStatus.Value |= STATUS_DRIVER_OK;
+            _common.DeviceStatus.Value |= VirtioPciCommonCfg.DevStatus.DriverOk;
         }
     }
 

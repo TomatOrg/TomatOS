@@ -40,11 +40,11 @@ namespace Pentagon
                         _msix = tableRegion.CreateMemory<MsixEntry>(0, 1);
 
                         // disable legacy IRQs 
-                        d.Command |= 1u << 10;
+                        d.Command |= PciDevice.CommandBits.INTxDisable;
 
                         // enable MSIX
                         // NOTE: handle global masking properly
-                        msixCap.Span[0].MessageControl |= (ushort)(1u << 15);
+                        msixCap.Span[0].MessageControl |= Capability.MsgCtrl.Enable;
 
                         break;
                     }
@@ -80,9 +80,14 @@ namespace Pentagon
             private struct Capability
             {
                 PciDevice.Capability _cap;
-                public ushort MessageControl;
+                public MsgCtrl MessageControl;
                 public uint Table;
                 public uint Pending;
+
+                public enum MsgCtrl : ushort
+                {
+                    Enable = (ushort)(1u << 15)
+                };
             }
 
             [StructLayout(LayoutKind.Sequential)]

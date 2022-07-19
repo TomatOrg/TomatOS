@@ -40,7 +40,7 @@ namespace Pentagon
 
         public ushort VendorId => Read16(0);
         public ushort DeviceId => Read16(2);
-        public uint Command { get => Read32(4); set => Write32(4, value); }
+        public CommandBits Command { get => (CommandBits)Read16(4); set => Write16(4, (ushort)value); }
         public ushort HeaderType => Read16(14);
 
         public Pci.Msix.Irq GetMsix(int core) => (_msix ??= new(this)).Allocate(core);
@@ -132,11 +132,11 @@ namespace Pentagon
                         address |= higherHalf << 32;
                         // TODO: 64bit length
                     }
-                    Memory = HAL.MemoryServices.MapPages(address, (int)(length / 4096));
+                    Memory = MemoryServices.MapPages(address, (int)(length / 4096));
                 }
             }
         }
-
+        
         /// <summary>
         /// Fields common to all PCI capabilities
         /// </summary>
@@ -145,6 +145,11 @@ namespace Pentagon
         {
             public byte Id;
             public byte Next;
+        }
+
+        public enum CommandBits : ushort
+        {
+            INTxDisable = (ushort)(1u << 10)
         }
     }
 
