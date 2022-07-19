@@ -50,7 +50,19 @@ namespace Pentagon
         /// </summary>
         /// <returns>First capability</returns>
         // TODO: check if capabilities are supported at all
-        public Capability Capabilities() => new Capability(this);
+        public Memory<Capability> CapabilitiesStart()
+        {
+            var idx = Read8(0x34);
+            return EcamSlice.CreateMemory<Capability>(idx, 1);
+        }
+        public bool CapabilitiesNext(ref Memory<Capability> c)
+        {
+            var idx = c.Span[0].Next;
+            if (idx == 0) return false;
+            c = EcamSlice.CreateMemory<Capability>(idx, 1);
+            return true;
+        }
+
 
         // TODO: optimize these functions
         public byte Read8(int offset)
@@ -126,34 +138,13 @@ namespace Pentagon
         }
 
         /// <summary>
-        /// Class representing a capability with iteration to the next one
+        /// Fields common to all PCI capabilities
         /// </summary>
-        public class Capability
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Capability
         {
-            private readonly PciDevice _addr;
-            private ushort _off;
-
-            internal Capability(PciDevice a)
-            {
-                _addr = a;
-                _off = Read8(0x34);
-            }
-
-            public bool Next()
-            {
-                ushort next = Read8(1);
-                if (next == 0) return false;
-                _off = next;
-                return true;
-            }
-
-            public byte CapabilityId { get => Read8(0); }
-            public byte Read8(ushort offset) => _addr.Read8((ushort)(_off + offset));
-            public ushort Read16(ushort offset) => _addr.Read16((ushort)(_off + offset));
-            public uint Read32(ushort offset) => _addr.Read32((ushort)(_off + offset));
-
-            public void Write16(ushort offset, ushort value) => _addr.Write16((ushort)(_off + offset), value);
-
+            public byte Id;
+            public byte Next;
         }
     }
 

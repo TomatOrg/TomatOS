@@ -21,12 +21,13 @@ namespace Pentagon
                 _allocated = 0;
                 _msix = null;
 
-                var cap = d.Capabilities();
-                while (true)
+                var cap = d.CapabilitiesStart();
+                do
                 {
-                    if (cap.CapabilityId == 0x11)
+                    if (cap.Span[0].Id == 0x11)
                     {
-                        var table = cap.Read32(4);
+                        var msixCap = MemoryMarshal.CastMemory<PciDevice.Capability, Capability>(cap);
+                        var table = msixCap.Span[0].Table;
                         var tableOff = table & (~0b111ul);
                         byte tableBir = (byte)(table & 0b111ul);
 
@@ -43,12 +44,11 @@ namespace Pentagon
 
                         // enable MSIX
                         // NOTE: handle global masking properly
-                        cap.Write16(2, (ushort)(cap.Read16(2) | (1u << 15)));
+                        msixCap.Span[0].MessageControl |= (ushort)(1u << 15);
 
                         break;
                     }
-                    if (!cap.Next()) break;
-                }
+                } while (d.CapabilitiesNext(ref cap));
             }
 
             public Irq Allocate(int core)
@@ -73,6 +73,16 @@ namespace Pentagon
                     _ent.Span[0].Data = (uint)m.Data;
                     _ent.Span[0].Ctrl = 1; // masked
                 }
+            }
+
+
+            [StructLayout(LayoutKind.Sequential)]
+            private struct Capability
+            {
+                PciDevice.Capability _cap;
+                public ushort MessageControl;
+                public uint Table;
+                public uint Pending;
             }
 
             [StructLayout(LayoutKind.Sequential)]

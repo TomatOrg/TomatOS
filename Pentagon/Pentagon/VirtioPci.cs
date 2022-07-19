@@ -247,6 +247,18 @@ namespace Pentagon
         protected Region _notify;
         readonly private uint _notifyMultiplier;
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Capability
+        {
+            PciDevice.Capability _cap;
+            public byte _0; // cap_len in the virtio spec
+            public byte Type;
+            public byte Bar;
+            private byte _1, _2, _3;
+            public uint Offset;
+            public uint Length;
+            public uint NotifyOffMultiplier;
+        }
 
         const ushort CAP_CFG_TYPE = 3;
         const ushort CAP_BAR = 4;
@@ -265,24 +277,22 @@ namespace Pentagon
         {
             _pci = a;
 
-            var cap = _pci.Capabilities();
-            while (true)
+            var cap = _pci.CapabilitiesStart();
+            do
             {
-                if (cap.CapabilityId == 0x09)
+                if (cap.Span[0].Id == 0x09)
                 {
+                    var virtioCap = MemoryMarshal.CastMemory<PciDevice.Capability, Capability>(cap);
+                    var bar = _pci.MapBar(virtioCap.Span[0].Bar);
 
-                    byte type = cap.Read8(CAP_CFG_TYPE), bir = cap.Read8(CAP_BAR);
-                    uint off = cap.Read32(CAP_OFFSET), len = cap.Read32(CAP_LENGTH);
-                    var bar = _pci.MapBar(bir);
-                    
                     // ignore IO bars
                     // there are legitimate usecases for them, but they're not useful *yet*
                     // (according to the virtio spec, they can be used for faster notifications on VMs)
-                    if (bar.IsIo)
-                    {
-                        if (cap.Next()) continue;
-                        else break;
-                    }
+                    if (bar.IsIo) continue;
+
+                    var off = virtioCap.Span[0].Offset;
+                    var len = virtioCap.Span[0].Length;
+                    var type = virtioCap.Span[0].Type;
 
                     var slice = new Region(bar.Memory.Memory.Slice((int)off, (int)len));
                     if (type == TYPE_COMMON_CFG)
@@ -292,11 +302,10 @@ namespace Pentagon
                     else if (type == TYPE_NOTIFY_CFG)
                     {
                         _notify = slice;
-                        _notifyMultiplier = cap.Read32(CAP_NOTIFY_MULT);
+                        _notifyMultiplier = virtioCap.Span[0].NotifyOffMultiplier;
                     }
                 }
-                if (!cap.Next()) break;
-            }
+            } while (_pci.CapabilitiesNext(ref cap));
 
 
             _common.DeviceStatus.Value = 0; // reset, not sure if needed
