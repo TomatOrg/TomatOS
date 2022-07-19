@@ -60,9 +60,9 @@ namespace Pentagon
 
             internal ulong DescPhys, AvailPhys, UsedPhys;
             Field<ushort> Notifier;
-            public PciDevice.Msix.Irq Interrupt;
+            public Pci.Msix.Irq Interrupt;
 
-            public QueueInfo(int index, int size, Field<ushort> notifier, PciDevice.Msix.Irq interrupt)
+            public QueueInfo(int index, int size, Field<ushort> notifier, Pci.Msix.Irq interrupt)
             {
                 Index = index;
                 Size = size;
@@ -247,6 +247,7 @@ namespace Pentagon
         protected Region _notify;
         readonly private uint _notifyMultiplier;
 
+
         const ushort CAP_CFG_TYPE = 3;
         const ushort CAP_BAR = 4;
         const ushort CAP_OFFSET = 8;
@@ -349,6 +350,11 @@ namespace Pentagon
 
         public VirtioBlockDevice(PciDevice a) : base(a)
         {
+            Read(69);
+        }
+
+        void Read(ulong sector)
+        {
             // start io
             var r = MemoryServices.AllocatePages(1);
             var rPhys = MemoryServices.GetPhys(r);
@@ -357,7 +363,7 @@ namespace Pentagon
 
             var rr = new Region(r.Memory).CreateMemory<BlkReq>(0, 1);
             rr.Span[0].Type = 0;
-            rr.Span[0].Sector = 69;
+            rr.Span[0].Sector = sector;
 
             var h = _queueInfo.GetNewDescriptor(true);
             _queueInfo.Descriptors.Span[h].Phys = rPhys;
@@ -375,7 +381,7 @@ namespace Pentagon
             _queueInfo.Descriptors.Span[h].Flags = 2;
 
             _queueInfo.Notify();
-            
+
             _queueInfo.Interrupt.Wait();
         }
     }
