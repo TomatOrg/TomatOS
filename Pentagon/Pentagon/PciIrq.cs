@@ -26,39 +26,36 @@ namespace Pentagon
                 {
                     if (cap.Span[0].Id == 0x11)
                     {
-                        var msixCap = MemoryMarshal.CastMemory<PciDevice.Capability, Capability>(cap);
-                        var table = msixCap.Span[0].Table;
+                        ref var msixCap = ref MemoryMarshal.CastMemory<PciDevice.Capability, Capability>(cap).Span[0];
+                        var table = msixCap.Table;
                         var tableOff = table & (~0b111ul);
-                        byte tableBir = (byte)(table & 0b111ul);
-
+                        var tableBir = (byte)(table & 0b111ul);
+                        var tableSize = (int)(msixCap.MessageControl & Capability.MsgCtrl.TableSizeMask) + 1;
+                        
                         // TODO: io bar check ig
                         var bar = d.MapBar(tableBir);
-
-                        // TODO: get length and dont hard-map 1 entry
-                        var tableRegion = new Region(bar.Memory.Memory.Slice((int)tableOff, 16));
-
-                        _msix = tableRegion.CreateMemory<MsixEntry>(0, 1);
+                        var tableRegion = new Region(bar.Memory.Memory.Slice((int)tableOff, tableSize * 16));
+                        _msix = tableRegion.CreateMemory<MsixEntry>(0, tableSize);
 
                         // disable legacy IRQs 
-                        d.Command |= PciDevice.CommandBits.INTxDisable;
+                        d.Config.Command |= PciDevice.CommandBits.INTxDisable;
 
                         // enable MSIX
-                        // NOTE: handle global masking properly
-                        msixCap.Span[0].MessageControl |= Capability.MsgCtrl.Enable;
+                        msixCap.MessageControl = (msixCap.MessageControl | Capability.MsgCtrl.Enable) & (~Capability.MsgCtrl.GlobalMask);
 
                         break;
                     }
                 } while (d.CapabilitiesNext(ref cap));
             }
 
-            public Irq Allocate(int core)
+            internal Irq Allocate(int core)
             {
                 var i = new Irq(_msix, _allocated);
                 _allocated++;
                 return i;
             }
 
-            public class Irq : HAL.Irq
+            internal class Irq : HAL.Irq
             {
                 Memory<MsixEntry> _ent;
 
@@ -86,6 +83,8 @@ namespace Pentagon
 
                 public enum MsgCtrl : ushort
                 {
+                    TableSizeMask = 0b1111111111,
+                    GlobalMask = (ushort)(1u << 14),
                     Enable = (ushort)(1u << 15)
                 };
             }

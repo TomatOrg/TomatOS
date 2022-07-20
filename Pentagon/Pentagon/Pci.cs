@@ -14,11 +14,15 @@ namespace Pentagon
     /// </summary>
     public class PciDevice
     {
-        public byte Bus;
-        public byte Device;
-        public byte Function;
-        public Region EcamSlice;
+        public readonly byte Bus;
+        public readonly byte Device;
+        public readonly byte Function;
+        public readonly Region EcamSlice;
+        public ref CfgSpace Config => ref _config.Value;
+
+        private readonly Field<CfgSpace> _config;
         private Pci.Msix _msix = null;
+
         /// <summary>
         /// Get the slice of the whole ECAM for the single Bus:Device:Function.
         /// This ensures that the memory slice stored in PciDevice can never access memory 
@@ -33,17 +37,13 @@ namespace Pentagon
             Device = dev;
             Function = fn;
             EcamSlice = ecamSlice;
+            _config = EcamSlice.CreateField<CfgSpace>(0);
         }
 
         public Bar MapBar(byte bir)
-            => new Bar(this, bir);
-
-        public ushort VendorId => Read16(0);
-        public ushort DeviceId => Read16(2);
-        public CommandBits Command { get => (CommandBits)Read16(4); set => Write16(4, (ushort)value); }
-        public ushort HeaderType => Read16(14);
-
-        public Pci.Msix.Irq GetMsix(int core) => (_msix ??= new(this)).Allocate(core);
+            => new Bar(this, bir);        
+        internal Pci.Msix.Irq GetMsix(int core)
+            => (_msix ??= new(this)).Allocate(core);
 
         /// <summary>
         /// Get PCI capability linked list 
@@ -55,6 +55,7 @@ namespace Pentagon
             var idx = Read8(0x34);
             return EcamSlice.CreateMemory<Capability>(idx, 1);
         }
+
         public bool CapabilitiesNext(ref Memory<Capability> c)
         {
             var idx = c.Span[0].Next;
@@ -63,7 +64,7 @@ namespace Pentagon
             return true;
         }
 
-
+        #region Config space operations
         // TODO: optimize these functions
         public byte Read8(int offset)
         {
@@ -94,6 +95,7 @@ namespace Pentagon
             var p = MemoryMarshal.Cast<byte, uint>(EcamSlice.Span.Slice(offset));
             p[0] = value;
         }
+        #endregion
 
         /// <summary>
         /// Class representing a base address register, whic can be either IO ports or memory.
@@ -132,11 +134,13 @@ namespace Pentagon
                         address |= higherHalf << 32;
                         // TODO: 64bit length
                     }
-                    Memory = MemoryServices.MapPages(address, (int)(length / 4096));
+
+                    Memory = MemoryServices.MapPages(address, (int)KernelUtils.DivideUp(length, (ulong)MemoryServices.PageSize)); 
                 }
             }
         }
-        
+
+        #region Structure/Enums definitions
         /// <summary>
         /// Fields common to all PCI capabilities
         /// </summary>
@@ -147,10 +151,28 @@ namespace Pentagon
             public byte Next;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        public struct CfgSpace
+        {
+            public ushort VendorId;
+            public ushort DeviceId;
+            public CommandBits Command;
+            public ushort Status;
+            public byte RevId;
+            public byte ProgIf;
+            public byte Subclass;
+            public byte ClassCode;
+            public byte CacheLineSize;
+            public byte LatencyTimer;
+            public byte HeaderType;
+            public byte Bist;
+        }
+
         public enum CommandBits : ushort
         {
             INTxDisable = (ushort)(1u << 10)
         }
+        #endregion
     }
 
     public class PciRoot
@@ -195,12 +217,12 @@ namespace Pentagon
                 for (byte d = 0; d < 32; d++)
                 {
                     var devAddr = new PciDevice(b, d, 0, PciDevice.GetEcamSlice(_startBus, new Region(_ecam.Memory), b, d, 0));
-                    if (devAddr.VendorId == 0xFFFF) continue;
-                    var functions = ((devAddr.HeaderType & 0x80) > 0) ? 8 : 1;
+                    if (devAddr.Config.VendorId == 0xFFFF) continue;
+                    var functions = ((devAddr.Config.HeaderType & 0x80) > 0) ? 8 : 1;
                     for (byte f = 0; f < functions; f++)
                     {
                         var fnAddr = new PciDevice(b, d, f, PciDevice.GetEcamSlice(_startBus, new Region(_ecam.Memory), b, d, f));
-                        if (fnAddr.VendorId == 0xFFFF) continue;
+                        if (fnAddr.Config.VendorId == 0xFFFF) continue;
                         SearchDevice(fnAddr);
                     }
                 }

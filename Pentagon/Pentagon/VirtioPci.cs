@@ -16,9 +16,9 @@ namespace Pentagon
     {
         public bool Init(PciDevice a)
         {
-            if (a.VendorId != 0x1AF4) return false;
+            if (a.Config.VendorId != 0x1AF4) return false;
             // Former is the transitional device ID, latter is the 1.0+ one
-            if (a.DeviceId == 0x1001 || a.DeviceId == (0x1040 + 2))
+            if (a.Config.DeviceId == 0x1001 || a.Config.DeviceId == (0x1040 + 2))
             {
                 _ = new VirtioBlockDevice(a);    
                 return true;
@@ -40,7 +40,7 @@ namespace Pentagon
         public class QueueInfo
         {
             // Size of the queue in elements
-            readonly int Size;
+            readonly public int Size;
             // Index of the queue inside the device, only used for notification
             readonly int Index;
 
@@ -49,10 +49,9 @@ namespace Pentagon
             readonly public Memory<Descriptor> Descriptors;
             readonly public AvailRing Avail;
             readonly public UsedRing Used;
-            //readonly public PciDevice.MsixIrq Interrupt;
 
             ushort FirstFree;
-            //ushort LastSeenUsed;
+            public ushort LastSeenUsed;
 
             // Optimization endorsed by the spec: instead of updating Avail.DescIdx each time, batch and do a single notification at the end
             // this variable keeps track of how much to increment DescIdx when notifying
@@ -60,7 +59,7 @@ namespace Pentagon
 
             internal ulong DescPhys, AvailPhys, UsedPhys;
             Field<ushort> Notifier;
-            public Pci.Msix.Irq Interrupt;
+            readonly public Pci.Msix.Irq Interrupt;
 
             public QueueInfo(int index, int size, Field<ushort> notifier, Pci.Msix.Irq interrupt)
             {
@@ -94,11 +93,8 @@ namespace Pentagon
 
                 // initialize bookkeeping fields
                 FirstFree = 0;
-                //LastSeenUsed = 0;
+                LastSeenUsed = 0;
                 AddedHeads = 0;
-
-                // create an interrupt object
-                //Interrupt = interrupt;
             }
 
             /// <summary>
@@ -138,6 +134,22 @@ namespace Pentagon
             }
 
             /// <summary>
+            /// Free the descriptor chain starting with `head`
+            /// </summary>
+            public void FreeChain(ushort head)
+            {
+                var desc = head;
+                while ((int)(Descriptors.Span[desc].Flags & Descriptor.Flag.HasNext) > 0)
+                {
+                    desc = Descriptors.Span[desc].NextDescIdx;
+                }
+                Descriptors.Span[desc].Flags = Descriptor.Flag.HasNext;
+                Descriptors.Span[desc].NextDescIdx = FirstFree;
+                FirstFree = desc;
+                LastSeenUsed++;
+            }
+
+            /// <summary>
             /// The packed structure of a descriptor inside a queue
             /// <para>A descriptor is the structure representing a memory region passed to virtio,
             /// with an intrusive linked list (NextDescIdx) to link it to the next one for the current transfer.</para>
@@ -148,8 +160,14 @@ namespace Pentagon
             {
                 internal ulong Phys;
                 internal uint Len;
-                internal ushort Flags;
+                internal Flag Flags;
                 internal ushort NextDescIdx; // Next field as an index inside Descriptors
+
+                internal enum Flag : ushort
+                {
+                    HasNext = 1,
+                    Write = 2,
+                }
             }
 
             /// <summary>
@@ -163,6 +181,7 @@ namespace Pentagon
                 internal Field<ushort> Flags;
                 internal Field<ushort> DescIdx; // Index of what would be the *next* descriptor entry
                 internal Memory<ushort> Ring;
+
                 internal AvailRing(Region r, int size)
                 {
                     Flags = r.CreateField<ushort>(0);
@@ -180,6 +199,7 @@ namespace Pentagon
                 internal Field<ushort> Flags;
                 internal Field<ushort> DescIdx;
                 internal Memory<UsedElement> Ring;
+                
                 internal UsedRing(Region r, int size)
                 {
                     Flags = r.CreateField<ushort>(0);
@@ -190,7 +210,8 @@ namespace Pentagon
                 [StructLayout(LayoutKind.Sequential)]
                 internal struct UsedElement
                 {
-                    internal uint Id; // Index (in Descriptors) of the head of the chain
+                    internal ushort Id; // Index (in Descriptors) of the head of the chain
+                    private readonly ushort _; // Padding, some documentation notes Id as a LE 32bit field, but it's the same
                     internal uint Len; // Number of bytes written into the buffers in the descriptor chain
                 }
 
@@ -378,21 +399,35 @@ namespace Pentagon
             var h = _queueInfo.GetNewDescriptor(true);
             _queueInfo.Descriptors.Span[h].Phys = rPhys;
             _queueInfo.Descriptors.Span[h].Len = 16;
-            _queueInfo.Descriptors.Span[h].Flags = 1;
+            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext;
 
             h = _queueInfo.GetNext(h);
             _queueInfo.Descriptors.Span[h].Phys = diskPhys;
             _queueInfo.Descriptors.Span[h].Len = 512;
-            _queueInfo.Descriptors.Span[h].Flags = 1;
+            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext | QueueInfo.Descriptor.Flag.Write;
 
             h = _queueInfo.GetNext(h);
             _queueInfo.Descriptors.Span[h].Phys = statusPhys;
             _queueInfo.Descriptors.Span[h].Len = 1;
-            _queueInfo.Descriptors.Span[h].Flags = 2;
+            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.Write;
 
             _queueInfo.Notify();
 
             _queueInfo.Interrupt.Wait();
+
+            // 1.2 spec, 2.7.14 Receiving Used Buffers From The Device
+            while (_queueInfo.LastSeenUsed != _queueInfo.Used.DescIdx.Value)
+            {
+                // get
+                var head = _queueInfo.Used.Ring.Span[_queueInfo.LastSeenUsed % _queueInfo.Size].Id;
+
+                // process
+                Log.LogHex(head);
+
+                // free
+                // NOTE: this also increases LastSeenUsed
+                _queueInfo.FreeChain(head);
+            }
         }
     }
 }

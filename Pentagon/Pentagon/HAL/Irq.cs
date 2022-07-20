@@ -8,16 +8,16 @@ using System.Buffers;
 
 namespace Pentagon.HAL
 {
-    public class Irq
+    internal class Irq
     {
         public ulong IrqNum;
 
-        public Irq(Memory<uint> ctrl)
+        internal Irq(Memory<uint> ctrl)
         {
             IrqNum = InterruptInternal(ctrl);
         }
 
-        public void Wait()
+        internal void Wait()
         {
             WaitInternal(IrqNum);
         }
