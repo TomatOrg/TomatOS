@@ -5,8 +5,7 @@
 #include "acpi10.h"
 #include "mem/mem.h"
 
-static uint64_t rsdt_phys = 0;
-static acpi_descriptor_header_t* m_rsdt = NULL;
+struct acpi_descriptor_header* m_rsdt = NULL;
 
 err_t init_acpi() {
     err_t err = NO_ERROR;
@@ -17,17 +16,12 @@ err_t init_acpi() {
     CHECK(rsdp->signature == ACPI_1_0_RSDP_SIGNATURE);
 
     // get and validate the rsdt
-    rsdt_phys = rsdp->rsdt_address;
     m_rsdt = PHYS_TO_DIRECT(rsdp->rsdt_address);
     CHECK(m_rsdt->signature == ACPI_1_0_RSDT_SIGNATURE);
     CHECK(m_rsdt->revision >= ACPI_1_0_RSDT_REVISION);
 
 cleanup:
     return err;
-}
-
-uint64_t acpi_get_rsdt_phys() {
-    return rsdt_phys;
 }
 
 void* acpi_get_table(uint32_t signature) {

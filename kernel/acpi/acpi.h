@@ -3,6 +3,12 @@
 #include "util/except.h"
 
 /**
+ * Pointer to the RSDT, for use in C#
+ */
+extern struct acpi_descriptor_header* m_rsdt;
+
+
+/**
  * Fetches all the tables that we need from ACPI for the kernel itself
  *
  * @remark
@@ -18,9 +24,3 @@ err_t init_acpi();
  * @param signature [IN] The signature of the table
  */
 void* acpi_get_table(uint32_t signature);
-
-
-/**
- * Get the RSDT physical address, for use inside the dotnet part
- */
-uint64_t acpi_get_rsdt_phys();

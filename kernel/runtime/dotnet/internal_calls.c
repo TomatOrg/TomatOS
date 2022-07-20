@@ -101,7 +101,7 @@ static System_Exception Pentagon_HAL_Log_LogHex(uint64_t val) {
 }
 
 static method_result_t Pentagon_Acpi_GetRsdt() {
-    return (method_result_t){ .exception = NULL, .value = acpi_get_rsdt_phys() };
+    return (method_result_t){ .exception = NULL, .value = DIRECT_TO_PHYS(m_rsdt) };
 }
 
 static method_result_t Pentagon_HAL_Irq_InterruptInternal(System_Memory mem) {
