@@ -95,12 +95,17 @@ static jit_generic_extern_hook_t m_jit_extern_hook = {
     .gen = pentagon_gen,
 };
 
-static System_Exception Pentagon_HAL_Log_LogHex(uint64_t val) {
+static System_Exception Pentagon_DriverServices_Log_LogHex(uint64_t val) {
     printf("LogHex(0x%p)\n", val);
     return NULL;
 }
 
-static method_result_t Pentagon_Acpi_GetRsdt() {
+static System_Exception Pentagon_DriverServices_Log_LogString(System_String val) {
+    printf("LogString(\"%U\")\n", val);
+    return NULL;
+}
+
+static method_result_t Pentagon_DriverServices_Acpi_GetRsdt() {
     return (method_result_t){ .exception = NULL, .value = DIRECT_TO_PHYS(m_rsdt) };
 }
 
@@ -146,11 +151,15 @@ err_t init_kernel_internal_calls() {
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::AllocateMemory(uint64)", Pentagon_HAL_MemoryServices_AllocateMemory);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::FreeMemory(uint64)", Pentagon_HAL_MemoryServices_FreeMemory);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::MapMemory(uint64,uint64)", Pentagon_HAL_MemoryServices_MapMemory);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Log::LogHex(uint64)", Pentagon_HAL_Log_LogHex);
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetMappedPhysicalAddress([Corelib-v1]System.Memory`1<uint8>)", Pentagon_GetMappedPhysicalAddress);
+
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Log::LogHex(uint64)", Pentagon_DriverServices_Log_LogHex);
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Log::LogString(string)", Pentagon_DriverServices_Log_LogString);
+
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Irq::AllocateIrq(int32,[Pentagon-v1]Pentagon.DriverServices.Irq+IrqMaskType,uint64)", Pentagon_AllocateIrq);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Irq::IrqWait(int32)", Pentagon_IrqWait);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_Acpi_GetRsdt);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetMappedPhysicalAddress([Corelib-v1]System.Memory`1<uint8>)", Pentagon_GetMappedPhysicalAddress);
+
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
 
     MIR_module_t pentagon = MIR_new_module(ctx, "pentagon");
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetSpanPtr([Corelib-v1]System.Span`1<uint8>&)", Pentagon_HAL_MemoryServices_MapMemory);

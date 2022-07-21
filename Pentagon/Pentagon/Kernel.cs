@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Pentagon.Drivers.Virtio;
+using Pentagon.DriverServices;
 using Pentagon.DriverServices.Acpi;
 using Pentagon.DriverServices.Pci;
 

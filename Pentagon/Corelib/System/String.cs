@@ -18,13 +18,59 @@ public class String : IEnumerable<char>
     [IndexerName("Chars")]
     public char this[int index]
     {
-        
         get
         {
             if ((uint)index > (uint)Length) throw new IndexOutOfRangeException();
             return GetCharInternal(index);
         }
     }
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal extern ulong GetDataPtr();
+
+    private String(int length)
+    {
+        _length = length;
+    }
+    
+    public String(char[] chars)
+    {
+        _length = chars.Length;
+        
+        var span = new Span<char>(GetDataPtr(), Length);
+        chars.AsSpan().CopyTo(span);
+    }
+
+    public String(char[] chars, int startIndex, int length)
+    {
+        _length = length;
+
+        var span = new Span<char>(GetDataPtr(), Length);
+        chars.AsSpan(startIndex, length).CopyTo(span);
+    }
+
+    #region Concat
+
+    public static string Concat(object arg0)
+    {
+        return arg0?.ToString() ?? Empty;
+    }
+
+    public static string Concat(object arg0, object arg1)
+    {
+        return Concat(Concat(arg0), Concat(arg1));
+    }
+
+    public static string Concat(string arg0, string arg1)
+    {
+        var str = new string(arg0.Length + arg1.Length);
+        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        arg0.AsSpan().CopyTo(span);
+        arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
+        return str;
+    }
+    
+    #endregion
 
     [MethodImpl(MethodImplOptions.InternalCall | MethodImplOptions.AggressiveInlining)]
     private extern char GetCharInternal(int index);
