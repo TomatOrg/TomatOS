@@ -22,15 +22,6 @@ static irq_instance_t m_irqs[IRQ_ALLOC_END - IRQ_ALLOC_BASE] = { 0 };
 // Sync the subsystem
 static spinlock_t m_irq_spinlock = INIT_SPINLOCK();
 
-void irq_mask(void *ctx) { ((uint32_t*)ctx)[0] = 1; }
-void irq_unmask(void *ctx) { ((uint32_t*)ctx)[0] = 0; }
-
-irq_ops_t irq_default_ops = {
-    .mask = irq_mask,
-    .unmask = irq_unmask
-};
-
-
 err_t alloc_irq(int count, irq_ops_t ops, void* ctx, uint8_t* vector) {
     err_t err = NO_ERROR;
 

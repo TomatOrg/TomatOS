@@ -82,7 +82,6 @@ typedef struct irq_ops {
  * @param vector    [OUT]   The allocated base vector
  */
 err_t alloc_irq(int count, irq_ops_t ops, void* ctx, uint8_t* vector);
-extern struct irq_ops irq_default_ops;
 
 /**
  * Wait for the given IRQ, passing in the context for the specific one
