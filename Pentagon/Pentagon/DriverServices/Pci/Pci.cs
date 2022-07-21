@@ -50,7 +50,8 @@ public static class Pci
                 // check the device, if its vendor id is FFs we are going 
                 // to ignore it and continue forward
                 var pciDev = new PciDevice(bus, device, 0, GetConfigSpaceForDevice(ecam, startBus, bus, device, 0));
-                if (pciDev.ConfigHeader.VendorId == 0xFFFF) 
+                
+                if (!pciDev.IsValid) 
                     continue;
 
                 // the device is valid, add it for drivers to see

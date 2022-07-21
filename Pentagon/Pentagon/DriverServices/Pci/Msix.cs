@@ -40,11 +40,11 @@ public class Msix
         _configuredIrqs = 0;
         
         // clear the table, masking all the entries
-        for (var i = 0; i < _irqs.Length; )
+        for (var i = 0; i < _irqs.Length; i++)
         {
             ref var entry = ref _table.Span[i];
             entry.Addr = 0;
-            entry.Ctrl = 0;
+            entry.Data = 0;
             entry.Ctrl = 1;
         }
     }

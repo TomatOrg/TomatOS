@@ -15,6 +15,7 @@ public sealed class PciDevice
     public readonly byte Bus;
     public readonly byte Device;
     public readonly byte Function;
+    public readonly bool IsValid;
 
     // cached for ease of use 
     public readonly uint VendorId;
@@ -54,6 +55,12 @@ public sealed class PciDevice
         ConfigSpace = new Region(ecamSlice);
         
         _configHeader = ConfigSpace.CreateField<PciConfigHeader>(0);
+        
+        IsValid = _configHeader.Value.VendorId != 0xFFFF;
+        
+        if (!IsValid)
+            return;
+        
         CapabilitiesPointer = ConfigSpace.CreateField<byte>(0x34);
 
         VendorId = ConfigHeader.VendorId;
@@ -218,17 +225,19 @@ public sealed class PciDevice
             if (Current.IsEmpty)
             {
                 // initialize from the base
-                Current = _device.ConfigSpace.CreateMemory<Capability>(_device.CapabilitiesPointer.Value);
+                Current = _device.ConfigSpace.CreateMemory<Capability>(_device.CapabilitiesPointer.Value, 1);
             }
             else
             {
                 // check if there is a next
                 var cap = Current.Span[0];
+
+                // cap.Next of zero indicates the end of the capability list
                 if (cap.Next == 0)
                     return false;
-                
+
                 // yes, set it 
-                Current = _device.ConfigSpace.CreateMemory<Capability>(cap.Next);
+                Current = _device.ConfigSpace.CreateMemory<Capability>(cap.Next, 1);
             }
 
             return true;
