@@ -1,11 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Runtime.CompilerServices;
 
-namespace Pentagon.HAL
+namespace Pentagon.DriverServices
 {
     internal class Log
     {

@@ -2,7 +2,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Pentagon.HAL;
+namespace Pentagon.DriverServices;
 
 public class Region
 {
@@ -27,7 +27,14 @@ public class Region
         where T : unmanaged
     {
         var sliced = _memory.Slice(offset, count * Unsafe.SizeOf<T>());
-        return MemoryMarshal.CastMemory<byte, T>(sliced);
+        return MemoryMarshal.Cast<byte, T>(sliced);
+    }
+
+    public Memory<T> CreateMemory<T>(int offset)
+        where T : unmanaged
+    {
+        var sliced = _memory.Slice(offset);
+        return MemoryMarshal.Cast<byte, T>(sliced);
     }
 
     public Region CreateRegion(int offset, int size)

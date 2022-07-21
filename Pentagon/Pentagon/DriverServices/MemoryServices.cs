@@ -2,54 +2,75 @@ using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Pentagon.HAL;
+namespace Pentagon.DriverServices;
 
 public static class MemoryServices
 {
-    public static ulong GetPhys(IMemoryOwner<byte> b)
+
+    /// <summary>
+    /// The base of the kernel's direct map
+    /// </summary>
+    private const ulong DirectMapBase = 0xffff800000000000ul;
+    
+    /// <summary>
+    /// The size of a page
+    /// </summary>
+    public static readonly int PageSize = 4096;
+
+    /// <summary>
+    /// Get the physical address of memory allocated by AllocatePages, if it was returned
+    /// from other methods this may result in InvalidCastException
+    /// </summary>
+    /// <param name="range">The range of memory to get the physical address for</param>
+    /// <returns>The physical address</returns>
+    public static ulong GetPhysicalAddress(IMemoryOwner<byte> range)
     {
-        return ((AllocatedMemoryHolder)b)._ptr - 0xffff800000000000ul;
+        // note: we don't need to have this as checked because the object can only be
+        //       created by a safe function
+        return ((AllocatedMemoryHolder)range)._ptr - 0xffff800000000000ul;
     }
 
-    public static int PageSize => 4096;
-    
+    /// <summary>
+    /// Get the physical address of a mapped region, will return -1 if the
+    /// address is not actually a direct mapped address.
+    /// TODO: do I want to expose this? is there a reason to expose this?
+    /// </summary>
+    /// <param name="range">The mapped range</param>
+    /// <returns>The physical address</returns>
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern ulong GetMappedPhysicalAddress(Memory<byte> range);
+
     /// <summary>
     /// Allocate pages, which are aligned to the allocation size rounded to the next power of two,
     /// so it is at least page aligned
     /// </summary>
     public static IMemoryOwner<byte> AllocatePages(int pages)
     {
+        // make sure we have a good amount of pages
         if (pages < 0)
             throw new ArgumentOutOfRangeException(nameof(pages));
 
+        // create the owner and allocate it 
         var holder = new AllocatedMemoryHolder();
         holder._ptr = AllocateMemory((ulong)pages * (ulong)PageSize);
         if (holder._ptr == 0)
             throw new OutOfMemoryException();
-        
+
+        // update the memory reference in the holder
         UpdateMemory(ref holder._memory, holder, holder._ptr, pages * PageSize);
         
+        // return the holder
         return holder;
     }
     
     /// <summary>
-    /// Map physical pages, returning a Memory range which is usable
-    /// for other stuff
+    /// Map a range of memory, this can be unaligned both in pointer and size. It is completely
+    /// safe to call this multiple times on the same or overlapping ranges
     /// </summary>
-    internal static IMemoryOwner<byte> MapPages(ulong ptr, int pages)
-    {
-        if (pages < 0)
-            throw new ArgumentOutOfRangeException(nameof(pages));
-        if (ptr % (ulong)PageSize != 0)
-            throw new ArgumentException(null, nameof(ptr));
-
-        var holder = new MappedMemoryHolder();
-        var mapped = MapMemory(ptr, (ulong)pages);
-        UpdateMemory(ref holder._memory, holder, mapped, pages * PageSize);
-        return holder;
-    }
-
-    internal static IMemoryOwner<byte> Map(ulong ptr, int size)
+    /// <param name="ptr">The physical address</param>
+    /// <param name="size">The amount of memory to map</param>
+    /// <returns>The Memory object representing the mapped memory</returns>
+    internal static Memory<byte> Map(ulong ptr, int size)
     {
         if (size < 0)
             throw new ArgumentOutOfRangeException(nameof(size));
@@ -63,10 +84,10 @@ public static class MemoryServices
         
         // map, we are going to map the whole page range but only give a reference
         // to the range that we want from it 
-        var holder = new MappedMemoryHolder();
+        var memory = Memory<byte>.Empty;
         var mapped = MapMemory(rangeStart, pageCount);
-        UpdateMemory(ref holder._memory, holder, mapped + offset, size);
-        return holder;
+        UpdateMemory(ref memory, null, mapped + offset, size);
+        return memory;
     }
 
     /// <summary>
@@ -97,24 +118,8 @@ public static class MemoryServices
         }
         
     }
-    
-    /// <summary>
-    /// Holds a reference to memory which is memory mapped
-    /// </summary>
-    private sealed class MappedMemoryHolder : IMemoryOwner<byte>
-    {
 
-        internal Memory<byte> _memory = Memory<byte>.Empty;
-
-        public Memory<byte> Memory => _memory;
-        
-        public void Dispose()
-        {
-        }
-        
-    }
-
-    #region Native
+    #region Native Functions
 
     /// <summary>
     /// Allows us to update the memory structure directly from the kernel, this is not normally possible
