@@ -27,12 +27,17 @@ public class Region
         where T : unmanaged
     {
         var sliced = _memory.Slice(offset, count * Unsafe.SizeOf<T>());
-        return MemoryMarshal.Cast<byte, T>(sliced);
+        return MemoryMarshal.CastMemory<byte, T>(sliced);
     }
 
     public Region CreateRegion(int offset, int size)
     {
         return new Region(_memory.Slice(offset, size));
+    }
+
+    public Region CreateRegion(int offset)
+    {
+        return new Region(_memory.Slice(offset));
     }
 
     public Span<T> AsSpan<T>(int offset, int count)

@@ -5,7 +5,7 @@
 #include "acpi10.h"
 #include "mem/mem.h"
 
-static acpi_descriptor_header_t* m_rsdt = NULL;
+struct acpi_descriptor_header* m_rsdt = NULL;
 
 err_t init_acpi() {
     err_t err = NO_ERROR;

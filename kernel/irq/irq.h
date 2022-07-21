@@ -65,7 +65,7 @@ typedef enum irq {
     IRQ_SPURIOUS    = 0xFF,
 } irq_t;
 
-typedef struct irq_handler {
+typedef struct irq_ops {
     // Tells the irq subsystem how to mask the IRQ
     void (*mask)(void* ctx);
 
@@ -81,7 +81,8 @@ typedef struct irq_handler {
  * @param ctx       [IN]    The context to pass to the operations
  * @param vector    [OUT]   The allocated base vector
  */
-err_t alloc_irq(int count, irq_ops_t* ops, void* ctx, uint8_t* vector);
+err_t alloc_irq(int count, irq_ops_t ops, void* ctx, uint8_t* vector);
+extern struct irq_ops irq_default_ops;
 
 /**
  * Wait for the given IRQ, passing in the context for the specific one

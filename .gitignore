@@ -4,3 +4,5 @@ bin
 obj
 out
 Pentagon/.vs/
+.cache
+compile_commands.json

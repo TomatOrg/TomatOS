@@ -13,5 +13,10 @@ public static class KernelUtils
     {
         return (value + (alignment - 1)) & ~(alignment - 1);
     }
+    
+    public static ulong DivideUp(ulong value, ulong alignment)
+    {
+       return (value + (alignment - 1)) / alignment;
+    }
 
 }
