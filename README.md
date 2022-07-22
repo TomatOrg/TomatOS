@@ -24,12 +24,6 @@ available for apps to use.
 ### Dotnet Runtime
 We are using our custom dotnet runtime called [TinyDotNet](https://github.com/Itay2805/tinydotnet), for progress on it see its README
 
-### Main missing features
-- Bit-shifting
-- Generics
-- Delegates
-- Overflow math
-
 ## OS Design
 
 - Everything runs in a single cpu address space
