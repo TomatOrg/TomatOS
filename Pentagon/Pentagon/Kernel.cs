@@ -1,29 +1,23 @@
-using System;
-using System.Collections.Generic;
-using Pentagon.HAL;
+using System.Threading;
+using Pentagon.Drivers.Virtio;
+using Pentagon.DriverServices;
+using Pentagon.DriverServices.Acpi;
+using Pentagon.DriverServices.Pci;
 
 namespace Pentagon;
 
 public class Kernel
 {
-
-    interface IA
-    {
-        int IA();
-    }
-
-    public class A : IA
-    {
-        public int IA()
-        {
-            return 123;
-        }
-    }
-    
     public static int Main()
     {
-        using var memory = MemoryServices.Map(10, 10);
-        return memory.Memory.Length;
+        // setup the basic subsystems
+        var acpi = new Acpi();
+        Pci.Scan(acpi);
+        
+        // register built-in drivers
+        VirtioDevice.Register();
+        
+        return 0;
     }
-    
+
 }

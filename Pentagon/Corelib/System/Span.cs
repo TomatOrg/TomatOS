@@ -86,7 +86,7 @@ public readonly ref struct Span<T>
 
     public bool TryCopyTo(Span<T> destination)
     {
-        if (destination.Length <= Length)
+        if (destination.Length < Length)
         {
             return false;
         }

@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace Pentagon.HAL;
+namespace Pentagon.DriverServices;
 
 public class Field<T> 
     where T : unmanaged

@@ -41,10 +41,62 @@ public static class Monitor
         }
     }
 
+    public static void Pulse(object obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException(nameof(obj));
+        
+        switch (PulseInternal(obj))
+        {
+            case 0: return;
+            case 3: throw new OutOfMemoryException();
+            case 6: throw new SynchronizationLockException();
+            default: throw new SystemException();
+        }
+    }
+
+    public static void PulseAll(object obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException(nameof(obj));
+        
+        switch (PulseAllInternal(obj))
+        {
+            case 0: return;
+            case 3: throw new OutOfMemoryException();
+            case 6: throw new SynchronizationLockException();
+            default: throw new SystemException();
+        }
+    }
+    
+    
+    public static bool Wait(object obj)
+    {
+        if (obj == null)
+            throw new ArgumentNullException(nameof(obj));
+        
+        switch (WaitInternal(obj))
+        {
+            case 0: return true;
+            case 3: throw new OutOfMemoryException();
+            case 6: throw new SynchronizationLockException();
+            default: throw new SystemException();
+        }
+    }
+
     [MethodImpl(MethodImplOptions.InternalCall)]
     private static extern int EnterInternal(object obj, ref bool lockTaken);
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     private static extern int ExitInternal(object obj);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    private static extern int PulseInternal(object obj);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    private static extern int PulseAllInternal(object obj);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    private static extern int WaitInternal(object obj);
 
 }

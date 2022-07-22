@@ -1,7 +1,11 @@
+using System.Runtime.CompilerServices;
+
 namespace System;
 
 public static class MemoryExtensions
 {
+
+    #region AsMemory
 
     public static Memory<T> AsMemory<T>(this T[] array)
     {
@@ -21,6 +25,16 @@ public static class MemoryExtensions
         return new Memory<T>(array, start, length);
     }
 
+    #endregion
+
+    #region AsSpan
+
+    // TODO: readonly span...
+    internal static Span<char> AsSpan(this string text)
+    {
+        return text == null ? Span<char>.Empty : new Span<char>(text.GetDataPtr(), text.Length);
+    }
+
     public static Span<T> AsSpan<T>(this T[] array)
     {
         return array;
@@ -37,6 +51,8 @@ public static class MemoryExtensions
     public static Span<T> AsSpan<T>(this T[] array, int start, int length)
     {
         return new Span<T>(array, start, length);
-    }
+    }    
+
+    #endregion
     
 }

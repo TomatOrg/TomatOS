@@ -37,7 +37,6 @@ public static class MemoryMarshal
     }
 
     // TODO: readonly
-    
     public static T Read<T>(Span<byte> source)
         where T : unmanaged
     {

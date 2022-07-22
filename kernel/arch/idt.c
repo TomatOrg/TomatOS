@@ -367,7 +367,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
         }
 
         debug_format_symbol(ret_addr, buffer, sizeof(buffer));
-        TRACE("\t> %s", buffer);
+        TRACE("\t> %s (0x%p)", buffer, ret_addr);
 
         if (old_bp == 0) {
             break;

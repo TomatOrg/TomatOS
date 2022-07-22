@@ -39,7 +39,9 @@ sudo losetup -d `cat out/build/loopback_dev`
 rm -rf out/build/loopback_dev out/build/test_image
 
 qemu-system-x86_64 \
-  -hda out/build/test.hdd \
+  -drive if=virtio,file=out/build/test.hdd \
+  -display none \
+  -trace "virtio_notify_irqfd" \
   -monitor telnet:localhost:1235,server,nowait \
   -serial stdio \
   -machine q35 \
