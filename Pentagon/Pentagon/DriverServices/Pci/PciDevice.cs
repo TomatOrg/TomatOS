@@ -18,8 +18,8 @@ public sealed class PciDevice
     public readonly bool IsValid;
 
     // cached for ease of use 
-    public readonly uint VendorId;
-    public readonly uint DeviceId;
+    public readonly ushort VendorId;
+    public readonly ushort DeviceId;
     
     /// <summary>
     /// The ECAM region of this device

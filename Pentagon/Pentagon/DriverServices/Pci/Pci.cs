@@ -47,12 +47,14 @@ public static class Pci
             // Iterate the devices on this bus 
             for (var device = (byte)0; device < 32; device++)
             {
-                // check the device, if its vendor id is FFs we are going 
-                // to ignore it and continue forward
-                var pciDev = new PciDevice(bus, device, 0, GetConfigSpaceForDevice(ecam, startBus, bus, device, 0));
-                
-                if (!pciDev.IsValid) 
+                // get the slice and check if this is a valid pci device
+                var ecamSlice = GetConfigSpaceForDevice(ecam, startBus, bus, device, 0);
+                var vendorId = MemoryMarshal.Read<ushort>(ecamSlice.Span);
+                if (vendorId == 0xFFFF)
                     continue;
+
+                // the device is valid, create it 
+                var pciDev = new PciDevice(bus, device, 0, ecamSlice);
 
                 // the device is valid, add it for drivers to see
                 ResourceManager<PciDevice>.Add(pciDev);
@@ -60,14 +62,18 @@ public static class Pci
                 // Skip functions if there are no functions for the device
                 if ((pciDev.ConfigHeader.HeaderType & 0x80) == 0) 
                     continue;
-                
+
                 // iterate the functions on this device
                 for (byte func = 1; func < 8; func++)
                 {
                     // Same as the main device
-                    pciDev = new PciDevice(bus, device, func, GetConfigSpaceForDevice(ecam, startBus, bus, device, func));
-                    if (pciDev.ConfigHeader.VendorId == 0xFFFF) 
+                    ecamSlice = GetConfigSpaceForDevice(ecam, startBus, bus, device, func);
+                    vendorId = MemoryMarshal.Read<ushort>(ecamSlice.Span);
+                    if (vendorId == 0xFFFF)
                         continue;
+
+                    // valid, create it 
+                    pciDev = new PciDevice(bus, device, func, ecamSlice);
                     
                     // and register...
                     ResourceManager<PciDevice>.Add(pciDev);

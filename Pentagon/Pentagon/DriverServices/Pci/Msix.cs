@@ -43,9 +43,9 @@ public class Msix
         for (var i = 0; i < _irqs.Length; i++)
         {
             ref var entry = ref _table.Span[i];
+            entry.Ctrl = 1;
             entry.Addr = 0;
             entry.Data = 0;
-            entry.Ctrl = 1;
         }
     }
     

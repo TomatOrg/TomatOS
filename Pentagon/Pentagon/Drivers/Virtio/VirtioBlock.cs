@@ -13,9 +13,9 @@ public class VirtioBlock
 
         // TODO: create the device
         
-        Log.LogHex(0xCAFE);
+        Log.LogString("FOUND VIRTIO BLOCK DEVICE");
         
-        return false;
+        return true;
     }
     
 }

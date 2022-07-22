@@ -48,6 +48,7 @@ public static class ResourceManager<T>
             // first dispatch on all existing resources
             for (var i = 0; i < _resources.Count; i++)
             {
+                Log.LogString("CHECKING");
                 if (!callback(_resources[i])) 
                     continue;
                 
