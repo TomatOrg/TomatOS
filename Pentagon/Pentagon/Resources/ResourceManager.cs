@@ -18,7 +18,8 @@ public static class ResourceManager<T>
     /// <param name="resource">The resource to add</param>
     public static void Add(T resource)
     {
-        lock (_lock)
+        // FIXME: why on earth is this lock broken?
+        //lock (_lock)
         {
             // check if someone wants this resource before we add it to the resource list
             foreach (var cb in _resourceCallbacks)
@@ -48,7 +49,6 @@ public static class ResourceManager<T>
             // first dispatch on all existing resources
             for (var i = 0; i < _resources.Count; i++)
             {
-                Log.LogString("CHECKING");
                 if (!callback(_resources[i])) 
                     continue;
                 

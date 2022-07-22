@@ -43,7 +43,6 @@ public static class Pci
         // TODO: convert to non-brute-force
         for (var bus = startBus; bus <= endBus; bus++)
         {
-            
             // Iterate the devices on this bus 
             for (var device = (byte)0; device < 32; device++)
             {
@@ -57,6 +56,7 @@ public static class Pci
                 var pciDev = new PciDevice(bus, device, 0, ecamSlice);
 
                 // the device is valid, add it for drivers to see
+                Log.LogHex(0xCC00000000 + pciDev.Device * 65536ul + pciDev.Function);
                 ResourceManager<PciDevice>.Add(pciDev);
 
                 // Skip functions if there are no functions for the device
@@ -74,8 +74,9 @@ public static class Pci
 
                     // valid, create it 
                     pciDev = new PciDevice(bus, device, func, ecamSlice);
-                    
+
                     // and register...
+                    Log.LogHex(0xCC00000000 + pciDev.Device * 65536ul + pciDev.Function);
                     ResourceManager<PciDevice>.Add(pciDev);
                 }
             }
