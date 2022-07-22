@@ -56,7 +56,6 @@ public static class Pci
                 var pciDev = new PciDevice(bus, device, 0, ecamSlice);
 
                 // the device is valid, add it for drivers to see
-                Log.LogHex(0xCC00000000 + pciDev.Device * 65536ul + pciDev.Function);
                 ResourceManager<PciDevice>.Add(pciDev);
 
                 // Skip functions if there are no functions for the device
@@ -76,7 +75,6 @@ public static class Pci
                     pciDev = new PciDevice(bus, device, func, ecamSlice);
 
                     // and register...
-                    Log.LogHex(0xCC00000000 + pciDev.Device * 65536ul + pciDev.Function);
                     ResourceManager<PciDevice>.Add(pciDev);
                 }
             }
@@ -89,7 +87,7 @@ public static class Pci
 /// Fields common to all PCI capabilities
 /// </summary>
 [StructLayout(LayoutKind.Sequential)]
-public struct Capability
+public struct PciCapability
 {
     public byte Id;
     public byte Next;
@@ -100,7 +98,7 @@ public struct Capability
     [StructLayout(LayoutKind.Sequential)]
     public struct Msix
     {
-        public Capability Header;
+        public PciCapability Header;
         public MsgCtrl MessageControl;
         public uint Table;
         public uint Pending;

@@ -114,11 +114,11 @@ static method_result_t Pentagon_GetMappedPhysicalAddress(System_Memory memory) {
 }
 
 void msix_irq_mask(void *ctx) {
-    *(uint32_t*)ctx = 1;
+    *(uint32_t*)(PHYS_TO_DIRECT(ctx)) = 1;
 }
 
 void msix_irq_unmask(void *ctx) {
-    *(uint32_t*)ctx = 0;
+    *(uint32_t*)(PHYS_TO_DIRECT(ctx)) = 0;
 }
 
 irq_ops_t m_msix_irq_ops = {

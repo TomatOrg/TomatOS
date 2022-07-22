@@ -10,7 +10,7 @@ public class Msix
 {
 
     // The msix capability 
-    private Field<Capability.Msix> _capability;
+    private Memory<PciCapability.Msix> _capability;
     private Memory<MsixEntry> _table;
 
     // the IRQs allocated for this structure
@@ -22,23 +22,22 @@ public class Msix
     /// </summary>
     public int Count => _configuredIrqs;
 
-    internal Msix(PciDevice device, Memory<byte> capability)
+    internal Msix(PciDevice device, Memory<PciCapability> capability)
     {
         // get the cap
-        var region = new Region(capability);
-        _capability = region.CreateField<Capability.Msix>(0);
-        ref var cap = ref _capability.Value;
-        
+        _capability = MemoryMarshal.Cast<PciCapability, PciCapability.Msix>(capability);
+        ref var cap = ref _capability.Span[0];
+
         // get the table
         _table = MemoryMarshal.Cast<byte, MsixEntry>(device.MapBar((int)(cap.Table & 0b111)));
-        
+
         // make sure its disabled at the start
-        cap.MessageControl &= ~Capability.Msix.MsgCtrl.Enable;
+        cap.MessageControl &= ~PciCapability.Msix.MsgCtrl.Enable;
 
         // create the irqs table
-        _irqs = new Irq[(int)(cap.MessageControl & Capability.Msix.MsgCtrl.TableSizeMask) + 1];
+        _irqs = new Irq[(int)(cap.MessageControl & PciCapability.Msix.MsgCtrl.TableSizeMask) + 1];
         _configuredIrqs = 0;
-        
+
         // clear the table, masking all the entries
         for (var i = 0; i < _irqs.Length; i++)
         {
@@ -48,7 +47,7 @@ public class Msix
             entry.Data = 0;
         }
     }
-    
+
     /// <summary>
     /// Get the wanted irq 
     /// </summary>
@@ -77,14 +76,15 @@ public class Msix
             throw new InvalidOperationException();
 
         // stop MSI-X while we are working
-        _capability.Value.MessageControl &= ~Capability.Msix.MsgCtrl.Enable;
-        
+        _capability.Span[0].MessageControl &= ~PciCapability.Msix.MsgCtrl.Enable;
+
         // now configure all the newly configured irqs 
         var tableBase = MemoryServices.GetMappedPhysicalAddress(MemoryMarshal.Cast<MsixEntry, byte>(_table));
+
         for (var i = _configuredIrqs; i < count; i++)
         {
             // the vector control is the last dword of a 4 dword structure
-            var irq = Irq.AllocateIrq(1, Irq.IrqMaskType.Msix, tableBase + (ulong)i * 4 + 3);
+            var irq = Irq.AllocateIrq(1, Irq.IrqMaskType.Msix, tableBase + (ulong)i * 16 + 12);
             _irqs[i] = new Irq(irq);
             
             // configure it, we are going to set it as lowest priority cpu, this
@@ -97,9 +97,9 @@ public class Msix
 
         // set the new configured count 
         _configuredIrqs = count;
-        
+
         // enable MSI-X
-        _capability.Value.MessageControl |= Capability.Msix.MsgCtrl.Enable;
+        _capability.Span[0].MessageControl |= PciCapability.Msix.MsgCtrl.Enable;
     }
     
     [StructLayout(LayoutKind.Sequential)]

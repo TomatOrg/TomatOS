@@ -91,7 +91,7 @@ public sealed class PciDevice
                 // MSI-X
                 case 0x11:
                 {
-                    Msix = new Msix(this, MemoryMarshal.Cast<Capability, byte>(cap));
+                    Msix = new Msix(this, cap);
                 } break;
             }
         }
@@ -109,8 +109,10 @@ public sealed class PciDevice
         var barLow = bar[0];
         
         // make sure it is an io bar
-        if ((barLow & 1) == 1)
-            throw new NotImplementedException("IO Bars are currently not supported");
+        if ((barLow & 1) == 1) {
+            //throw new NotImplementedException("IO Bars are currently not supported");
+            return null;
+        }
 
         // TODO: map prefetchable nicely
         
@@ -204,10 +206,10 @@ public sealed class PciDevice
     /// <summary>
     /// Allows to iterate capabilities nicely
     /// </summary>
-    public struct CapabilityEnumerator : IEnumerator<Memory<Capability>>
+    public struct CapabilityEnumerator : IEnumerator<Memory<PciCapability>>
     {
         object IEnumerator.Current => Current;
-        public Memory<Capability> Current { get; private set; }
+        public Memory<PciCapability> Current { get; private set; }
         
         /// <summary>
         /// We keep this so we can access the device
@@ -217,7 +219,7 @@ public sealed class PciDevice
         internal CapabilityEnumerator(PciDevice device)
         {
             _device = device;
-            Current = Memory<Capability>.Empty;
+            Current = Memory<PciCapability>.Empty;
         }
         
         public bool MoveNext()
@@ -225,7 +227,7 @@ public sealed class PciDevice
             if (Current.IsEmpty)
             {
                 // initialize from the base
-                Current = _device.ConfigSpace.CreateMemory<Capability>(_device.CapabilitiesPointer.Value, 1);
+                Current = _device.ConfigSpace.CreateMemory<PciCapability>(_device.CapabilitiesPointer.Value, 1);
             }
             else
             {
@@ -237,7 +239,7 @@ public sealed class PciDevice
                     return false;
 
                 // yes, set it 
-                Current = _device.ConfigSpace.CreateMemory<Capability>(cap.Next, 1);
+                Current = _device.ConfigSpace.CreateMemory<PciCapability>(cap.Next, 1);
             }
 
             return true;
@@ -245,7 +247,7 @@ public sealed class PciDevice
 
         public void Reset()
         {
-            Current = Memory<Capability>.Empty;
+            Current = Memory<PciCapability>.Empty;
         }
 
         public void Dispose()
