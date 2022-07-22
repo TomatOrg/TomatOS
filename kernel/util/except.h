@@ -49,11 +49,13 @@ typedef enum err {
 // Misc utilities
 //----------------------------------------------------------------------------------------------------------------------
 
-#define WARN_ON(check, ...)     \
-    do {                        \
-        if (check) {            \
-            WARN(__VA_ARGS__);  \
-        }                       \
+#define PANIC_ON(err) \
+    do { \
+        err_t ___err = err; \
+        if (IS_ERROR(___err)) { \
+           ERROR("Panic with error `%R` failed at %s (%s:%d)", ___err, __FUNCTION__, __FILE__, __LINE__); \
+           while (1) __asm__("cli; hlt"); \
+        } \
     } while(0)
 
 #define ASSERT(check) \
