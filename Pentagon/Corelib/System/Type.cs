@@ -33,6 +33,7 @@ public abstract class Type : MemberInfo
 
     private unsafe int* _managedPointersOffsets;
     private bool _isSetup;
+    private bool _isSetupFinished;
     private bool _isFilled;
     private bool _isValueType;
     private MethodInfo _finalize;
