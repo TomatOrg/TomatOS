@@ -3,6 +3,7 @@
 #include "early.h"
 #include "mem.h"
 #include "vmm.h"
+#include "thread/cpu_local.h"
 
 #include <sync/irq_spinlock.h>
 #include <util/string.h>
@@ -41,16 +42,6 @@ static struct buddy* m_buddy = NULL;
  * The spinlock to protect ourselves
  */
 static irq_spinlock_t m_palloc_lock = INIT_IRQ_SPINLOCK();
-
-
-/**
- * Calculate the offset for the given buddy tree position
- */
-static size_t offset_for_position(struct buddy_tree_pos pos) {
-    size_t block_size = size_for_depth(m_buddy, buddy_tree_depth(pos));
-    size_t addr = block_size * buddy_tree_index(pos);
-    return addr;
-}
 
 /**
  * Mark all unusable entries
@@ -164,14 +155,88 @@ cleanup:
     return err;
 }
 
-void* palloc(size_t size) {
-    // return valid pointer for size == 0
-    if (size == 0) {
-        size = 1;
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// IRQ allocation
+//
+// This is meant for cases where a palloc caused a PF for demand paging (can happen with stack growing)
+// which means that we need to properly be able to allocate memory for such a case without trying to take
+// the allocator lock again
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * The lock which taken the cpu
+ */
+static int m_lock_cpu = -1;
+
+/**
+ * The reserved pages
+ */
+static void* m_reserved_pages[16];
+
+/**
+ * The amount of reserved pages
+ */
+static size_t m_reserved_count = 0;
+
+/**
+ * Used for allocation of memory inside of IRQ context while the palloc lock is already taken
+ * only one cpu can be the owner of the lock so only one cpu can use this reserved memory pool.
+ * All cpus can fill the pool tho as long as the hold the lock itself.
+ *
+ * Only up to 4k allocation size is supported by this method.
+ */
+static void* irq_alloc(size_t size) {
+    if (m_lock_cpu == get_cpu_id()) {
+        ASSERT(size <= PAGE_SIZE);
+        ASSERT(m_reserved_count > 0);
+        return m_reserved_pages[--m_reserved_count];
     }
 
+    return NULL;
+}
+
+/**
+ * Fill the reserved pool with pages so IRQ context can use them
+ */
+static void fill_atomic_alloc() {
+    while (m_reserved_count < ARRAY_LEN(m_reserved_pages)) {
+        void* page = buddy_malloc(m_buddy, PAGE_SIZE);
+        if (page == NULL) {
+            WARN("phys: out of memory to fill the reserved pages pool");
+            return;
+        }
+        memset(page, 0, PAGE_SIZE);
+        m_reserved_pages[m_reserved_count++] = page;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Implementation
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void* palloc(size_t size) {
+    // first try to do an irq allocation, this will only
+    // work if the current CPU already locked the palloc
+    // lock and then we got into this path again (see more
+    // in the function desc)
+    void* ptr = irq_alloc(size);
+    if (ptr != NULL) {
+        return ptr;
+    }
+
+    // take the lock of the pmm, and set that we took the lock
     irq_spinlock_lock(&m_palloc_lock);
-    void* ptr = buddy_malloc(m_buddy, size);
+    m_lock_cpu = get_cpu_id();
+
+    // allocate from the buddy
+    ptr = buddy_malloc(m_buddy, size);
+
+    // try to fill with pages from the buddy
+    fill_atomic_alloc();
+
+    // unlock it
+    m_lock_cpu = -1;
     irq_spinlock_unlock(&m_palloc_lock);
 
     // memset to zero
@@ -182,6 +247,16 @@ void* palloc(size_t size) {
     return ptr;
 }
 
+void* early_palloc(size_t size) {
+    irq_spinlock_lock(&m_palloc_lock);
+    void* ptr = buddy_malloc(m_buddy, size);
+    irq_spinlock_unlock(&m_palloc_lock);
+    if (ptr != NULL) {
+        memset(ptr, 0, size);
+    }
+    return ptr;
+}
+
 void pfree(void* base) {
     // handle base == NULL
     if (base == NULL) {
@@ -189,6 +264,10 @@ void pfree(void* base) {
     }
 
     irq_spinlock_lock(&m_palloc_lock);
+    m_lock_cpu = get_cpu_id();
+
     buddy_free(m_buddy, base);
+
+    m_lock_cpu = -1;
     irq_spinlock_unlock(&m_palloc_lock);
 }

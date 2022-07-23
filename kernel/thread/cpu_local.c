@@ -6,6 +6,7 @@
 
 #include "arch/intrin.h"
 #include "arch/idt.h"
+#include "mem/phys.h"
 
 extern char __cpu_local_size[];
 
@@ -22,7 +23,7 @@ err_t init_cpu_locals() {
     err_t err = NO_ERROR;
 
     // allocate and set the gs base
-    void* ptr = malloc((size_t) __cpu_local_size);
+    void* ptr = early_palloc((size_t) __cpu_local_size);
     CHECK(ptr != NULL);
     __writemsr(MSR_IA32_GS_BASE, (uintptr_t)ptr);
 
@@ -31,7 +32,7 @@ err_t init_cpu_locals() {
 
     // setup the list of per cpu bases
     if (m_per_cpu_base_list == NULL) {
-        m_per_cpu_base_list = malloc(sizeof(void*) * get_cpu_count());
+        m_per_cpu_base_list = early_palloc(sizeof(void*) * get_cpu_count());
     }
 
     // set the current cpu pointer in the array

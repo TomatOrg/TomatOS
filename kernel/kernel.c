@@ -129,9 +129,9 @@ static void per_cpu_start(struct limine_smp_info* info) {
     init_gdt();
     init_idt();
     init_vmm_per_cpu();
+    CHECK_AND_RETHROW(init_cpu_locals());
     CHECK_AND_RETHROW(init_tss());
     CHECK_AND_RETHROW(init_apic());
-    CHECK_AND_RETHROW(init_cpu_locals());
 
     // make sure this is valid
     CHECK(info->lapic_id == get_apic_id());
@@ -271,6 +271,7 @@ void _start(void) {
     // the apic (since it needs to be mapped before the switch)
     CHECK_AND_RETHROW(init_vmm());
     CHECK_AND_RETHROW(init_palloc());
+    CHECK_AND_RETHROW(init_cpu_locals());
     CHECK_AND_RETHROW(init_tss());
     vmm_switch_allocator();
     CHECK_AND_RETHROW(init_malloc());
@@ -292,7 +293,6 @@ void _start(void) {
     m_cpu_count = g_limine_smp.response->cpu_count;
 
     // initialize per cpu variables
-    CHECK_AND_RETHROW(init_cpu_locals());
     CHECK_AND_RETHROW(init_scheduler());
     CHECK_AND_RETHROW(init_tls());
 

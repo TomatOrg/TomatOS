@@ -135,17 +135,27 @@ err_t init_tss() {
     tss64_t* tss = palloc(sizeof(tss64_t));
     CHECK_ERROR(tss != NULL, ERROR_OUT_OF_MEMORY);
 
+    uintptr_t ist1 = (uintptr_t)palloc(SIZE_8KB);
+    CHECK_ERROR(ist1 != 0, ERROR_OUT_OF_MEMORY);
+
+    uintptr_t ist2 = (uintptr_t)palloc(SIZE_8KB);
+    CHECK_ERROR(ist2 != 0, ERROR_OUT_OF_MEMORY);
+
+    uintptr_t ist3 = (uintptr_t)palloc(SIZE_8KB);
+    CHECK_ERROR(ist3 != 0, ERROR_OUT_OF_MEMORY);
+
+    uintptr_t ist4 = (uintptr_t)palloc(SIZE_8KB);
+    CHECK_ERROR(ist4 != 0, ERROR_OUT_OF_MEMORY);
+
     // set the ists
-    tss->ist1 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
-    tss->ist2 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
-    tss->ist3 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
-    tss->ist4 = (uintptr_t)(palloc(SIZE_8KB) + SIZE_8KB - 16);
-    CHECK_ERROR(tss->ist1 != 0, ERROR_OUT_OF_MEMORY);
-    CHECK_ERROR(tss->ist2 != 0, ERROR_OUT_OF_MEMORY);
-    CHECK_ERROR(tss->ist3 != 0, ERROR_OUT_OF_MEMORY);
-    CHECK_ERROR(tss->ist4 != 0, ERROR_OUT_OF_MEMORY);
+    tss->ist1 = ist1 + SIZE_8KB - 16;
+    tss->ist2 = ist2 + SIZE_8KB - 16;
+    tss->ist3 = ist3 + SIZE_8KB - 16;
+    tss->ist4 = ist4 + SIZE_8KB - 16;
 
     spinlock_lock(&m_tss_lock);
+
+    // setup the TSS gdt entry
     m_gdt.entries->tss.length = sizeof(tss64_t);
     m_gdt.entries->tss.low = (uint16_t)(uintptr_t)tss;
     m_gdt.entries->tss.mid = (uint8_t)((uintptr_t)tss >> 16u);
@@ -153,7 +163,10 @@ err_t init_tss() {
     m_gdt.entries->tss.upper32 = (uint32_t)((uintptr_t)tss >> 32u);
     m_gdt.entries->tss.flags1 = 0b10001001;
     m_gdt.entries->tss.flags2 = 0b00000000;
+
+    // load the TSS into the cache
     asm volatile ("ltr %%ax" : : "a"(GDT_TSS) : "memory");
+
     spinlock_unlock(&m_tss_lock);
 
 cleanup:

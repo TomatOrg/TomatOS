@@ -220,6 +220,10 @@ void debug_load_symbols() {
 }
 
 symbol_t* debug_lookup_symbol(uintptr_t addr) {
+    if (arrlen(m_symbols) == 0) {
+        return NULL;
+    }
+
     int l = 0;
     int r = arrlen(m_symbols);
     while (l <= r) {

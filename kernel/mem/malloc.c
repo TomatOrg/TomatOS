@@ -30,9 +30,11 @@ cleanup:
 }
 
 void check_malloc() {
-    irq_spinlock_lock(&m_tlsf_lock);
-    tlsf_check(m_tlsf);
-    irq_spinlock_unlock(&m_tlsf_lock);
+    if (m_tlsf != NULL) {
+        irq_spinlock_lock(&m_tlsf_lock);
+        tlsf_check(m_tlsf);
+        irq_spinlock_unlock(&m_tlsf_lock);
+    }
 }
 
 void* malloc(size_t size) {
