@@ -1,22 +1,21 @@
+using System;
 using System.Threading;
-using Pentagon.Drivers.Virtio;
-using Pentagon.DriverServices;
-using Pentagon.DriverServices.Acpi;
-using Pentagon.DriverServices.Pci;
-
-namespace Pentagon;
-
+public class A { }
 public class Kernel
 {
+    static SemaphoreSlim sema;
+    public static void Test1()
+    {
+        sema.Release();
+    }
+
     public static int Main()
     {
-        // setup the basic subsystems
-        var acpi = new Acpi();
-        Pci.Scan(acpi);
-        
-        // register built-in drivers
-        VirtioDevice.Register();
-        
+        sema = new SemaphoreSlim(0);
+        var t1 = new Thread(Test1);
+        t1.Start();
+        sema.Wait();
+
         return 0;
     }
 

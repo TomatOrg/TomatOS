@@ -48,7 +48,7 @@ qemu-system-x86_64 \
   --enable-kvm \
   -cpu Nehalem,+invtsc,+tsc-deadline \
   -smp 4 \
-  -m 4G \
+  -m 2G \
   -s \
   -no-reboot \
   -no-shutdown

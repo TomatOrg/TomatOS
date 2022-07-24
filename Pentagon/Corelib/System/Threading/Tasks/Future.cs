@@ -54,10 +54,6 @@ namespace System.Threading.Tasks
             return task.ExecuteEntry();
         }
     }
-    public class CancellationToken
-    {
-        public bool CanBeCanceled { get => false; }
-    }
 
     // Task<TResult> is here and not in Task.cs. WHYYY?????
     public class Task<TResult> : Task
@@ -89,64 +85,70 @@ namespace System.Threading.Tasks
             }
         }
 
-        public Task(Func<TResult> function)
-            : this(function, null, default,
+        public Task(Delegate function)
+            : this(function, null, null, default,
                 TaskCreationOptions.None, InternalTaskOptions.None, null)
         {
         }
 
-        public Task(Func<TResult> function, CancellationToken cancellationToken)
-            : this(function, null, cancellationToken,
+        public Task(Delegate function, CancellationToken cancellationToken)
+            : this(function, null, null, cancellationToken,
                 TaskCreationOptions.None, InternalTaskOptions.None, null)
         {
         }
 
-        public Task(Func<TResult> function, TaskCreationOptions creationOptions)
-            : this(function, Task.InternalCurrentIfAttached(creationOptions), default, creationOptions, InternalTaskOptions.None, null)
+        public Task(Delegate function, TaskCreationOptions creationOptions)
+            : this(function, null, Task.InternalCurrentIfAttached(creationOptions), default, creationOptions, InternalTaskOptions.None, null)
         {
         }
 
-        public Task(Func<TResult> function, CancellationToken cancellationToken, TaskCreationOptions creationOptions)
-            : this(function, Task.InternalCurrentIfAttached(creationOptions), cancellationToken, creationOptions, InternalTaskOptions.None, null)
+        public Task(Delegate function, CancellationToken cancellationToken, TaskCreationOptions creationOptions)
+            : this(function, null,  Task.InternalCurrentIfAttached(creationOptions), cancellationToken, creationOptions, InternalTaskOptions.None, null)
         {
         }
 
-        public Task(Func<object?, TResult> function, object? state)
+        public Task(Delegate function, object state)
             : this(function, state, null, default,
                 TaskCreationOptions.None, InternalTaskOptions.None, null)
         {
         }
 
-        public Task(Func<object?, TResult> function, object? state, CancellationToken cancellationToken)
+        public Task(Delegate function, object state, CancellationToken cancellationToken)
             : this(function, state, null, cancellationToken,
                     TaskCreationOptions.None, InternalTaskOptions.None, null)
         {
         }
 
-        public Task(Func<object?, TResult> function, object? state, TaskCreationOptions creationOptions)
+        public Task(Delegate function, object state, TaskCreationOptions creationOptions)
             : this(function, state, Task.InternalCurrentIfAttached(creationOptions), default,
                     creationOptions, InternalTaskOptions.None, null)
         {
         }
 
-        public Task(Func<object?, TResult> function, object? state, CancellationToken cancellationToken, TaskCreationOptions creationOptions)
-            : this(function, state, Task.InternalCurrentIfAttached(creationOptions), cancellationToken,
+        public Task(Delegate function, object state, CancellationToken cancellationToken, TaskCreationOptions creationOptions)
+            : this(function,  state, Task.InternalCurrentIfAttached(creationOptions), cancellationToken,
                     creationOptions, InternalTaskOptions.None, null)
         {
         }
 
-        internal Task(Func<TResult> valueSelector, Task? parent, CancellationToken cancellationToken,
+        /*internal Task(Func<TResult> valueSelector, Task? parent, CancellationToken cancellationToken,
             TaskCreationOptions creationOptions, InternalTaskOptions internalOptions, TaskScheduler? scheduler) :
             base(valueSelector, null, parent, cancellationToken, creationOptions, internalOptions, scheduler)
         {
-        }
+        }*/
 
-        internal Task(Delegate valueSelector, object? state, Task? parent, CancellationToken cancellationToken,
+        internal Task(Delegate valueSelector, object state, Task parent, CancellationToken cancellationToken,
             TaskCreationOptions creationOptions, InternalTaskOptions internalOptions, TaskScheduler? scheduler) :
             base(valueSelector, state, parent, cancellationToken, creationOptions, internalOptions, scheduler)
         {
         }
 
+
+
+        internal void MarkExceptionsAsHandled()
+        {
+            // TODO:
+        }
 
 
         internal bool TrySetResult(TResult? result)
@@ -169,8 +171,6 @@ namespace System.Threading.Tasks
 
             return returnValue;
         }
-
-
 
         internal void DangerousSetResult(TResult result)
         {
@@ -201,6 +201,51 @@ namespace System.Threading.Tasks
         {
             return new TaskAwaiter<TResult>(this);
         }
+        public new ConfiguredTaskAwaitable<TResult> ConfigureAwait(bool continueOnCapturedContext)
+        {
+            return new ConfiguredTaskAwaitable<TResult>(this, continueOnCapturedContext);
+        }
+
+        /// <summary>Gets a <see cref="Task{TResult}"/> that will complete when this <see cref="Task{TResult}"/> completes or when the specified <see cref="CancellationToken"/> has cancellation requested.</summary>
+        /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for a cancellation request.</param>
+        /// <returns>The <see cref="Task{TResult}"/> representing the asynchronous wait.  It may or may not be the same instance as the current instance.</returns>
+        public new Task<TResult> WaitAsync(CancellationToken cancellationToken) =>
+            WaitAsync(Timeout.UnsignedInfinite, cancellationToken);
+
+        /// <summary>Gets a <see cref="Task{TResult}"/> that will complete when this <see cref="Task{TResult}"/> completes or when the specified timeout expires.</summary>
+        /// <param name="timeout">The timeout after which the <see cref="Task"/> should be faulted with a <see cref="TimeoutException"/> if it hasn't otherwise completed.</param>
+        /// <returns>The <see cref="Task{TResult}"/> representing the asynchronous wait.  It may or may not be the same instance as the current instance.</returns>
+        public new Task<TResult> WaitAsync(TimeSpan timeout) =>
+            WaitAsync(timeout, default);
+
+        /// <summary>Gets a <see cref="Task{TResult}"/> that will complete when this <see cref="Task{TResult}"/> completes, when the specified timeout expires, or when the specified <see cref="CancellationToken"/> has cancellation requested.</summary>
+        /// <param name="timeout">The timeout after which the <see cref="Task"/> should be faulted with a <see cref="TimeoutException"/> if it hasn't otherwise completed.</param>
+        /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for a cancellation request.</param>
+        /// <returns>The <see cref="Task{TResult}"/> representing the asynchronous wait.  It may or may not be the same instance as the current instance.</returns>
+        public new Task<TResult> WaitAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+            WaitAsync(timeout, cancellationToken);
+
+        private Task<TResult> WaitAsync(uint millisecondsTimeout, CancellationToken cancellationToken)
+        {
+            if (IsCompleted || (!cancellationToken.CanBeCanceled && millisecondsTimeout == Timeout.UnsignedInfinite))
+            {
+                return this;
+            }
+            // TODO:
+            return this;
+
+           /* if (cancellationToken.IsCancellationRequested)
+            {
+                return FromCanceled<TResult>(cancellationToken);
+            }
+
+            if (millisecondsTimeout == 0)
+            {
+                return FromException<TResult>(new TimeoutException());
+            }
+
+            return new CancellationPromise<TResult>(this, millisecondsTimeout, cancellationToken);*/
+        }
 
         internal TResult ResultOnSuccess
         {
@@ -210,5 +255,4 @@ namespace System.Threading.Tasks
             }
         }
     }
-
 }

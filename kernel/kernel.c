@@ -220,8 +220,9 @@ static void kernel_startup() {
     // load the kernel assembly
     System_Reflection_Assembly kernel_asm = NULL;
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
-
+    
     // call it
+    TRACE("Starting kernel!");
     method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
     method_result_t result = entry_point();
     CHECK(result.exception == NULL, "Got exception: \"%U\" (of type `%U`)", result.exception->Message, OBJECT_TYPE(result.exception)->Name);
@@ -369,4 +370,7 @@ cleanup:
     _disable();
     while (1)
         __halt();
+}
+_Noreturn void assertion_fail() {
+    while (1) __asm__("cli; hlt");
 }

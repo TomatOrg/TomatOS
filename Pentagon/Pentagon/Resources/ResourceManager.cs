@@ -18,12 +18,12 @@ public static class ResourceManager<T>
     /// <param name="resource">The resource to add</param>
     public static void Add(T resource)
     {
-        // FIXME: why on earth is this lock broken?
-        //lock (_lock)
+        lock (_lock)
         {
             // check if someone wants this resource before we add it to the resource list
-            foreach (var cb in _resourceCallbacks)
+            for (int i = 0; i < _resourceCallbacks.Count; i++)
             {
+                var cb = _resourceCallbacks[i];
                 // if the callback wants this resource, then give it the resource
                 if (cb(resource))
                     return;

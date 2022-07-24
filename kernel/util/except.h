@@ -58,11 +58,12 @@ typedef enum err {
         } \
     } while(0)
 
+_Noreturn void assertion_fail();
 #define ASSERT(check) \
     do { \
         if (!(check)) { \
            ERROR("Assert `%s` failed at %s (%s:%d)", #check, __FUNCTION__, __FILE__, __LINE__); \
-           while (1) __asm__("cli; hlt"); \
+           assertion_fail(); \
         } \
     } while(0)
 

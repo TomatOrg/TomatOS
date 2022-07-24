@@ -174,6 +174,17 @@ namespace System.Threading.Tasks
             //CapturedContext = ExecutionContext.Capture();
         }
 
+        /// <summary>Creates a <see cref="Task{TResult}"/> that's completed due to cancellation with the specified token.</summary>
+        /// <typeparam name="TResult">The type of the result returned by the task.</typeparam>
+        /// <param name="cancellationToken">The token with which to complete the task.</param>
+        /// <returns>The canceled task.</returns>
+        public static Task<TResult> FromCanceled<TResult>(CancellationToken cancellationToken)
+        {
+           // if (!cancellationToken.IsCancellationRequested)
+          //      ThrowHelper.ThrowArgumentOutOfRangeException(ExceptionArgument.cancellationToken);
+            return new Task<TResult>(true, default, TaskCreationOptions.None, cancellationToken);
+        }
+
 
         internal static Task? InternalCurrentIfAttached(TaskCreationOptions creationOptions)
         {
@@ -213,6 +224,36 @@ namespace System.Threading.Tasks
             {
                 RunContinuations(continuationObject);
             }
+        }
+
+
+        public Task WaitAsync(CancellationToken cancellationToken) => WaitAsync(Timeout.UnsignedInfinite, cancellationToken);
+
+        public Task WaitAsync(TimeSpan timeout) => WaitAsync(timeout, default);
+
+        public Task WaitAsync(TimeSpan timeout, CancellationToken cancellationToken) =>
+            WaitAsync(timeout, cancellationToken);
+
+        private Task WaitAsync(uint millisecondsTimeout, CancellationToken cancellationToken)
+        {
+            if (IsCompleted || (!cancellationToken.CanBeCanceled && millisecondsTimeout == Timeout.UnsignedInfinite))
+            {
+                return this;
+            }
+            // TODO:
+            return this;
+
+            /*if (cancellationToken.IsCancellationRequested)
+            {
+                return FromCanceled(cancellationToken);
+            }
+
+            if (millisecondsTimeout == 0)
+            {
+                return FromException(new TimeoutException());
+            }
+
+            return new CancellationPromise<VoidTaskResult>(this, millisecondsTimeout, cancellationToken);*/
         }
 
 

@@ -31,6 +31,16 @@ public readonly struct TimeSpan
     {
         Ticks = ticks;
     }
+    public TimeSpan(int days, int hours, int minutes, int seconds, int milliseconds) :
+            this(days, hours, minutes, seconds, milliseconds, 0)
+    {
+    }
+
+    public TimeSpan(int days, int hours, int minutes, int seconds, int milliseconds, int microseconds)
+    {
+        long totalMicroseconds = (((long)days * 3600 * 24 + (long)hours * 3600 + (long)minutes * 60 + seconds) * 1000 + milliseconds) * 1000 + microseconds;
+        Ticks = totalMicroseconds * (TicksPerMillisecond * 1000);
+    }
 
     public static TimeSpan FromMilliseconds(double value)
     {
