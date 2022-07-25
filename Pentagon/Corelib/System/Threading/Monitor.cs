@@ -43,27 +43,46 @@ public static class Monitor
 
     public static void Pulse(object obj)
     {
-        PulseInternal(obj);
+        if (obj == null)
+            throw new ArgumentNullException(nameof(obj));
+
+        switch (PulseInternal(obj))
+        {
+            case 0: return;
+            case 3: throw new OutOfMemoryException();
+            case 6: throw new SynchronizationLockException();
+            default: throw new SystemException();
+        }
     }
 
     public static void PulseAll(object obj)
     {
-        PulseAllInternal(obj);
+        if (obj == null)
+            throw new ArgumentNullException(nameof(obj));
+
+        switch (PulseAllInternal(obj))
+        {
+            case 0: return;
+            case 3: throw new OutOfMemoryException();
+            case 6: throw new SynchronizationLockException();
+            default: throw new SystemException();
+        }
     }
+
 
     public static bool Wait(object obj)
     {
-        WaitInternal(obj);
-        return true;
-    }
+        if (obj == null)
+            throw new ArgumentNullException(nameof(obj));
 
-    // FIXME:
-    public static bool Wait(object obj, int time)
-    {
-        WaitInternal(obj);
-        return true;
+        switch (WaitInternal(obj))
+        {
+            case 0: return true;
+            case 3: throw new OutOfMemoryException();
+            case 6: throw new SynchronizationLockException();
+            default: throw new SystemException();
+        }
     }
-
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     private static extern int EnterInternal(object obj, ref bool lockTaken);

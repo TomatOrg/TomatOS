@@ -21,9 +21,8 @@ public static class ResourceManager<T>
         lock (_lock)
         {
             // check if someone wants this resource before we add it to the resource list
-            for (int i = 0; i < _resourceCallbacks.Count; i++)
+            foreach (var cb in _resourceCallbacks)
             {
-                var cb = _resourceCallbacks[i];
                 // if the callback wants this resource, then give it the resource
                 if (cb(resource))
                     return;
