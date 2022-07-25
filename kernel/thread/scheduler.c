@@ -678,6 +678,10 @@ static void scheduler_set_deadline() {
     lapic_set_timeout(10 * 1000);
 }
 
+static void scheduler_cancel_deadline() {
+    lapic_set_deadline(0);
+}
+
 static void validate_context(interrupt_context_t* ctx) {
     ASSERT(STACK_POOL_START <= ctx->rsp && ctx->rsp < STACK_POOL_END);
 }
@@ -742,7 +746,6 @@ INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thr
         // no thread running, meaning that the context we are
         // destroying is the find_runnable context, so we need
         // to restore the priority as well
-        ASSERT(__readcr8() == PRIORITY_NO_PREEMPT);
         __writecr8(PRIORITY_NORMAL);
     }
 
@@ -1154,8 +1157,10 @@ INTERRUPT static thread_t* find_runnable() {
 
         // we have nothing to do, so put the cpu into
         // a sleeping state until an interrupt or something
-        // else happens.
+        // else happens. we will lower the state
+        __writecr8(PRIORITY_SCHEDULER_WAIT);
         __asm__ ("sti; hlt; cli");
+        __writecr8(PRIORITY_NORMAL);
 
         // we might have work so wake the cpu
         lock_scheduler();
@@ -1183,31 +1188,25 @@ INTERRUPT static void schedule(interrupt_context_t* ctx) {
 // Scheduler callbacks
 //----------------------------------------------------------------------------------------------------------------------
 
-/**
- * Enter the scheduler, increases the priority to no preemption
- */
 static void enter_scheduler() {
-    ASSERT(__readcr8() < PRIORITY_NO_PREEMPT);
-    __writecr8(PRIORITY_NO_PREEMPT);
-}
-
-/**
- * Exit from the scheduler, decreases the priority to normal
- */
-static void exit_scheduler() {
-    __writecr8(PRIORITY_NORMAL);
+    ASSERT(__readcr8() == PRIORITY_NORMAL);
 }
 
 INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
     enter_scheduler();
+
+    // we are spinning, so we should not
+    // actually schedule anything and just
+    // return, since there are timers to run
+    if (m_polling_cpu == get_cpu_id()) {
+        return;
+    }
 
     // save the current thread, don't park it
     save_current_thread(ctx, false);
 
     // now schedule a new thread
     schedule(ctx);
-
-    exit_scheduler();
 }
 INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
     enter_scheduler();
@@ -1220,17 +1219,18 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
         ((void(*)(uint64_t))ctx->rdi)(ctx->rsi);
     }
 
+    // cancel the deadline of the current thread, as it is parked
+    scheduler_cancel_deadline();
+
     // schedule a new thread
     schedule(ctx);
-
-    exit_scheduler();
 }
 
 INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
+    enter_scheduler();
+
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
-
-    enter_scheduler();
 
     if (current_thread != NULL) {
         // change the status to dead
@@ -1240,9 +1240,10 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
         release_thread(current_thread);
     }
 
-    schedule(ctx);
+    // cancel the deadline of the current thread, as it is dead
+    scheduler_cancel_deadline();
 
-    exit_scheduler();
+    schedule(ctx);
 }
 
 //----------------------------------------------------------------------------------------------------------------------

@@ -5,13 +5,20 @@
 
 typedef enum priority {
     /**
-     * Normal running priority, allows the GC to be called
+     * Lowest priority available, used so scheduler waiting for interrupts
+     * has priority over active cpus to get an irq
+     */
+    PRIORITY_SCHEDULER_WAIT = 0x0,
+
+    /**
+     * Normal running priority, allows to preempt the thread
      */
     PRIORITY_NORMAL = 0x1,
 
     /**
-     * Priority that does not have preemption, useful for cases where you don't
-     * want to disable interrupts
+     * Priority that does not have preemption, useful for cases
+     * where you don't want to disable interrupts (for example to
+     * create gc safe areas)
      */
     PRIORITY_NO_PREEMPT = 0x2,
 } priority_t;

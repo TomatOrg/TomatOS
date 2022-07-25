@@ -577,7 +577,7 @@ waitable_t* after(int64_t microseconds) {
     // setup the timer
     timer->when = (int64_t)microtime() + microseconds;
     timer->func = (timer_func_t)send_timer;
-    timer->arg = waitable;
+    timer->arg = put_waitable(waitable);
 
     // start it
     timer_start(timer);
@@ -588,7 +588,7 @@ waitable_t* after(int64_t microseconds) {
 
     // we return the user its own reference he should release on its own
     // we keep one reference for the send_timer function
-    return put_waitable(waitable);
+    return waitable;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
