@@ -51,6 +51,9 @@ public static class Interlocked
     [MethodImpl(MethodImplOptions.InternalCall)]
     public static extern ulong CompareExchange(ref ulong location1, ulong value, ulong comparand);
 
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    public static extern object CompareExchange(ref object location1, object value, object comparand);
+    
     #endregion
 
     #region Decrement
