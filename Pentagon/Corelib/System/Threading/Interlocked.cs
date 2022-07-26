@@ -53,7 +53,14 @@ public static class Interlocked
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     public static extern object CompareExchange(ref object location1, object value, object comparand);
-    
+
+    public static T CompareExchange<T>(ref T location1, T value, T comparand)
+        where T : class
+    {
+        var obj = CompareExchange(ref Unsafe.As<T, object>(ref location1), value, comparand);
+        return Unsafe.As<T>(obj);
+    }
+
     #endregion
 
     #region Decrement
