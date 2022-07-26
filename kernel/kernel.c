@@ -220,7 +220,8 @@ static void kernel_startup() {
     // load the kernel assembly
     System_Reflection_Assembly kernel_asm = NULL;
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
-    
+    CHECK_AND_RETHROW(jit_type(kernel_asm->EntryPoint->DeclaringType));
+
     // call it
     TRACE("Starting kernel!");
     method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
