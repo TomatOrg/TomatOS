@@ -29,7 +29,7 @@ public static class MemoryExtensions
 
     #region AsSpan
 
-    // TODO: readonly span...
+    // TODO: ReadOnlySpan
     internal static Span<char> AsSpan(this string text)
     {
         return text == null ? Span<char>.Empty : new Span<char>(text.GetDataPtr(), text.Length);
