@@ -38,6 +38,21 @@ typedef enum err {
      * The current thread does not own the lock for the specified object
      */
     ERROR_SYNCHRONIZATION_LOCK = 6,
+
+    /**
+     * Thrown when method invocation fails with an exception
+     */
+    ERROR_TARGET_INVOCATION = 7,
+
+    /**
+     * Could not find the wanted method
+     */
+    ERROR_MISSING_METHOD = 8,
+
+    /**
+     * Can not access the wanted member
+     */
+    ERROR_MEMBER_ACCESS = 9,
 } err_t;
 
 /**

@@ -6,20 +6,18 @@ namespace System;
 public class SystemException : Exception
 {
 
-    private const string DefaultMessage = "System error.";
-    
     public SystemException()
-        : base(DefaultMessage)
+        : base("System error.")
     {
     }
 
     public SystemException(string message)
-        : base(message ?? DefaultMessage)
+        : base(message)
     {
     }
 
     public SystemException(string message, Exception innerException)
-        : base(message ?? DefaultMessage, innerException)
+        : base(message, innerException)
     {
     }
         

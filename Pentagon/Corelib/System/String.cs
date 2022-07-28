@@ -61,12 +61,75 @@ public class String : IEnumerable<char>
         return Concat(Concat(arg0), Concat(arg1));
     }
 
+    public static string Concat(object arg0, object arg1, object arg2)
+    {
+        return Concat(Concat(arg0), Concat(arg1), Concat(arg2));
+    }
+
     public static string Concat(string arg0, string arg1)
     {
         var str = new string(arg0.Length + arg1.Length);
         var span = new Span<char>(str.GetDataPtr(), str.Length);
         arg0.AsSpan().CopyTo(span);
         arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
+        return str;
+    }
+
+    public static string Concat(string arg0, string arg1, string arg2)
+    {
+        var str = new string(arg0.Length + arg1.Length + arg2.Length);
+        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        arg0.AsSpan().CopyTo(span);
+        arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
+        arg2.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length));
+        return str;
+    }
+
+    public static string Concat(string arg0, string arg1, string arg2, string arg3)
+    {
+        var str = new string(arg0.Length + arg1.Length + arg2.Length + arg3.Length);
+        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        arg0.AsSpan().CopyTo(span);
+        arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
+        arg2.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length));
+        arg3.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length + arg2.Length));
+        return str;
+    }
+
+    public static string Concat(params object[] values)
+    {
+        var strs = new string[values.Length];
+        for (var i = 0; i < values.Length; i++)
+        {
+            strs[i] = Concat(values[i]);
+        }
+        return Concat(strs);
+    }
+    
+    public static string Concat(params string[] values)
+    {
+        if (values == null)
+            throw new ArgumentNullException(nameof(values));
+
+        // calculate the total length
+        var len = 0;
+        foreach (var val in values)
+        {
+            len += val.Length;
+        }
+
+        // allocate it 
+        var str = new string(len);
+        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        
+        // copy it 
+        var off = 0;
+        foreach (var val in values)
+        {
+            val.AsSpan().CopyTo(span.Slice(off));
+            off += val.Length;
+        }
+
         return str;
     }
     
