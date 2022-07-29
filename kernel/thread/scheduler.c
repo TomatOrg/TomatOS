@@ -768,6 +768,10 @@ INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thr
         // set the thread state as runnable as we prepare to run it
         cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
 
+        // we may come from PRIORITY_SCHEDULER_WAIT, so set it
+        // to a normal priority as we are running code now
+        __writecr8(PRIORITY_NORMAL);
+
         // execute the new thread
         execute(ctx, thread);
     }
