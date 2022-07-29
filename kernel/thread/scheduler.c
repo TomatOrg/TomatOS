@@ -739,21 +739,38 @@ static void save_current_thread(interrupt_context_t* ctx, bool park) {
 }
 
 INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thread) {
-    if (m_current_thread != NULL) {
-        // save the interrupted thread
-        save_current_thread(ctx, false);
+    if (__readcr8() >= PRIORITY_NO_PREEMPT) {
+        // we should not preempt in this context, so don't
+
+        thread->sched_link = NULL;
+
+        // Mark as runnable
+        ASSERT((get_thread_status(thread) & ~THREAD_SUSPEND) == THREAD_STATUS_WAITING);
+        cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
+
+        // Put in the run queue
+        run_queue_put(thread, true);
+
     } else {
-        // no thread running, meaning that the context we are
-        // destroying is the find_runnable context, so we need
-        // to restore the priority as well
-        __writecr8(PRIORITY_NORMAL);
+        // we are in a preemptible context so we
+        // can schedule the thread right away
+
+        if (m_current_thread != NULL) {
+            // save the interrupted thread
+            save_current_thread(ctx, false);
+        } else {
+            // no thread running, meaning that the context we are
+            // destroying is the find_runnable context, so we need
+            // to restore the priority as well
+            __writecr8(PRIORITY_NORMAL);
+        }
+
+        // set the thread state as runnable as we prepare to run it
+        cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
+
+        // execute the new thread
+        execute(ctx, thread);
     }
-
-    // set the thread state as runnable as we prepare to run it
-    cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
-
-    // execute the new thread
-    execute(ctx, thread);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
