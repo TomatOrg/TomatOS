@@ -6,7 +6,7 @@ namespace System;
 public class Exception
 {
 
-    private string _message;
+    internal string _message;
     private Exception _innerException;
         
     public virtual string Message => _message;

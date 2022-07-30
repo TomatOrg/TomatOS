@@ -6,8 +6,10 @@ namespace System.Reflection;
 public class MemberInfo
 {
 
-    private Type _declaringType;
-    private Module _module;
-    private string _name;
+    internal Type _declaringType;
+    internal Module _module;
+    internal string _name;
+
+    public string Name => _name;
 
 }

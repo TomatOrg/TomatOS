@@ -3,30 +3,48 @@ namespace System;
 public class ArgumentException : SystemException
 {
 
-    private const string DefaultMessage = "Value does not fall within the expected range.";
-
     public string ParamName { get; }
+
     
+    public override string Message
+    {
+        get
+        {
+            var s = base.Message ?? "Value does not fall within the expected range.";
+            if (!string.IsNullOrEmpty(ParamName))
+            {
+                s = $"{s} (Parameter '{ParamName}')";
+            }
+
+            return s;
+        }
+    }
+
     public ArgumentException()
-        : base(DefaultMessage)
+        : base("Value does not fall within the expected range.")
     {
     }
 
     public ArgumentException(string message)
-        : base(message ?? DefaultMessage)
+        : base(message)
     {
     }
 
     public ArgumentException(string message, Exception innerException)
-        : base(message ?? DefaultMessage, innerException)
+        : base(message, innerException)
     {
     }
-    
-    public ArgumentException(string message, string paramName)
-        : base(message ?? DefaultMessage)
+
+    public ArgumentException(string message, string paramName, Exception innerException)
+        : base(message, innerException)
     {
         ParamName = paramName;
     }
 
-    
+    public ArgumentException(string message, string paramName)
+        : base(message)
+    {
+        ParamName = paramName;
+    }
+
 }

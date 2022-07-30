@@ -63,5 +63,18 @@ public abstract class Type : MemberInfo
     
     [MethodImpl(MethodImplOptions.InternalCall)]
     public static extern Type GetTypeFromHandle(RuntimeTypeHandle handle);
+    
+    public string FullName
+    {
+        get
+        {
+            if (_declaringType != null)
+            {
+                return string.Concat(_declaringType.FullName, "+", _name);
+            }
 
+            return !string.IsNullOrEmpty(_namespace) ? string.Concat(_namespace, ".", _name) : _name;
+        }
+    }
+    
 }
