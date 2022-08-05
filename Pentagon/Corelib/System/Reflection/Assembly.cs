@@ -29,10 +29,10 @@ public class Assembly
     private string[] _userStrings;
     private unsafe void* _userStringsTable;
 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private extern static Assembly LoadInternal(byte[] rawAssembly, bool reflection); 
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private extern static Assembly LoadInternal(string rawAssembly, bool reflection); 
     
     public static Assembly Load(byte[] rawAssembly)

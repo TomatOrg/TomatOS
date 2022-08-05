@@ -237,27 +237,19 @@ public class List<T> : IList<T>, IReadOnlyList<T>
     public void Clear()
     {
         _version++;
-        int size = _size;
-        _size = 0;
-        if (size > 0)
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
         {
-            Array.Clear(_items, 0, size); // Clear the elements so that the gc can reclaim the references.
+            int size = _size;
+            _size = 0;
+            if (size > 0)
+            {
+                Array.Clear(_items, 0, size); // Clear the elements so that the gc can reclaim the references.
+            }
         }
-        
-        // TODO: RuntimeHelpers
-        // if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-        // {
-        //     int size = _size;
-        //     _size = 0;
-        //     if (size > 0)
-        //     {
-        //         Array.Clear(_items, 0, size); // Clear the elements so that the gc can reclaim the references.
-        //     }
-        // }
-        // else
-        // {
-        //     _size = 0;
-        // }
+        else
+        {
+            _size = 0;
+        }
     }
 
     // Contains returns true if the specified element is in the List.
@@ -798,10 +790,10 @@ public class List<T> : IList<T>, IReadOnlyList<T>
             }
         }
 
-        // if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-        // {
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
             Array.Clear(_items, freeIndex, _size - freeIndex); // Clear the elements so that the gc can reclaim the references.
-        // }
+        }
 
         int result = _size - freeIndex;
         _size = freeIndex;
@@ -822,10 +814,10 @@ public class List<T> : IList<T>, IReadOnlyList<T>
         {
             Array.Copy(_items, index + 1, _items, index, _size - index);
         }
-        // if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-        // {
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
             _items[_size] = default!;
-        // }
+        }
         _version++;
     }
 
@@ -854,10 +846,10 @@ public class List<T> : IList<T>, IReadOnlyList<T>
             }
 
             _version++;
-            // if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
-            // {
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+            {
                 Array.Clear(_items, _size, count);
-            // }
+            }
         }
     }
 

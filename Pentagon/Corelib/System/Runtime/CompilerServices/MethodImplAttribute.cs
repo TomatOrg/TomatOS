@@ -11,7 +11,8 @@ public sealed class MethodImplAttribute : Attribute
     /// Gets the MethodImplOptions value describing the attributed method.
     /// </summary>
     public MethodImplOptions Value { get; }
-
+    public MethodCodeType MethodCodeType;
+    
     public MethodImplAttribute()
     {
     }

@@ -43,7 +43,7 @@ public class Acpi
 
     #region Native functions
         
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern ulong GetRsdt();
         
     #endregion

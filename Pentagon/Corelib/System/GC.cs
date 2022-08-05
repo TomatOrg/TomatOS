@@ -22,7 +22,7 @@ public static class GC
         Collect(generation, mode);
     }
 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern void Collect(int generation, GCCollectionMode mode, bool blocking);
     
     // TODO: in theory there is also compacting but we don't have such a feature in our garbage 
@@ -31,7 +31,7 @@ public static class GC
     // we are using an internal call here on purpose, it is going to make 
     // the jit assume that something will change and it will keep the call
     // and the object itself until this point 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern void KeepAlive(object obj);
 
     public static void ReRegisterForFinalize(object obj)

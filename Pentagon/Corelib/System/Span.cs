@@ -49,7 +49,7 @@ public readonly ref struct Span<T>
         }
     }
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodCodeType = MethodCodeType.Runtime)]
     private extern ref T GetItemInternal(int index);
     
     public ref T this[int index]

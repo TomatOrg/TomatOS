@@ -6,6 +6,9 @@ public readonly struct UInt64
     private readonly ulong _value;
 #pragma warning restore 169
     
+    public const ulong MaxValue = 18446744073709551615;
+    public const ulong MinValue = 0;
+    
     public override bool Equals(object obj)
     {
         if (obj is ulong value)

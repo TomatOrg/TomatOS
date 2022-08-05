@@ -44,10 +44,10 @@ public class Irq
     /// <param name="type">How to mask the irq</param>
     /// <param name="addr">The address used for masking</param>
     /// <returns>The base number for the irq, or -1 if there are no empty irqs</returns>
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     internal static extern int AllocateIrq(int count, IrqMaskType type, ulong addr);
 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private static extern void IrqWait(int irqNum);
 
     #endregion

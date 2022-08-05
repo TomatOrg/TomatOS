@@ -25,7 +25,7 @@ public class String : IEnumerable<char>
         }
     }
 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     internal extern ulong GetDataPtr();
 
     private String(int length)
@@ -135,7 +135,7 @@ public class String : IEnumerable<char>
     
     #endregion
 
-    [MethodImpl(MethodImplOptions.InternalCall | MethodImplOptions.AggressiveInlining)]
+    [MethodImpl(MethodImplOptions.InternalCall | MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
     private extern char GetCharInternal(int index);
     
     public CharEnumerator GetEnumerator()
