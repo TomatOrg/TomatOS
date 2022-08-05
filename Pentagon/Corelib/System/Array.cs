@@ -19,7 +19,7 @@ public class Array
 
     private Array() {}
 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     internal extern ulong GetDataPtr();
 
     #endregion
@@ -41,7 +41,7 @@ public class Array
         ClearInternal(array, index, length);
     }
 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private static extern void ClearInternal(Array array, int index, int length);
 
     #endregion
@@ -75,7 +75,7 @@ public class Array
         CopyInternal(sourceArray, sourceIndex, destinationArray, destinationIndex, length);
     }
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private static extern void CopyInternal(Array sourceArray, long sourceIndex, Array destinationArray, long destinationIndex, long length);
 
     #endregion

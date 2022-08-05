@@ -61,7 +61,7 @@ public abstract class Type : MemberInfo
     private Type _nextNestedType;
     private Type _nestedTypes;
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern Type GetTypeFromHandle(RuntimeTypeHandle handle);
     
     public string FullName

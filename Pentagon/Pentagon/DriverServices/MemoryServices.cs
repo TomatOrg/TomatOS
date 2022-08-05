@@ -37,7 +37,7 @@ public static class MemoryServices
     /// </summary>
     /// <param name="range">The mapped range</param>
     /// <returns>The physical address</returns>
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     internal static extern ulong GetMappedPhysicalAddress(Memory<byte> range);
 
     /// <summary>
@@ -125,22 +125,22 @@ public static class MemoryServices
     /// Allows us to update the memory structure directly from the kernel, this is not normally possible
     /// because the Corelib abstractions hide the raw access to the pointer
     /// </summary>
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     internal static extern void UpdateMemory(ref Memory<byte> memory, object holder, ulong ptr, int size);
 
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     internal static extern ulong GetSpanPtr(ref Span<byte> memory);
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodCodeType = MethodCodeType.Runtime)]
     internal static extern ref T UnsafePtrToRef<T>(ulong ptr);
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private static extern ulong AllocateMemory(ulong size);
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private static extern void FreeMemory(ulong ptr);
     
-    [MethodImpl(MethodImplOptions.InternalCall)]
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private static extern ulong MapMemory(ulong ptr, ulong pages);
     
     #endregion

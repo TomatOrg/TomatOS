@@ -28,7 +28,7 @@ namespace System
 
         #endregion
         
-        [MethodImpl(MethodImplOptions.InternalCall)]
+        [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
         public extern Type GetType();
         
         public virtual bool Equals(object obj)

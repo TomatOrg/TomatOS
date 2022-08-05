@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Pentagon.Drivers;
 using Pentagon.Drivers.Virtio;
 using Pentagon.DriverServices;
