@@ -4,6 +4,8 @@ using Pentagon.DriverServices.Pci;
 using Pentagon.Resources;
 using System.Runtime.InteropServices;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Pentagon.Drivers.Virtio;
 
@@ -57,7 +59,7 @@ public class VirtioPciDevice
         readonly public UsedRing Used;
 
         ushort FirstFree;
-        public ushort LastSeenUsed;
+        public volatile ushort LastSeenUsed;
 
         // Optimization endorsed by the spec: instead of updating Avail.DescIdx each time, batch and do a single notification at the end
         // this variable keeps track of how much to increment DescIdx when notifying
@@ -66,6 +68,8 @@ public class VirtioPciDevice
         internal ulong DescPhys, AvailPhys, UsedPhys;
         Field<ushort> Notifier;
         readonly public Irq Interrupt;
+
+        public TaskCompletionSource[] Completions;
 
         public QueueInfo(int index, int size, Field<ushort> notifier, Irq interrupt)
         {
@@ -101,22 +105,29 @@ public class VirtioPciDevice
             FirstFree = 0;
             LastSeenUsed = 0;
             AddedHeads = 0;
+
+            // one completion per descriptor chain head
+            Completions = new TaskCompletionSource[Size];
         }
 
         /// <summary>
-        /// Allocate a descriptor, and if it's a head descriptor, place it in the available ring
+        /// Allocate a descriptor
         /// </summary>
-        /// <remarks>Despite being added to the available ring, the IO isn't started until Notify() is called</remarks>
-        public ushort GetNewDescriptor(bool isHead)
+        public ushort GetNewDescriptor()
         {
             var oldFirstFree = FirstFree;
             FirstFree = Descriptors.Span[oldFirstFree].NextDescIdx;
-            if (isHead)
-            {
-                Avail.Ring.Span[(Avail.DescIdx.Value + AddedHeads) % Size] = oldFirstFree;
-                AddedHeads++;
-            }
             return oldFirstFree;
+        }
+
+
+        /// <summary>
+        /// Place descriptor chain head on the avail ring, but don't notify
+        /// </summary>
+        public void PlaceHeadOnAvail(ushort head)
+        {
+            Avail.Ring.Span[(Avail.DescIdx.Value + AddedHeads) % Size] = head;
+            AddedHeads++;
         }
 
         /// <summary>
@@ -124,7 +135,7 @@ public class VirtioPciDevice
         /// </summary>
         public ushort GetNext(ushort curr)
         {
-            var next = GetNewDescriptor(false);
+            var next = GetNewDescriptor();
             Descriptors.Span[curr].NextDescIdx = next;
             return next;
         }
@@ -277,6 +288,7 @@ public class VirtioPciDevice
     }
 
     protected PciDevice _pci;
+    protected Region _devCfgRegion;
     protected VirtioPciCommonCfg _common;
     protected QueueInfo _queueInfo;
     protected Region _notify;
@@ -297,14 +309,18 @@ public class VirtioPciDevice
         public enum CfgType : byte
         {
             CommonCfg = 1,
-            NotifyCfg = 2
+            NotifyCfg = 2,
+            IsrCfg = 3,
+            DeviceCfg = 4,
+            PciCfg = 5,
+            SharedMemoryCfg = 8,
+            VendorCfg = 9,
         };
     }
 
     public VirtioPciDevice(PciDevice a)
     {
         _pci = a;
-
         foreach (var cap in a.GetCapabilities())
         {
             if (cap.Span[0].Id == 0x09)
@@ -331,6 +347,9 @@ public class VirtioPciDevice
                 {
                     _notify = slice;
                     _notifyMultiplier = virtioCap.NotifyOffMultiplier;
+                } else if (type == Capability.CfgType.DeviceCfg)
+                {
+                    _devCfgRegion = slice;
                 }
             }
         }

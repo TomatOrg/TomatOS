@@ -10,8 +10,11 @@ typedef struct irq_instance {
     // context for it
     void* ctx;
 
-    // The thread waiting on this irq, NULL if non
+    // The thread waiting on this irq, NULL if none
     thread_t* waiting_thread;
+
+    // flag to see if we're handling it already
+    atomic_flag handling;
 } irq_instance_t;
 
 // TODO: per-cpu irq
@@ -61,6 +64,7 @@ void irq_wait(uint8_t handler) {
     // set the waiting thread to us
     irq_instance_t* instance = &m_irqs[idx];
     instance->waiting_thread = get_current_thread();
+    atomic_flag_clear(&instance->handling);
 
     // park the current thread, will wake it up laterinstnace.
     scheduler_park(instance->ops.unmask, instance->ctx);
@@ -70,6 +74,9 @@ void irq_dispatch(interrupt_context_t* ctx) {
     int handler = ctx->int_num - IRQ_ALLOC_BASE;
 
     irq_instance_t* instance = &m_irqs[handler];
+    
+    if (atomic_flag_test_and_set(&instance->handling)) return;
+
     if (instance->ops.mask == NULL || instance->ops.unmask == NULL) {
         WARN("irq: got IRQ #%d which has no handler, badly configured device?", ctx->int_num);
         return;

@@ -30,16 +30,9 @@ namespace System.Runtime.CompilerServices
             where TAwaiter : INotifyCompletion
             where TStateMachine : IAsyncStateMachine
         {
-            //try
-            //{
-                awaiter.OnCompleted(GetStateMachineBox(ref stateMachine, ref taskField).MoveNextAction);
-            //}
-            //catch (Exception e)
-            //{
-                //System.Threading.Tasks.Task.ThrowAsync(e, targetContext: null);
-            //}
+            awaiter.OnCompleted(GetStateMachineBox(ref stateMachine, ref taskField).MoveNextAction);
         }
-        
+
         public void AwaitUnsafeOnCompleted<TAwaiter, TStateMachine>(
             ref TAwaiter awaiter, ref TStateMachine stateMachine)
             where TAwaiter : ICriticalNotifyCompletion
@@ -59,14 +52,7 @@ namespace System.Runtime.CompilerServices
             ref TAwaiter awaiter, IAsyncStateMachineBox box)
             where TAwaiter : ICriticalNotifyCompletion
         {
-            try
-            {
-                awaiter.UnsafeOnCompleted(box.MoveNextAction);
-            }
-            catch (Exception e)
-            {
-                //System.Threading.Tasks.Task.ThrowAsync(e, targetContext: null);
-            }
+            awaiter.UnsafeOnCompleted(box.MoveNextAction);
         }
 
         private static IAsyncStateMachineBox GetStateMachineBox<TStateMachine>(
@@ -75,7 +61,10 @@ namespace System.Runtime.CompilerServices
             where TStateMachine : IAsyncStateMachine
         {
             // TODO: ExecutionContext
-            // TODO: dotnet corelib here optimizes the common case where the statemachine is already boxed
+            if (taskField is AsyncStateMachineBox<TStateMachine> stronglyTypedBox)
+            {
+                return stronglyTypedBox;
+            }
 
             AsyncStateMachineBox<TStateMachine> box = new AsyncStateMachineBox<TStateMachine>();
             taskField = box;
@@ -98,6 +87,7 @@ namespace System.Runtime.CompilerServices
                 // TODO: check that it's not completed and that statemachine is nonnull
                 // if the executionContext is not null, run it on the threadpool
                 StateMachine.MoveNext();
+
                 if (IsCompleted)
                 {
                     StateMachine = default;

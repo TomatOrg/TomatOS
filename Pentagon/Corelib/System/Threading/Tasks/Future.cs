@@ -7,50 +7,23 @@ using System.Runtime.CompilerServices;
 namespace System.Threading.Tasks
 {
     // lol
-    public class TaskScheduler {
+    public class TaskScheduler
+    {
         internal bool TryRunInline(Task task, bool taskWasPreviouslyQueued)
         {
             TaskScheduler? ets = task.ExecutingTaskScheduler;
 
             if (ets != this && ets != null) return ets.TryRunInline(task, taskWasPreviouslyQueued);
-
-            // TODO: do we really need this?
-            /*if ((ets == null) ||
-                (task.m_action == null) ||
-                task.IsDelegateInvoked ||
-                task.IsCanceled ||
-                !RuntimeHelpers.TryEnsureSufficientExecutionStack())
-            {
-                return false;
-            }*/
-
             bool inlined = TryExecuteTaskInline(task, taskWasPreviouslyQueued);
-
-            /*if (inlined && !(task.IsDelegateInvoked || task.IsCanceled))
-            {
-                throw new InvalidOperationException(SR.TaskScheduler_InconsistentStateAfterTryExecuteTaskInline);
-            }*/
 
             return inlined;
         }
         protected bool TryExecuteTaskInline(Task task, bool taskWasPreviouslyQueued)
         {
-            //if (SynchronizationContext.Current == m_synchronizationContext)
-            //{
-                return TryExecuteTask(task);
-            //}
-            //else
-            //{
-            //    return false;
-            //}
+            return TryExecuteTask(task);
         }
         protected bool TryExecuteTask(Task task)
         {
-            if (task.ExecutingTaskScheduler != this)
-            {
-                //throw new InvalidOperationException(SR.TaskScheduler_ExecuteTask_WrongTaskScheduler);
-            }
-
             return task.ExecuteEntry();
         }
     }
@@ -103,7 +76,7 @@ namespace System.Threading.Tasks
         }
 
         public Task(Delegate function, CancellationToken cancellationToken, TaskCreationOptions creationOptions)
-            : this(function, null,  Task.InternalCurrentIfAttached(creationOptions), cancellationToken, creationOptions, InternalTaskOptions.None, null)
+            : this(function, null, Task.InternalCurrentIfAttached(creationOptions), cancellationToken, creationOptions, InternalTaskOptions.None, null)
         {
         }
 
@@ -126,23 +99,22 @@ namespace System.Threading.Tasks
         }
 
         public Task(Delegate function, object state, CancellationToken cancellationToken, TaskCreationOptions creationOptions)
-            : this(function,  state, Task.InternalCurrentIfAttached(creationOptions), cancellationToken,
+            : this(function, state, Task.InternalCurrentIfAttached(creationOptions), cancellationToken,
                     creationOptions, InternalTaskOptions.None, null)
         {
         }
 
-        /*internal Task(Func<TResult> valueSelector, Task? parent, CancellationToken cancellationToken,
+        internal Task(Func<TResult> valueSelector, Task? parent, CancellationToken cancellationToken,
             TaskCreationOptions creationOptions, InternalTaskOptions internalOptions, TaskScheduler? scheduler) :
             base(valueSelector, null, parent, cancellationToken, creationOptions, internalOptions, scheduler)
         {
-        }*/
+        }
 
         internal Task(Delegate valueSelector, object state, Task parent, CancellationToken cancellationToken,
             TaskCreationOptions creationOptions, InternalTaskOptions internalOptions, TaskScheduler? scheduler) :
             base(valueSelector, state, parent, cancellationToken, creationOptions, internalOptions, scheduler)
         {
         }
-
 
 
         internal void MarkExceptionsAsHandled()
@@ -201,10 +173,7 @@ namespace System.Threading.Tasks
         {
             return new TaskAwaiter<TResult>(this);
         }
-        public new ConfiguredTaskAwaitable<TResult> ConfigureAwait(bool continueOnCapturedContext)
-        {
-            return new ConfiguredTaskAwaitable<TResult>(this, continueOnCapturedContext);
-        }
+        
 
         /// <summary>Gets a <see cref="Task{TResult}"/> that will complete when this <see cref="Task{TResult}"/> completes or when the specified <see cref="CancellationToken"/> has cancellation requested.</summary>
         /// <param name="cancellationToken">The <see cref="CancellationToken"/> to monitor for a cancellation request.</param>
@@ -233,18 +202,6 @@ namespace System.Threading.Tasks
             }
             // TODO:
             return this;
-
-           /* if (cancellationToken.IsCancellationRequested)
-            {
-                return FromCanceled<TResult>(cancellationToken);
-            }
-
-            if (millisecondsTimeout == 0)
-            {
-                return FromException<TResult>(new TimeoutException());
-            }
-
-            return new CancellationPromise<TResult>(this, millisecondsTimeout, cancellationToken);*/
         }
 
         internal TResult ResultOnSuccess
