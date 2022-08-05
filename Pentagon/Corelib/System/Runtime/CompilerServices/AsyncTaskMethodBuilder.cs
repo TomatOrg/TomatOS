@@ -24,8 +24,6 @@ namespace System.Runtime.CompilerServices
 
         public void SetResult()
         {
-            // mscorlib here does a lot more hardcoding, but i think it's useless
-            // if you really care for perf, use ValueTask and pooling
             if (m_task is null)
             {
                 m_task = Task.s_cachedCompleted;

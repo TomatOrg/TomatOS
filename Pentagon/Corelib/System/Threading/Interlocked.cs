@@ -93,6 +93,16 @@ public static class Interlocked
     [MethodImpl(MethodImplOptions.InternalCall)]
     public static extern ulong Exchange(ref ulong location1, ulong value);
 
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    public static extern object Exchange(ref object location1, object value);
+
+    public static T Exchange<T>(ref T location1, T value)
+        where T : class
+    {
+        var obj = Exchange(ref Unsafe.As<T, object>(ref location1), value);
+        return Unsafe.As<T>(obj);
+    }
+
     #endregion
 
     #region Increment

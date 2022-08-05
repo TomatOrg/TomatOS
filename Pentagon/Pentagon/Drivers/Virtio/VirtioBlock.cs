@@ -1,59 +1,52 @@
 using Pentagon.DriverServices;
 using Pentagon.DriverServices.Pci;
+using Pentagon.Resources;
+using System;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Pentagon.Drivers.Virtio;
 
 public class VirtioBlock : VirtioPciDevice
 {
+    public long _lastBlock;
+
+    VirtioBlkConfig _devConfig;
+    public class VirtioBlkConfig
+    {
+        public Field<ulong> Capacity;
+
+        public VirtioBlkConfig(Region r)
+        {
+            Capacity = r.CreateField<ulong>(0);
+        }
+
+    }
+
+    public static VirtioBlock block;
+
     internal static bool CheckDevice(PciDevice device)
     {
         if (device.DeviceId != 0x1001 && device.DeviceId != 0x1042)
             return false;
 
-        block = new(device);
-
+        block = new VirtioBlock(device);
+        
         return true;
     }
 
-    static VirtioBlock block;
 
     public VirtioBlock(PciDevice a) : base(a)
     {
-        Read(69);
+        _devConfig = new VirtioBlkConfig(_devCfgRegion);
+        _lastBlock = (long)_devConfig.Capacity.Value - 1;
+        var iw = new Thread(IrqWaiterThread);
+        iw.Start();
     }
-
-    void Read(ulong sector)
+    
+    void Process()
     {
-        // start io
-        var r = MemoryServices.AllocatePages(1);
-        var rPhys = MemoryServices.GetPhysicalAddress(r);
-        var diskPhys = rPhys + 512;
-        var statusPhys = rPhys + 1024;
-
-        var rr = new Region(r.Memory).CreateMemory<BlkReq>(0, 1);
-        rr.Span[0].Type = 0;
-        rr.Span[0].Sector = sector;
-
-        var h = _queueInfo.GetNewDescriptor(true);
-        _queueInfo.Descriptors.Span[h].Phys = rPhys;
-        _queueInfo.Descriptors.Span[h].Len = 16;
-        _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext;
-
-        h = _queueInfo.GetNext(h);
-        _queueInfo.Descriptors.Span[h].Phys = diskPhys;
-        _queueInfo.Descriptors.Span[h].Len = 512;
-        _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext | QueueInfo.Descriptor.Flag.Write;
-
-        h = _queueInfo.GetNext(h);
-        _queueInfo.Descriptors.Span[h].Phys = statusPhys;
-        _queueInfo.Descriptors.Span[h].Len = 1;
-        _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.Write;
-
-        _queueInfo.Notify();
-
-        _queueInfo.Interrupt.Wait();
-
         // 1.2 spec, 2.7.14 Receiving Used Buffers From The Device
         while (_queueInfo.LastSeenUsed != _queueInfo.Used.DescIdx.Value)
         {
@@ -61,13 +54,64 @@ public class VirtioBlock : VirtioPciDevice
             var head = _queueInfo.Used.Ring.Span[_queueInfo.LastSeenUsed % _queueInfo.Size].Id;
 
             // process
-            Log.LogHex(head);
+            var t = new Thread(_queueInfo.Completions[head].SetResult);
+            t.Start();
 
             // free
             // NOTE: this also increases LastSeenUsed
             _queueInfo.FreeChain(head);
         }
     }
+
+    void IrqWaiterThread()
+    {
+        while (true)
+        {
+            _queueInfo.Interrupt.Wait();
+            Process();
+        }
+    }
+
+    Task DoAsync(ulong sector, uint bytes, bool write, ulong phys)
+    {
+        var tcs = new TaskCompletionSource();
+
+        // start io
+        var r = MemoryServices.AllocatePages(1);
+        var rPhys = MemoryServices.GetPhysicalAddress(r);
+        var statusPhys = rPhys + 16;
+
+        var rr = new Region(r.Memory).CreateMemory<BlkReq>(0, 1);
+        rr.Span[0].Type = write ? 1u : 0u;
+        rr.Span[0].Sector = sector;
+
+        lock (_queueInfo)
+        {
+            var head = _queueInfo.GetNewDescriptor();
+            _queueInfo.Completions[head] = tcs;
+
+            var h = head;
+            _queueInfo.Descriptors.Span[h].Phys = rPhys;
+            _queueInfo.Descriptors.Span[h].Len = 16;
+            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext;
+
+            h = _queueInfo.GetNext(h);
+            _queueInfo.Descriptors.Span[h].Phys = phys;
+            _queueInfo.Descriptors.Span[h].Len = bytes;
+            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext | (write ? 0 : QueueInfo.Descriptor.Flag.Write);
+
+            h = _queueInfo.GetNext(h);
+            _queueInfo.Descriptors.Span[h].Phys = statusPhys;
+            _queueInfo.Descriptors.Span[h].Len = 1;
+            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.Write;
+
+            _queueInfo.PlaceHeadOnAvail(head);
+            _queueInfo.Notify();
+        }
+
+        return tcs.Task;
+    }
+
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct BlkReq
