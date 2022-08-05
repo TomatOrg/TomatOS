@@ -1,5 +1,6 @@
 using Pentagon.DriverServices;
 using Pentagon.DriverServices.Pci;
+using Pentagon.Managers;
 using Pentagon.Resources;
 using System;
 using System.Runtime.InteropServices;
@@ -8,8 +9,37 @@ using System.Threading.Tasks;
 
 namespace Pentagon.Drivers.Virtio;
 
-public class VirtioBlock : VirtioPciDevice
+public class VirtioBlock : VirtioPciDevice, IBlock
 {
+    public bool Removable => false;
+    public bool Present => true;
+    public bool ReadOnly => false;
+    
+    // TODO: use VIRTIO_BLK_F_FLUSH
+    public bool WriteCaching => false;    
+    
+    public long LastBlock => _lastBlock;
+
+    // TODO: use VIRTIO_BLK_F_TOPOLOGY
+    public int BlockSize => 512;
+    public int IoAlign => 512;
+    public int OptimalTransferLengthGranularity => 8;
+
+    public Task ReadBlocks(long lba, Memory<byte> memory, CancellationToken token = default)
+    {
+        return DoAsync((ulong)lba, (uint)memory.Length, false, MemoryServices.GetMappedPhysicalAddress(memory));
+    }
+
+    public Task WriteBlocks(long lba, Memory<byte> memory, CancellationToken token = default)
+    {
+        return DoAsync((ulong)lba, (uint)memory.Length, true, MemoryServices.GetMappedPhysicalAddress(memory));
+    }
+
+    public Task FlushBlocks(CancellationToken token = default)
+    {
+        return null;
+    }
+
     public long _lastBlock;
 
     VirtioBlkConfig _devConfig;
@@ -24,7 +54,7 @@ public class VirtioBlock : VirtioPciDevice
 
     }
 
-    public static VirtioBlock block;
+    public static IBlock block;
 
     internal static bool CheckDevice(PciDevice device)
     {
@@ -32,7 +62,8 @@ public class VirtioBlock : VirtioPciDevice
             return false;
 
         block = new VirtioBlock(device);
-        
+        _ = IoManager.AddBlock(block); // just let it finish asyncronously
+
         return true;
     }
 

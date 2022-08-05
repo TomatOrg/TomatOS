@@ -8,8 +8,8 @@ public static class ResourceManager<T>
 {
 
     private static object _lock = new();
-    private static List<T> _resources = new();
-    private static List<Predicate<T>> _resourceCallbacks = new();
+    private static List<T> _resources = new(16);
+    private static List<Predicate<T>> _resourceCallbacks = new(16);
 
     /// <summary>
     /// Add a new resource to the driver system

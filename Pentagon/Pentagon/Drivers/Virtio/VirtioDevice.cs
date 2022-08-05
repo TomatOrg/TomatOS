@@ -321,6 +321,7 @@ public class VirtioPciDevice
     public VirtioPciDevice(PciDevice a)
     {
         _pci = a;
+        _pci.ConfigHeader.Command |= PciConfigHeader.CommandBits.BusMaster;
         foreach (var cap in a.GetCapabilities())
         {
             if (cap.Span[0].Id == 0x09)
