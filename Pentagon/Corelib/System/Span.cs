@@ -4,20 +4,26 @@ using System.Runtime.InteropServices;
 namespace System;
 
 [StructLayout(LayoutKind.Sequential)]
-public readonly ref struct Span<T>
+public readonly unsafe ref struct Span<T>
 {
 
     public static Span<T> Empty => new();
 
-    internal readonly ulong _ptr;
+    internal readonly void* _ptr;
     private readonly int _length;
 
     public bool IsEmpty => _length == 0;
     public int Length => _length;
 
-    internal Span(ulong ptr, int length)
+    internal Span(void* ptr, int length)
     {
         _ptr = ptr;
+        _length = length;
+    }
+    
+    internal Span(ref T ptr, int length)
+    {
+        _ptr = Unsafe.AsPointer(ref ptr);
         _length = length;
     }
     
@@ -49,23 +55,20 @@ public readonly ref struct Span<T>
         }
     }
     
-    [MethodImpl(MethodCodeType = MethodCodeType.Runtime)]
-    private extern ref T GetItemInternal(int index);
-    
     public ref T this[int index]
     {
         get
         {
             if ((uint)index > (uint)_length)
                 throw new IndexOutOfRangeException();
-            return ref GetItemInternal(index);
+            return ref Unsafe.Add(ref Unsafe.AsRef<T>(_ptr), index);
         }
     }
 
     //
     // TODO: all of these can be optimized with native code, generated specifically
-    //       for each of the types, this can then be used with arrays to make some 
-    //       fast clear/copyto/fill and whatever else
+    // TODO: for each of the types, this can then be used with arrays to make some 
+    // TODO: fast clear/copyto/fill and whatever else
     //
     
     public void Clear()
@@ -91,7 +94,7 @@ public readonly ref struct Span<T>
             return false;
         }
 
-        if (_ptr < destination._ptr && destination._ptr < _ptr + (ulong)_length * (ulong)Unsafe.SizeOf<T>())
+        if (_ptr < destination._ptr && destination._ptr < Unsafe.Add<T>(_ptr, _length))
         {
             for (var i = _length - 1; i >= 0; i--)
             {
@@ -122,7 +125,7 @@ public readonly ref struct Span<T>
         if ((uint)start > (uint)Length)
             throw new ArgumentOutOfRangeException();
         
-        return new Span<T>(_ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, Length - start);
+        return new Span<T>(Unsafe.Add<T>(_ptr, start), Length - start);
     }
 
     public Span<T> Slice(int start, int length)
@@ -130,7 +133,7 @@ public readonly ref struct Span<T>
         if ((ulong)(uint)start + (ulong)(uint)length > (ulong)(uint)_length)
             throw new ArgumentOutOfRangeException();
 
-        return new Span<T>(_ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, length);
+        return new Span<T>(Unsafe.Add<T>(_ptr, start), length);
     }
 
     public T[] ToArray()

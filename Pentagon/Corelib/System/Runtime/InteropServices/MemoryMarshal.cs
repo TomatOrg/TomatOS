@@ -5,14 +5,14 @@ namespace System.Runtime.InteropServices;
 public static class MemoryMarshal
 {
 
-    public static Span<byte> AsBytes<T>(Span<T> span)
+    public static unsafe Span<byte> AsBytes<T>(Span<T> span)
         where T : unmanaged
     {
         // TODO: checked
         return new Span<byte>(span._ptr, span.Length * Unsafe.SizeOf<T>());
     }
 
-    public static Span<TTo> Cast<TFrom, TTo>(Span<TFrom> span)
+    public static unsafe Span<TTo> Cast<TFrom, TTo>(Span<TFrom> span)
         where TFrom : unmanaged
         where TTo : unmanaged
     {
@@ -24,7 +24,7 @@ public static class MemoryMarshal
         return new Span<TTo>(span._ptr, toLength);
     }
 
-    public static Memory<TTo> Cast<TFrom, TTo>(Memory<TFrom> mem)
+    public static unsafe Memory<TTo> Cast<TFrom, TTo>(Memory<TFrom> mem)
         where TFrom : unmanaged
         where TTo : unmanaged
     {
@@ -37,7 +37,7 @@ public static class MemoryMarshal
     }
 
     // TODO: readonly
-    public static T Read<T>(Span<byte> source)
+    public static unsafe T Read<T>(Span<byte> source)
         where T : unmanaged
     {
         if (Unsafe.SizeOf<T>() > source.Length)
@@ -45,7 +45,7 @@ public static class MemoryMarshal
         return new Span<T>(source._ptr, 1)[0];
     }
     
-    public static bool TryRead<T>(Span<byte> source, out T value)
+    public static unsafe bool TryRead<T>(Span<byte> source, out T value)
         where T : unmanaged
     {
         if (Unsafe.SizeOf<T>() > source.Length)
@@ -60,7 +60,7 @@ public static class MemoryMarshal
         }
     }
 
-    public static void Write<T>(Span<byte> source, in T value)
+    public static unsafe void Write<T>(Span<byte> source, in T value)
         where T : unmanaged
     {
         if (Unsafe.SizeOf<T>() > source.Length)
@@ -69,7 +69,7 @@ public static class MemoryMarshal
         new Span<T>(source._ptr, 1)[0] = value;
     }
     
-    public static bool TryWrite<T>(Span<byte> source, in T value)
+    public static unsafe bool TryWrite<T>(Span<byte> source, in T value)
         where T : unmanaged
     {
         if (Unsafe.SizeOf<T>() > source.Length)

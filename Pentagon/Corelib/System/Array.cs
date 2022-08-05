@@ -20,7 +20,7 @@ public class Array
     private Array() {}
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    internal extern ulong GetDataPtr();
+    internal extern unsafe void* GetDataPtr();
 
     #endregion
 
