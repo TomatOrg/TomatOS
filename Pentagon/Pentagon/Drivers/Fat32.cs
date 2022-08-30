@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Buffers;
 using System.Threading.Tasks;
 using Pentagon.DriverServices;
 
@@ -8,10 +9,31 @@ namespace Pentagon.Drivers
 {
     class Fat32
     {
+        public static Fat32 testing;
+
         IBlock Block;
         uint RootCluster;
         uint SectorsPerCluster;
         uint FirstDataSector;
+
+        Dictionary<long, IMemoryOwner<byte>> pageCache;
+
+        async Task<IMemoryOwner<byte>> readCached(long lba)
+        {
+            if (pageCache.ContainsKey(lba))
+            {
+                Log.LogString("cached");
+                return pageCache[lba];
+            }
+            else
+            {
+                Log.LogString("reading");
+                var mem = MemoryServices.AllocatePages(1);
+                await Block.ReadBlocks(lba, mem.Memory);
+                pageCache[lba] = mem;
+                return mem;
+            }
+        }
 
         static public async Task CheckDevice(IBlock block) {
             var mem = MemoryServices.AllocatePages(1).Memory;
@@ -41,18 +63,21 @@ namespace Pentagon.Drivers
                 Block = block,
                 RootCluster = rootCluster,
                 SectorsPerCluster = sectorsPerCluster,
-                FirstDataSector = firstDataSector
+                FirstDataSector = firstDataSector,
+                pageCache = new(),
             };
-            await fat.Print(fat.RootCluster, 0);
+
+            testing = fat;
+            await fat.PrintRoot();
         }
-        
+
+        public Task PrintRoot() => Print(RootCluster, 0);
+
         public async Task Print(uint cluster, int nesting)
         {
             var sector = (cluster - 2) * SectorsPerCluster + FirstDataSector;
-            var mem = MemoryServices.AllocatePages(1).Memory;
-            var r = new Region(mem);
-            await Block.ReadBlocks(sector, mem);
-
+            var r = new Region((await readCached(sector)).Memory);
+            
             var lfnName = new char[64];
             var lfnLen = 0;
 
