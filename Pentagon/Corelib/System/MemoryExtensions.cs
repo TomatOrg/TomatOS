@@ -32,7 +32,7 @@ public static class MemoryExtensions
     // TODO: ReadOnlySpan
     internal static Span<char> AsSpan(this string text)
     {
-        return text == null ? Span<char>.Empty : new Span<char>(text.GetDataPtr(), text.Length);
+        return text == null ? Span<char>.Empty : new Span<char>(ref text.GetRawStringData(), text.Length);
     }
 
     public static Span<T> AsSpan<T>(this T[] array)

@@ -1,3 +1,6 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
@@ -5,13 +8,18 @@ using System.Runtime.InteropServices;
 
 namespace System;
 
+// The String class represents a static string of characters.  Many of
+// the string methods perform some type of transformation on the current
+// instance and return the result as a new string.  As with arrays, character
+// positions (indices) are zero-based.
 [StructLayout(LayoutKind.Sequential)]
 public class String : IEnumerable<char>
 {
-
+    
     public static readonly string Empty = "";
 
     private readonly int _length;
+    private char _firstChar;
 
     public int Length => _length;
 
@@ -21,23 +29,27 @@ public class String : IEnumerable<char>
         get
         {
             if ((uint)index > (uint)Length) throw new IndexOutOfRangeException();
-            return GetCharInternal(index);
+            return Unsafe.Add(ref _firstChar, index);
         }
     }
-
-    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    internal extern ulong GetDataPtr();
+    
+    internal ref char GetRawStringData() => ref _firstChar;
 
     private String(int length)
     {
         _length = length;
+    }
+
+    internal static string FastAllocateString(int length)
+    {
+        return new string(length);
     }
     
     public String(char[] chars)
     {
         _length = chars.Length;
         
-        var span = new Span<char>(GetDataPtr(), Length);
+        var span = new Span<char>(ref GetRawStringData(), Length);
         chars.AsSpan().CopyTo(span);
     }
 
@@ -45,7 +57,7 @@ public class String : IEnumerable<char>
     {
         _length = length;
 
-        var span = new Span<char>(GetDataPtr(), Length);
+        var span = new Span<char>(ref GetRawStringData(), Length);
         chars.AsSpan(startIndex, length).CopyTo(span);
     }
 
@@ -69,7 +81,7 @@ public class String : IEnumerable<char>
     public static string Concat(string arg0, string arg1)
     {
         var str = new string(arg0.Length + arg1.Length);
-        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
         arg0.AsSpan().CopyTo(span);
         arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
         return str;
@@ -78,7 +90,7 @@ public class String : IEnumerable<char>
     public static string Concat(string arg0, string arg1, string arg2)
     {
         var str = new string(arg0.Length + arg1.Length + arg2.Length);
-        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
         arg0.AsSpan().CopyTo(span);
         arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
         arg2.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length));
@@ -88,7 +100,7 @@ public class String : IEnumerable<char>
     public static string Concat(string arg0, string arg1, string arg2, string arg3)
     {
         var str = new string(arg0.Length + arg1.Length + arg2.Length + arg3.Length);
-        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
         arg0.AsSpan().CopyTo(span);
         arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
         arg2.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length));
@@ -120,7 +132,7 @@ public class String : IEnumerable<char>
 
         // allocate it 
         var str = new string(len);
-        var span = new Span<char>(str.GetDataPtr(), str.Length);
+        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
         
         // copy it 
         var off = 0;

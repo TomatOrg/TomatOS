@@ -4,20 +4,20 @@ using System.Runtime.InteropServices;
 namespace System;
 
 [StructLayout(LayoutKind.Sequential)]
-public readonly struct Memory<T>
+public readonly unsafe struct Memory<T>
 {
 
     public static Memory<T> Empty { get; } = new();
 
     internal readonly object _obj;
-    internal readonly ulong _ptr;
+    internal readonly void* _ptr;
     private readonly int _length;
 
     public bool IsEmpty => _length == 0;
     public int Length => _length;
     public Span<T> Span => new(_ptr, _length);
 
-    internal Memory(object obj, ulong ptr, int length)
+    internal Memory(object obj, void* ptr, int length)
     {
         _obj = obj;
         _ptr = ptr;
@@ -63,7 +63,7 @@ public readonly struct Memory<T>
         if ((uint)start > (uint)Length)
             throw new ArgumentOutOfRangeException();
         
-        return new Memory<T>(_obj, _ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, Length - start);
+        return new Memory<T>(_obj, Unsafe.Add<T>(_ptr, start), Length - start);
     }
 
     public Memory<T> Slice(int start, int length)
@@ -71,7 +71,7 @@ public readonly struct Memory<T>
         if ((ulong)(uint)start + (ulong)(uint)length > (ulong)(uint)_length)
             throw new ArgumentOutOfRangeException();
 
-        return new Memory<T>(_obj, _ptr + (ulong)Unsafe.SizeOf<T>() * (ulong)start, length);
+        return new Memory<T>(_obj, Unsafe.Add<T>(_ptr, start), length);
     }
 
     public T[] ToArray()

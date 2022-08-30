@@ -68,6 +68,18 @@ public static unsafe class Unsafe
     {
         return AsRef<T>(source);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static T ReadUnaligned<T>(void* source)
+    {
+        return AsRef<T>(source);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static T ReadUnaligned<T>(ref byte source)
+    {
+        return AsRef<T>(AsPointer(ref source));
+    }
     
     // can be public, its just a size
     [MethodImpl(MethodCodeType = MethodCodeType.Runtime)]
@@ -102,4 +114,15 @@ public static unsafe class Unsafe
         AsRef<T>(destination) = value;
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteUnaligned<T>(ref byte destination, T value)
+    {
+        AsRef<T>(AsPointer(ref destination)) = value;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteUnaligned<T>(void* destination, T value)
+    {
+        AsRef<T>(destination) = value;
+    }
 }
