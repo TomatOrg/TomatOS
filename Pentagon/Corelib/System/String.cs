@@ -146,9 +146,6 @@ public class String : IEnumerable<char>
     }
     
     #endregion
-
-    [MethodImpl(MethodImplOptions.InternalCall | MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
-    private extern char GetCharInternal(int index);
     
     public CharEnumerator GetEnumerator()
     {
