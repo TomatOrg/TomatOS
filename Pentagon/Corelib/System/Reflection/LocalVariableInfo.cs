@@ -7,4 +7,9 @@ public class LocalVariableInfo
 {
     private int _localIndex;
     private Type _localType;
+
+    internal LocalVariableInfo()
+    {
+    }
+    
 }

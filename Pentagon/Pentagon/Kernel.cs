@@ -1,11 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using Pentagon.Drivers;
 using Pentagon.Drivers.Virtio;
-using Pentagon.DriverServices;
 using Pentagon.DriverServices.Acpi;
 using Pentagon.DriverServices.Pci;
+
+namespace Pentagon;
 
 public class Kernel
 {

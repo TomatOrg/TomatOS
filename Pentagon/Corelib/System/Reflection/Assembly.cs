@@ -26,14 +26,21 @@ public class Assembly
         
     private Type[] _importedTypes;
         
-    private string[] _userStrings;
     private unsafe void* _userStringsTable;
+    private unsafe void* _customAttributeMap;
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     private extern static Assembly LoadInternal(byte[] rawAssembly, bool reflection); 
     
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    private extern static Assembly LoadInternal(string rawAssembly, bool reflection); 
+    private extern static Assembly LoadInternal(string rawAssembly, bool reflection);
+    
+    internal Assembly()
+    {
+    }
+    
+    [MethodImpl(MethodCodeType = MethodCodeType.Native)]
+    extern ~Assembly();
     
     public static Assembly Load(byte[] rawAssembly)
     {

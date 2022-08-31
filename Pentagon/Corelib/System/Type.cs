@@ -6,7 +6,7 @@ using TinyDotNet.Reflection;
 namespace System;
 
 [StructLayout(LayoutKind.Sequential)]
-public abstract class Type : MemberInfo
+public class Type : MemberInfo
 {
 
     private Assembly _assembly;
@@ -14,6 +14,7 @@ public abstract class Type : MemberInfo
     private string _namespace;
     private FieldInfo[] _fields;
     private MethodInfo[] _methods;
+    private PropertyInfo[] _properties;
     private Type _elementType;
     private uint _attributes;
     private int _metadataToken;
@@ -62,6 +63,10 @@ public abstract class Type : MemberInfo
 
     private Type _nextNestedType;
     private Type _nestedTypes;
+
+    internal Type()
+    {
+    }
     
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern Type GetTypeFromHandle(RuntimeTypeHandle handle);
@@ -79,4 +84,25 @@ public abstract class Type : MemberInfo
         }
     }
     
+    public bool IsValueType => _isValueType;
+    
+    public bool IsSubclassOf(Type c)
+    {
+        var current = this;
+        while (current != typeof(object))
+        {
+            if (current == c)
+            {
+                return true;
+            }
+            current = current._baseType;
+        }
+
+        return false;
+    }
+
+    public override string ToString()
+    {
+        return FullName;
+    }
 }

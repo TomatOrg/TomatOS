@@ -10,4 +10,8 @@ public class ParameterInfo
     private string _name;
     private Type parameterType;
 
+    internal ParameterInfo()
+    {
+    }
+
 }
