@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Buffers;
 using System.Threading.Tasks;
+using System.Diagnostics;
 using Pentagon.DriverServices;
 
 namespace Pentagon.Drivers
@@ -18,19 +19,18 @@ namespace Pentagon.Drivers
 
         Dictionary<long, IMemoryOwner<byte>> pageCache;
 
-        async Task<IMemoryOwner<byte>> readCached(long lba)
+        async Task<IMemoryOwner<byte>> readCached(long cluster)
         {
-            if (pageCache.ContainsKey(lba))
+            if (pageCache.ContainsKey(cluster))
             {
-                Log.LogString("cached");
-                return pageCache[lba];
+                return pageCache[cluster];
             }
             else
             {
-                Log.LogString("reading");
                 var mem = MemoryServices.AllocatePages(1);
+                var lba = (cluster - 2) * SectorsPerCluster + FirstDataSector;
                 await Block.ReadBlocks(lba, mem.Memory);
-                pageCache[lba] = mem;
+                pageCache[cluster] = mem;
                 return mem;
             }
         }
@@ -38,15 +38,15 @@ namespace Pentagon.Drivers
         static public async Task CheckDevice(IBlock block) {
             var mem = MemoryServices.AllocatePages(1).Memory;
             var region = new Region(mem);
-            DriverServices.Log.LogString("fat32 init start");
+            DriverServices.Log.LogString("fat32 init start\n");
             await block.ReadBlocks(0, mem);
-            DriverServices.Log.LogString("read bpb");
+            DriverServices.Log.LogString("read bpb\n");
 
             var bytesPerSector = region.CreateField<ushort>(0x0B).Value;
             
             if (bytesPerSector != block.BlockSize)
             {
-                Log.LogString("fat32: issue");
+                Log.LogString("fat32: issue\n");
             }
 
             var sectorsPerCluster = region.CreateField<byte>(0x0D).Value;
@@ -71,18 +71,70 @@ namespace Pentagon.Drivers
             await fat.PrintRoot();
         }
 
-        public Task PrintRoot() => Print(RootCluster, 0);
-
-        public async Task Print(uint cluster, int nesting)
+        
+        public Task PrintRoot()
         {
-            var sector = (cluster - 2) * SectorsPerCluster + FirstDataSector;
-            var r = new Region((await readCached(sector)).Memory);
+            return Traverse(RootCluster, TraversalFn);
+            
+            async Task TraversalFn(File f)
+            {
+                Log.LogString(f.Name);
+                Log.LogString(" ");
+                Log.LogHex((ulong)f.CreatedAt.Year);
+                Log.LogString(" ");
+                Log.LogHex((ulong)f.CreatedAt.Month);
+                Log.LogString(" ");
+                Log.LogHex((ulong)f.CreatedAt.Day);
+                Log.LogString(" ");
+
+                Log.LogString("\n");
+                if (f.IsDirectory)
+                {
+                    await Traverse(f.Cluster, TraversalFn);
+                }
+                else
+                {
+                    var h = (await readCached(f.Cluster)).Memory;
+                    Log.LogString("    ");
+
+                    for (int i = 0; i < 16; i++)
+                    {
+                        Log.LogHex(h.Span[i]);
+                        Log.LogString(" ");
+                    }
+                    Log.LogString("\n");
+                }
+            }
+        }
+        public class File
+        {
+            public uint Cluster;
+            public string Name;
+            public bool IsDirectory;
+            public DateTime CreatedAt;
+        };
+
+        static DateTime ConvertFatDate(uint datetime)
+        {
+            var hour = (int)(datetime >> 11) & 0b11111;
+            var min = (int)(datetime >> 5) & 0b111111;
+            var sec = (int)((datetime >> 0) & 0b11111) * 2; // yes, the second field stores two-second intervals
+            var year = (int)((datetime >> (16 + 9)) & 0b1111111) + 1980;
+            var month = (int)((datetime >> (16 + 5)) & 0b1111); // january is stored as month 1, but so does C# DateTime
+            var day = (int)((datetime >> (16 + 0)) & 0b11111);
+            return new DateTime(year, month, day, hour, min, sec);
+        }
+
+        // TODO: replace this with an async iterator
+        public async Task Traverse(uint cluster, Func<File, Task> callback)
+        {
+            var r = new Region((await readCached(cluster)).Memory);
             
             var lfnName = new char[64];
             var lfnLen = 0;
-
+            
             // TODO: read whole clusterchain instead
-            for (int i = 0; i < 512 / 32; i++)
+            for (int i = 0; i < (SectorsPerCluster * Block.BlockSize) / 32; i++)
             {
                 var rr = r.CreateRegion(i * 32);
                 var attributes = rr.CreateField<byte>(11).Value;
@@ -120,28 +172,33 @@ namespace Pentagon.Drivers
 
                         if (extLen == 0)
                         {
-                            var str = new char[nameLen];
-                            for (int j = 0; j < nameLen; j++) str[j] = (char)name.Span[j];
-                            Log.LogString(new string(str));
+                            for (int j = 0; j < nameLen; j++) lfnName[j] = (char)name.Span[j];
+                            lfnLen = nameLen;
                         }
                         else
                         {
-                            var str = new char[nameLen + 1 + extLen];
-                            for (int j = 0; j < nameLen; j++) str[j] = (char)name.Span[j];
-                            for (int j = 0; j < extLen; j++) str[nameLen + 1 + j] = (char)name.Span[8 + j];
-                            str[nameLen] = '.';
-                            Log.LogString(new string(str));
+                            for (int j = 0; j < nameLen; j++) lfnName[j] = (char)name.Span[j];
+                            for (int j = 0; j < extLen; j++) lfnName[nameLen + 1 + j] = (char)name.Span[8 + j];
+                            lfnName[nameLen] = '.';
+                            lfnLen = nameLen + 1 + extLen;
                         }
-
-                    } else {
-                        Log.LogString(new string(lfnName, 0, lfnLen));
-                        lfnLen = 0;
                     }
-                    if ((attributes & 0x10) != 0)
+                    var c = ((uint)rr.CreateField<ushort>(20).Value << 16) | rr.CreateField<ushort>(26).Value;
+                    var ctime = rr.CreateField<uint>(14).Value;
+                    //var atime = rr.CreateField<uint>(18).Value;
+                    //var mtime = rr.CreateField<uint>(22).Value;
+                    
+                    var str = new string(lfnName, 0, lfnLen);
+                    var ent = new File
                     {
-                        var childCluster = rr.CreateField<byte>(26).Value;
-                        await Print(childCluster, nesting + 1);
-                    }
+                        Name = str,
+                        IsDirectory = (attributes & 0x10) != 0,
+                        Cluster = c,
+                        CreatedAt = ConvertFatDate(ctime),
+                    };
+
+                    await callback(ent);
+                    lfnLen = 0;
                 }
             }
         }
