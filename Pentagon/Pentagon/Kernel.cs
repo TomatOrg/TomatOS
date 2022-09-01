@@ -20,9 +20,6 @@ public class Kernel
         // register built-in drivers
         VirtioDevice.Register();
 
-        int dummy = 0;
-        for (long i = 0; i < 1000000000; i++) Volatile.Read(ref dummy);
-        Fat32.testing.PrintRoot();
         return 0;
     }
 

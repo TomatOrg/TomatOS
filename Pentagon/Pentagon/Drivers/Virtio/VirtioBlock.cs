@@ -37,7 +37,7 @@ public class VirtioBlock : VirtioPciDevice, IBlock
 
     public Task FlushBlocks(CancellationToken token = default)
     {
-        return null;
+        return Task.CompletedTask;
     }
 
     public long _lastBlock;

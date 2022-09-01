@@ -15,27 +15,37 @@ namespace Pentagon.Drivers
         IBlock Block;
         uint RootCluster;
         uint SectorsPerCluster;
+        uint FirstFatSector;
         uint FirstDataSector;
 
         Dictionary<long, IMemoryOwner<byte>> pageCache;
 
-        async Task<IMemoryOwner<byte>> readCached(long cluster)
+        long clusterToLba(uint cluster) => (cluster - 2) * SectorsPerCluster + FirstDataSector;
+        async Task<IMemoryOwner<byte>> readCached(long lba)
         {
-            if (pageCache.ContainsKey(cluster))
+            if (pageCache.ContainsKey(lba))
             {
-                return pageCache[cluster];
+                return pageCache[lba];
             }
             else
             {
                 var mem = MemoryServices.AllocatePages(1);
-                var lba = (cluster - 2) * SectorsPerCluster + FirstDataSector;
                 await Block.ReadBlocks(lba, mem.Memory);
-                pageCache[cluster] = mem;
+                pageCache[lba] = mem;
                 return mem;
             }
         }
 
-        static public async Task CheckDevice(IBlock block) {
+        async Task<uint> nextInClusterChain(uint cluster)
+        {
+            var byteoff = (long)cluster * 4;
+            var sector = FirstFatSector + byteoff / Block.BlockSize;
+            var offset = (byteoff % Block.BlockSize) / 4;
+            var fatsec = MemoryMarshal.Cast<byte, uint>((await readCached(sector)).Memory);
+            return fatsec.Span[(int)offset];
+        }
+        static public async Task CheckDevice(IBlock block)
+        {
             var mem = MemoryServices.AllocatePages(1).Memory;
             var region = new Region(mem);
             DriverServices.Log.LogString("fat32 init start\n");
@@ -43,7 +53,7 @@ namespace Pentagon.Drivers
             DriverServices.Log.LogString("read bpb\n");
 
             var bytesPerSector = region.CreateField<ushort>(0x0B).Value;
-            
+
             if (bytesPerSector != block.BlockSize)
             {
                 Log.LogString("fat32: issue\n");
@@ -55,7 +65,7 @@ namespace Pentagon.Drivers
             var rootDirEnts = region.CreateField<ushort>(0x11).Value;
             var sectorsPerFat = region.CreateField<uint>(0x24).Value;
             var rootCluster = region.CreateField<uint>(0x2C).Value;
-        
+
             var firstDataSector = reservedSectors + (fatCount * sectorsPerFat);
 
             var fat = new Fat32
@@ -63,6 +73,7 @@ namespace Pentagon.Drivers
                 Block = block,
                 RootCluster = rootCluster,
                 SectorsPerCluster = sectorsPerCluster,
+                FirstFatSector = reservedSectors,
                 FirstDataSector = firstDataSector,
                 pageCache = new(),
             };
@@ -71,11 +82,11 @@ namespace Pentagon.Drivers
             await fat.PrintRoot();
         }
 
-        
+
         public Task PrintRoot()
         {
             return Traverse(RootCluster, TraversalFn);
-            
+
             async Task TraversalFn(File f)
             {
                 Log.LogString(f.Name);
@@ -94,7 +105,7 @@ namespace Pentagon.Drivers
                 }
                 else
                 {
-                    var h = (await readCached(f.Cluster)).Memory;
+                    var h = (await readCached(clusterToLba(f.Cluster))).Memory;
                     Log.LogString("    ");
 
                     for (int i = 0; i < 16; i++)
@@ -103,6 +114,17 @@ namespace Pentagon.Drivers
                         Log.LogString(" ");
                     }
                     Log.LogString("\n");
+                    Log.LogString("    ");
+
+                    var next = await nextInClusterChain(f.Cluster);
+                    h = (await readCached(clusterToLba(next))).Memory;
+                    for (int i = 0; i < 16; i++)
+                    {
+                        Log.LogHex(h.Span[i]);
+                        Log.LogString(" ");
+                    }
+                    Log.LogString("\n");
+
                 }
             }
         }
@@ -128,11 +150,11 @@ namespace Pentagon.Drivers
         // TODO: replace this with an async iterator
         public async Task Traverse(uint cluster, Func<File, Task> callback)
         {
-            var r = new Region((await readCached(cluster)).Memory);
-            
+            var r = new Region((await readCached(clusterToLba(cluster))).Memory);
+
             var lfnName = new char[64];
             var lfnLen = 0;
-            
+
             // TODO: read whole clusterchain instead
             for (int i = 0; i < (SectorsPerCluster * Block.BlockSize) / 32; i++)
             {
@@ -187,7 +209,7 @@ namespace Pentagon.Drivers
                     var ctime = rr.CreateField<uint>(14).Value;
                     //var atime = rr.CreateField<uint>(18).Value;
                     //var mtime = rr.CreateField<uint>(22).Value;
-                    
+
                     var str = new string(lfnName, 0, lfnLen);
                     var ent = new File
                     {
