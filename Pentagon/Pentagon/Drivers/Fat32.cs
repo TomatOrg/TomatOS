@@ -42,7 +42,7 @@ namespace Pentagon.Drivers
             var sector = FirstFatSector + byteoff / Block.BlockSize;
             var offset = (byteoff % Block.BlockSize) / 4;
             var fatsec = MemoryMarshal.Cast<byte, uint>((await readCached(sector)).Memory);
-            return fatsec.Span[(int)offset];
+            return fatsec.Span[(int)offset] & 0x0FFFFFFF;
         }
         static public async Task CheckDevice(IBlock block)
         {
@@ -182,6 +182,7 @@ namespace Pentagon.Drivers
                     var name = rr.CreateMemory<byte>(0, 11);
                     if (name.Span[0] == 0) break;
                     if (name.Span[0] == '.') continue; // exclude dot, dotdot and UNIX-like hidden entries
+                    if (name.Span[0] == 0xE5) continue; // exclude deleted files
                     if (lfnLen == 0) // no LFN: there is only a SFN, so convert 8.3 to a normal filename 
                     {
                         // trim spaces from name
