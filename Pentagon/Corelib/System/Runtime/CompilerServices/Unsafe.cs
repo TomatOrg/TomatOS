@@ -1,3 +1,6 @@
+// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
+
 namespace System.Runtime.CompilerServices;
 
 /// <summary>
@@ -10,119 +13,196 @@ namespace System.Runtime.CompilerServices;
 /// </summary>
 public static unsafe class Unsafe
 {
-    
-    // This is public because I consider it safe enough, since the user
-    // has no way to actually access pointer values
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void* Add<T>(void* source, int elementOffset)
-    {
-        return (void*)((ulong)source + (ulong)elementOffset * (ulong)SizeOf<T>());
-    }
+    /// <summary>
+    /// Returns a pointer to the given by-ref parameter.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
+    internal static extern void* AsPointer<T> (ref T value);
+        
+    /// <summary>
+    /// Returns the size of an object of the given type parameter.
+    /// </summary>
+    [MethodImpl(MethodCodeType = MethodCodeType.Runtime)]
+    public static extern int SizeOf<T>();
 
+    /// <summary>
+    /// Casts the given object to the specified type, performs no dynamic type checking.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
+    internal static extern T As<T>(object o) where T : class;
+
+    /// <summary>
+    /// Reinterprets the given reference as a reference to a value of type <typeparamref name="TTo"/>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
+    internal static extern ref TTo As<TFrom, TTo>(ref TFrom source);
+
+    /// <summary>
+    /// Adds an element offset to the given reference.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ref T Add<T>(ref T source, int elementOffset)
     {
-        return ref AsRef<T>(Add<T>(AsPointer(ref source), elementOffset));
+        return ref AddByteOffset(ref source, (nint)elementOffset * SizeOf<T>());
     }
-
+    
+    /// <summary>
+    /// Adds an element offset to the given reference.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ref T AddByteOffset<T>(ref T source, UIntPtr byteOffset)
+    internal static ref T Add<T>(ref T source, nint elementOffset)
     {
-        var ptr = AsPointer(ref source);
-        ptr = (void*)((ulong)ptr + byteOffset.ToUInt64());
-        return ref AsRef<T>(ptr);
+        return ref AddByteOffset(ref source, elementOffset * SizeOf<T>());
     }
-
+    
+    /// <summary>
+    /// Adds an element offset to the given pointer.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void* Add<T>(void* source, int elementOffset)
+    {
+        return (byte*)source + (elementOffset * (nint)SizeOf<T>());
+    }
+    
+    /// <summary>
+    /// Adds an byte offset to the given reference.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ref T AddByteOffset<T>(ref T source, nuint byteOffset)
+    {
+        return ref AddByteOffset(ref source, (nint)byteOffset);
+    }
+    
+    /// <summary>
+    /// Determines whether the specified references point to the same location.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool AreSame<T>(ref T left, ref T right)
     {
         return AsPointer(ref left) == AsPointer(ref right);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
-    internal static extern void* AsPointer<T> (ref T value);
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
-    internal static extern ref T AsRef<T>(void* source);
+    /// <summary>
+    /// Determines whether the memory address referenced by <paramref name="left"/> is greater than
+    /// the memory address referenced by <paramref name="right"/>.
+    /// </summary>
+    /// <remarks>
+    /// This check is conceptually similar to "(void*)(&amp;left) &gt; (void*)(&amp;right)".
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsAddressGreaterThan<T>(ref T left, ref T right)
+    {
+        return AsPointer(ref left) > AsPointer(ref right);
+    }
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
-    internal static extern T As<T>(object o) where T : class;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
-    internal static extern ref TTo As<TFrom, TTo>(ref TFrom source);
-
+    /// <summary>
+    /// Determines whether the memory address referenced by <paramref name="left"/> is less than
+    /// the memory address referenced by <paramref name="right"/>.
+    /// </summary>
+    /// <remarks>
+    /// This check is conceptually similar to "(void*)(&amp;left) &lt; (void*)(&amp;right)".
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Copy<T>(void* destination, ref T source)
+    public static bool IsAddressLessThan<T>(ref T left, ref T right)
     {
-        AsRef<T>(destination) = source;
+        return AsPointer(ref left) < AsPointer(ref right);
     }
-
+    
+    /// <summary>
+    /// Initializes a block of memory at the given location with a given initial value
+    /// without assuming architecture dependent alignment of the address.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void Copy<T>(ref T destination, void* source)
+    internal static void InitBlockUnaligned(ref byte startAddress, byte value, uint byteCount)
     {
-        destination = AsRef<T>(source);
+        for (uint i = 0; i < byteCount; i++)
+            AddByteOffset(ref startAddress, i) = value;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static T Read<T>(void* source)
-    {
-        return AsRef<T>(source);
-    }
-
+    
+    /// <summary>
+    /// Reads a value of type <typeparamref name="T"/> from the given location.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static T ReadUnaligned<T>(void* source)
     {
         return AsRef<T>(source);
     }
-
+    
+    /// <summary>
+    /// Reads a value of type <typeparamref name="T"/> from the given location.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static T ReadUnaligned<T>(ref byte source)
     {
-        return AsRef<T>(AsPointer(ref source));
+        return As<byte, T>(ref source);
     }
     
-    // can be public, its just a size
-    [MethodImpl(MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int SizeOf<T>();
+    /// <summary>
+    /// Writes a value of type <typeparamref name="T"/> to the given location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteUnaligned<T>(void* destination, T value)
+    {
+        AsRef<T>(destination) = value;
+    }
 
+    /// <summary>
+    /// Writes a value of type <typeparamref name="T"/> to the given location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteUnaligned<T>(ref byte destination, T value)
+    {
+        As<byte, T>(ref destination) = value;
+    }
     
-    // This is public because I consider it safe enough, since the user
-    // has no way to actually access pointer values
+    /// <summary>
+    /// Adds an byte offset to the given reference.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void* Subtract<T>(void* source, int elementOffset)
-    {
-        return (void*)((ulong)source - (ulong)elementOffset * (ulong)SizeOf<T>());
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ref T Subtract<T>(ref T source, int elementOffset)
-    {
-        return ref AsRef<T>(Subtract<T>(AsPointer(ref source), elementOffset));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static ref T SubtractByteOffset<T>(ref T source, UIntPtr byteOffset)
+    internal static ref T AddByteOffset<T>(ref T source, nint byteOffset)
     {
         var ptr = AsPointer(ref source);
-        ptr = (void*)((ulong)ptr - byteOffset.ToUInt64());
+        ptr = (void*)((ulong)ptr + (ulong)byteOffset);
         return ref AsRef<T>(ptr);
     }
     
+    /// <summary>
+    /// Reads a value of type <typeparamref name="T"/> from the given location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static T Read<T>(void* source)
+    {
+        return AsRef<T>(source);
+    }
+    
+    /// <summary>
+    /// Reads a value of type <typeparamref name="T"/> from the given location.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static T Read<T>(ref byte source)
+    {
+        return As<byte, T>(ref source);
+    }
+    
+    /// <summary>
+    /// Writes a value of type <typeparamref name="T"/> to the given location.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Write<T>(void* destination, T value)
     {
         AsRef<T>(destination) = value;
     }
     
+    /// <summary>
+    /// Writes a value of type <typeparamref name="T"/> to the given location.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void WriteUnaligned<T>(ref byte destination, T value)
+    internal static void Write<T>(ref byte destination, T value)
     {
-        AsRef<T>(AsPointer(ref destination)) = value;
+        As<byte, T>(ref destination) = value;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
+    internal static extern ref T AsRef<T>(void* source);
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void WriteUnaligned<T>(void* destination, T value)
-    {
-        AsRef<T>(destination) = value;
-    }
 }

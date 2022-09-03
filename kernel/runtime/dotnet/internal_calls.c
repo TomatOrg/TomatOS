@@ -41,7 +41,7 @@ static method_result_t Pentagon_HAL_MemoryServices_MapMemory(uint64_t phys, uint
 }
 
 static void jit_MemoryServices_GetSpanPtr(MIR_context_t ctx) {
-    const char* fname = "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetSpanPtr([Corelib-v1]System.Span`1<uint8>&)";
+    const char* fname = "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetSpanPtr([Corelib-v1]System.Span`1<uint8>&)";
     MIR_type_t res[] = {
         MIR_T_P,
         MIR_T_P
@@ -148,21 +148,20 @@ err_t init_kernel_internal_calls() {
 
     // TODO: rename the functions so they will match nicely
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::UpdateMemory([Corelib-v1]System.Memory`1<uint8>&,object,uint64,int32)", Pentagon_HAL_MemoryServices_UpdateMemory);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::AllocateMemory(uint64)", Pentagon_HAL_MemoryServices_AllocateMemory);
+    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::AllocateMemory(uint64)", Pentagon_HAL_MemoryServices_AllocateMemory);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::FreeMemory(uint64)", Pentagon_HAL_MemoryServices_FreeMemory);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::MapMemory(uint64,uint64)", Pentagon_HAL_MemoryServices_MapMemory);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetMappedPhysicalAddress([Corelib-v1]System.Memory`1<uint8>)", Pentagon_GetMappedPhysicalAddress);
+    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::MapMemory(uint64,uint64)", Pentagon_HAL_MemoryServices_MapMemory);
+    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetMappedPhysicalAddress([Corelib-v1]System.Memory`1<uint8>)", Pentagon_GetMappedPhysicalAddress);
 
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Log::LogHex(uint64)", Pentagon_DriverServices_Log_LogHex);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Log::LogString(string)", Pentagon_DriverServices_Log_LogString);
 
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Irq::AllocateIrq(int32,[Pentagon-v1]Pentagon.DriverServices.Irq+IrqMaskType,uint64)", Pentagon_AllocateIrq);
+    MIR_load_external(ctx, "int32 [Pentagon-v1]Pentagon.DriverServices.Irq::AllocateIrq(int32,[Pentagon-v1]Pentagon.DriverServices.Irq+IrqMaskType,uint64)", Pentagon_AllocateIrq);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Irq::IrqWait(int32)", Pentagon_IrqWait);
 
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
+    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
 
     MIR_module_t pentagon = MIR_new_module(ctx, "pentagon");
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetSpanPtr([Corelib-v1]System.Span`1<uint8>&)", Pentagon_HAL_MemoryServices_MapMemory);
     jit_MemoryServices_GetSpanPtr(ctx);
     MIR_finish_module(ctx);
     MIR_load_module(ctx, pentagon);

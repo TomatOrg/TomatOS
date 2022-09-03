@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Pentagon.DriverServices;
 
 namespace Pentagon.Resources;
 
@@ -17,7 +18,7 @@ public static class ResourceManager<T>
     /// <param name="resource">The resource to add</param>
     public static void Add(T resource)
     {
-        lock (_lock)
+        // lock (_lock)
         {
             // check if someone wants this resource before we add it to the resource list
             foreach (var cb in _resourceCallbacks)
@@ -42,7 +43,7 @@ public static class ResourceManager<T>
         // TODO: only allow drivers to register callbacks, otherwise we can have a
         //       user DOSing the system by sleeping in a callback...
         
-        lock (_lock)
+        // lock (_lock)
         {
             // first dispatch on all existing resources
             for (var i = 0; i < _resources.Count; i++)

@@ -8,48 +8,47 @@ using System.Runtime.InteropServices;
 namespace System;
 
 /// <summary>
-/// Span represents a contiguous region of arbitrary memory. Unlike arrays, it can point to either managed
+/// ReadOnlySpan represents a contiguous region of arbitrary memory. Unlike arrays, it can point to either managed
 /// or native memory, or to memory allocated on the stack. It is type- and memory-safe.
 /// </summary>
-[StructLayout(LayoutKind.Sequential)]
-public readonly ref struct Span<T>
+public readonly ref struct ReadOnlySpan<T>
 {
     /// <summary>A byref or a native ptr.</summary>
     internal readonly ByReference<T> _pointer;
-    /// <summary>The number of elements this Span contains.</summary>
+    /// <summary>The number of elements this ReadOnlySpan contains.</summary>
     private readonly int _length;
 
     /// <summary>
-    /// Creates a new span over the entirety of the target array.
+    /// Creates a new read-only span over the entirety of the target array.
     /// </summary>
     /// <param name="array">The target array.</param>
     /// <remarks>Returns default when <paramref name="array"/> is null.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Span(T[] array)
+    public ReadOnlySpan(T[] array)
     {
         if (array == null)
         {
             this = default;
             return; // returns default
         }
-        
+
         _pointer = new ByReference<T>(ref MemoryMarshal.GetArrayDataReference(array));
         _length = array.Length;
     }
     
     /// <summary>
-    /// Creates a new span over the portion of the target array beginning
+    /// Creates a new read-only span over the portion of the target array beginning
     /// at 'start' index and ending at 'end' index (exclusive).
     /// </summary>
     /// <param name="array">The target array.</param>
-    /// <param name="start">The index at which to begin the span.</param>
-    /// <param name="length">The number of items in the span.</param>
+    /// <param name="start">The index at which to begin the read-only span.</param>
+    /// <param name="length">The number of items in the read-only span.</param>
     /// <remarks>Returns default when <paramref name="array"/> is null.</remarks>
     /// <exception cref="System.ArgumentOutOfRangeException">
     /// Thrown when the specified <paramref name="start"/> or end index is not in the range (&lt;0 or &gt;Length).
     /// </exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Span(T[] array, int start, int length)
+    public ReadOnlySpan(T[] array, int start, int length)
     {
         if (array == null)
         {
@@ -58,7 +57,7 @@ public readonly ref struct Span<T>
             this = default;
             return; // returns default
         }
-
+        
         // See comment in Span<T>.Slice for how this works.
         if ((ulong)(uint)start + (ulong)(uint)length > (ulong)(uint)array.Length)
             ThrowHelper.ThrowArgumentOutOfRangeException();
@@ -68,7 +67,7 @@ public readonly ref struct Span<T>
     }
     
     /// <summary>
-    /// Creates a new span over the target unmanaged buffer.  Clearly this
+    /// Creates a new read-only span over the target unmanaged buffer.  Clearly this
     /// is quite dangerous, because we are creating arbitrarily typed T's
     /// out of a void*-typed block of memory.  And the length is not checked.
     /// But if this creation is correct, then all subsequent uses are correct.
@@ -82,7 +81,7 @@ public readonly ref struct Span<T>
     /// Thrown when the specified <paramref name="length"/> is negative.
     /// </exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal unsafe Span(void* pointer, int length)
+    internal unsafe ReadOnlySpan(void* pointer, int length)
     {
         if (length < 0)
             ThrowHelper.ThrowArgumentOutOfRangeException();
@@ -93,7 +92,7 @@ public readonly ref struct Span<T>
     
     // Constructor for internal use only.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal Span(ref T ptr, int length)
+    internal ReadOnlySpan(ref T ptr, int length)
     {
         Debug.Assert(length >= 0);
 
@@ -102,14 +101,14 @@ public readonly ref struct Span<T>
     }
     
     /// <summary>
-    /// Returns a reference to specified element of the Span.
+    /// Returns the specified element of the read-only span.
     /// </summary>
     /// <param name="index"></param>
     /// <returns></returns>
     /// <exception cref="System.IndexOutOfRangeException">
     /// Thrown when index less than 0 or index greater than or equal to Length
     /// </exception>
-    public ref T this[int index]
+    public ref readonly T this[int index]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
@@ -121,26 +120,20 @@ public readonly ref struct Span<T>
     }
 
     /// <summary>
-    /// The number of items in the span.
+    /// The number of items in the read-only span.
     /// </summary>
-    public int Length
-    {
-        get => _length;
-    }
+    public int Length => _length;
 
     /// <summary>
     /// Returns true if Length is 0.
     /// </summary>
-    public bool IsEmpty
-    {
-        get => 0 >= (uint)_length; // Workaround for https://github.com/dotnet/runtime/issues/10950
-    }
+    public bool IsEmpty => 0 >= (uint)_length; // Workaround for https://github.com/dotnet/runtime/issues/10950
     
     /// <summary>
     /// Returns false if left and right point at the same memory and have the same length.  Note that
     /// this does *not* check to see if the *contents* are equal.
     /// </summary>
-    public static bool operator !=(Span<T> left, Span<T> right) => !(left == right);
+    public static bool operator !=(ReadOnlySpan<T> left, ReadOnlySpan<T> right) => !(left == right);
 
     /// <summary>
     /// This method is not supported as spans cannot be boxed. To compare two spans, use operator==.
@@ -148,7 +141,7 @@ public readonly ref struct Span<T>
     /// Always thrown by this method.
     /// </exception>
     /// </summary>
-    [Obsolete("Equals() on Span will always throw an exception. Use the equality operator instead.")]
+    [Obsolete("Equals() on ReadOnlySpan has will always throw an exception. Use the equality operator instead.")]
     public override bool Equals(object? obj) =>
         throw new NotSupportedException(NotSupportedException.CannotCallEqualsOnSpan);
 
@@ -158,35 +151,41 @@ public readonly ref struct Span<T>
     /// Always thrown by this method.
     /// </exception>
     /// </summary>
-    [Obsolete("GetHashCode() on Span will always throw an exception.")]
+    [Obsolete("GetHashCode() on ReadOnlySpan will always throw an exception.")]
     public override int GetHashCode() =>
         throw new NotSupportedException(NotSupportedException.CannotCallGetHashCodeOnSpan);
 
     /// <summary>
-    /// Defines an implicit conversion of an array to a <see cref="Span{T}"/>
+    /// Defines an implicit conversion of an array to a <see cref="ReadOnlySpan{T}"/>
     /// </summary>
-    public static implicit operator Span<T>(T[]? array) => new Span<T>(array);
+    public static implicit operator ReadOnlySpan<T>(T[]? array) => new ReadOnlySpan<T>(array);
+
+    // /// <summary>
+    // /// Defines an implicit conversion of a <see cref="ArraySegment{T}"/> to a <see cref="ReadOnlySpan{T}"/>
+    // /// </summary>
+    // public static implicit operator ReadOnlySpan<T>(ArraySegment<T> segment)
+    //     => new ReadOnlySpan<T>(segment.Array, segment.Offset, segment.Count);
 
     /// <summary>
-    /// Returns an empty <see cref="Span{T}"/>
+    /// Returns a 0-length read-only span whose base is the null pointer.
     /// </summary>
-    public static Span<T> Empty => default;
+    public static ReadOnlySpan<T> Empty => default;
 
     /// <summary>Gets an enumerator for this span.</summary>
     public Enumerator GetEnumerator() => new Enumerator(this);
-    
-    /// <summary>Enumerates the elements of a <see cref="Span{T}"/>.</summary>
+
+    /// <summary>Enumerates the elements of a <see cref="ReadOnlySpan{T}"/>.</summary>
     public ref struct Enumerator
     {
         /// <summary>The span being enumerated.</summary>
-        private readonly Span<T> _span;
+        private readonly ReadOnlySpan<T> _span;
         /// <summary>The next index to yield.</summary>
         private int _index;
 
         /// <summary>Initialize the enumerator.</summary>
         /// <param name="span">The span to enumerate.</param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal Enumerator(Span<T> span)
+        internal Enumerator(ReadOnlySpan<T> span)
         {
             _span = span;
             _index = -1;
@@ -196,18 +195,18 @@ public readonly ref struct Span<T>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool MoveNext()
         {
-            var index = _index + 1;
-            
-            if (index >= _span.Length) 
-                return false;
-            
-            _index = index;
-            return true;
+            int index = _index + 1;
+            if (index < _span.Length)
+            {
+                _index = index;
+                return true;
+            }
 
+            return false;
         }
 
         /// <summary>Gets the element at the current position of the enumerator.</summary>
-        public ref T Current
+        public ref readonly T Current
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => ref _span[_index];
@@ -215,72 +214,86 @@ public readonly ref struct Span<T>
     }
 
     /// <summary>
-    /// Clears the contents of this span.
-    /// </summary>
-    public void Clear()
-    {
-        for (var i = 0; i < _length; i++)
-        {
-            this[i] = default;
-        }
-    }
-        
-    /// <summary>
-    /// Fills the contents of this span with the given value.
-    /// </summary>
-    public void Fill(T value)
-    {
-        for (var i = 0; i < _length; i++)
-        {
-            this[i] = value;
-        }
-    }
-    
-    /// <summary>
-    /// Copies the contents of this span into destination span. If the source
+    /// Copies the contents of this read-only span into destination span. If the source
     /// and destinations overlap, this method behaves as if the original values in
     /// a temporary location before the destination is overwritten.
-    /// </summary>
+    ///
     /// <param name="destination">The span to copy items into.</param>
     /// <exception cref="System.ArgumentException">
     /// Thrown when the destination Span is shorter than the source Span.
     /// </exception>
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void CopyTo(Span<T> destination)
+    public unsafe void CopyTo(Span<T> destination)
     {
-        ((ReadOnlySpan<T>)this).CopyTo(destination);
+        // Using "if (!TryCopyTo(...))" results in two branches: one for the length
+        // check, and one for the result of TryCopyTo. Since these checks are equivalent,
+        // we can optimize by performing the check once ourselves then calling Memmove directly.
+
+        if ((uint)_length > destination.Length)
+            ThrowHelper.ThrowArgumentException_DestinationTooShort();
+
+        var ptr = _pointer._value;
+        var dstPtr = destination._pointer._value;
+        if (ptr < dstPtr && dstPtr < Unsafe.Add<T>(ptr, _length))
+        {
+            for (var i = _length - 1; i >= 0; i--)
+            {
+                destination[i] = this[i];
+            }
+        }
+        else
+        {
+            for (var i = 0; i < _length; i++)
+            {
+                destination[i] = this[i];
+            }
+        }
     }
     
     /// <summary>
-    /// Copies the contents of this span into destination span. If the source
+    /// Copies the contents of this read-only span into destination span. If the source
     /// and destinations overlap, this method behaves as if the original values in
     /// a temporary location before the destination is overwritten.
     /// </summary>
-    /// <param name="destination">The span to copy items into.</param>
     /// <returns>If the destination span is shorter than the source span, this method
     /// return false and no data is written to the destination.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryCopyTo(Span<T> destination)
+    /// <param name="destination">The span to copy items into.</param>
+    public unsafe bool TryCopyTo(Span<T> destination)
     {
-        return ((ReadOnlySpan<T>)this).TryCopyTo(destination);
+        if ((uint)_length > (uint)destination.Length) 
+            return false;
+        
+        var ptr = _pointer._value;
+        var dstPtr = destination._pointer._value;
+        if (ptr < dstPtr && dstPtr < Unsafe.Add<T>(ptr, _length))
+        {
+            for (var i = _length - 1; i >= 0; i--)
+            {
+                destination[i] = this[i];
+            }
+        }
+        else
+        {
+            for (var i = 0; i < _length; i++)
+            {
+                destination[i] = this[i];
+            }
+        }
+        
+        return true;
     }
     
     /// <summary>
     /// Returns true if left and right point at the same memory and have the same length.  Note that
     /// this does *not* check to see if the *contents* are equal.
     /// </summary>
-    public static bool operator ==(Span<T> left, Span<T> right) =>
+    public static bool operator ==(ReadOnlySpan<T> left, ReadOnlySpan<T> right) =>
         left._length == right._length &&
         Unsafe.AreSame<T>(ref left._pointer.Value, ref right._pointer.Value);
 
-    /// <summary>
-    /// Defines an implicit conversion of a <see cref="Span{T}"/> to a <see cref="ReadOnlySpan{T}"/>
-    /// </summary>
-    public static implicit operator ReadOnlySpan<T>(Span<T> span) =>
-        new ReadOnlySpan<T>(ref span._pointer.Value, span._length);
-
     // /// <summary>
-    // /// For <see cref="Span{Char}"/>, returns a new instance of string that represents the characters pointed to by the span.
+    // /// For <see cref="ReadOnlySpan{Char}"/>, returns a new instance of string that represents the characters pointed to by the span.
     // /// Otherwise, returns a <see cref="string"/> with the name of the type and the number of elements.
     // /// </summary>
     // public override string ToString()
@@ -289,27 +302,27 @@ public readonly ref struct Span<T>
     //     {
     //         return new string(new ReadOnlySpan<char>(ref Unsafe.As<T, char>(ref _pointer.Value), _length));
     //     }
-    //     return $"System.Span<{typeof(T).Name}>[{_length}]";
+    //     return $"System.ReadOnlySpan<{typeof(T).Name}>[{_length}]";
     // }
     
     /// <summary>
-    /// Forms a slice out of the given span, beginning at 'start'.
+    /// Forms a slice out of the given read-only span, beginning at 'start'.
     /// </summary>
     /// <param name="start">The index at which to begin this slice.</param>
     /// <exception cref="System.ArgumentOutOfRangeException">
     /// Thrown when the specified <paramref name="start"/> index is not in range (&lt;0 or &gt;Length).
     /// </exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Span<T> Slice(int start)
+    public ReadOnlySpan<T> Slice(int start)
     {
         if ((uint)start > (uint)_length)
             ThrowHelper.ThrowArgumentOutOfRangeException();
 
-        return new Span<T>(ref Unsafe.Add(ref _pointer.Value, (nint)(uint)start /* force zero-extension */), _length - start);
+        return new ReadOnlySpan<T>(ref Unsafe.Add(ref _pointer.Value, (nint)(uint)start /* force zero-extension */), _length - start);
     }
-
+    
     /// <summary>
-    /// Forms a slice out of the given span, beginning at 'start', of given length
+    /// Forms a slice out of the given read-only span, beginning at 'start', of given length
     /// </summary>
     /// <param name="start">The index at which to begin this slice.</param>
     /// <param name="length">The desired length for the slice (exclusive).</param>
@@ -317,26 +330,20 @@ public readonly ref struct Span<T>
     /// Thrown when the specified <paramref name="start"/> or end index is not in range (&lt;0 or &gt;Length).
     /// </exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Span<T> Slice(int start, int length)
+    public ReadOnlySpan<T> Slice(int start, int length)
     {
-        // Since start and length are both 32-bit, their sum can be computed across a 64-bit domain
-        // without loss of fidelity. The cast to uint before the cast to ulong ensures that the
-        // extension from 32- to 64-bit is zero-extending rather than sign-extending. The end result
-        // of this is that if either input is negative or if the input sum overflows past Int32.MaxValue,
-        // that information is captured correctly in the comparison against the backing _length field.
-        // We don't use this same mechanism in a 32-bit process due to the overhead of 64-bit arithmetic.
+        // See comment in Span<T>.Slice for how this works.
         if ((ulong)(uint)start + (ulong)(uint)length > (ulong)(uint)_length)
             ThrowHelper.ThrowArgumentOutOfRangeException();
 
-        return new Span<T>(ref Unsafe.Add(ref _pointer.Value, (nint)(uint)start /* force zero-extension */), length);
+        return new ReadOnlySpan<T>(ref Unsafe.Add(ref _pointer.Value, (nint)(uint)start /* force zero-extension */), length);
     }
 
     /// <summary>
-    /// Copies the contents of this span into a new array.  This heap
+    /// Copies the contents of this read-only span into a new array.  This heap
     /// allocates, so should generally be avoided, however it is sometimes
     /// necessary to bridge the gap with APIs written in terms of arrays.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T[] ToArray()
     {
         if (_length == 0)
@@ -346,5 +353,5 @@ public readonly ref struct Span<T>
         CopyTo(destination);
         return destination;
     }
-
+    
 }

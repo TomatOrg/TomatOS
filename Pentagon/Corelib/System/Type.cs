@@ -20,6 +20,7 @@ public abstract class Type : MemberInfo
     private bool _isArray;
     private bool _isByRef;
     private bool _isBoxed;
+    private bool _isPointer;
 
     private Type _genericTypeDefinition;
     private int _genericTypeAttributes;
@@ -55,6 +56,7 @@ public abstract class Type : MemberInfo
     private Type _arrayType;
     private Type _byRefType;
     private Type _boxedType;
+    private Type _pointerType;
     private Type _unboxedType;
     private Type _nextGenericInstance;
 
