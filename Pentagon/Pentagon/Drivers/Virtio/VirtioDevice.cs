@@ -116,7 +116,7 @@ public class VirtioPciDevice
         public ushort GetNewDescriptor()
         {
             var oldFirstFree = FirstFree;
-            FirstFree = Descriptors.Span[oldFirstFree].NextDescIdx;
+            FirstFree = Descriptors.Span[oldFirstFree % Size].NextDescIdx;
             return oldFirstFree;
         }
 
@@ -136,12 +136,12 @@ public class VirtioPciDevice
         public ushort GetNext(ushort curr)
         {
             var next = GetNewDescriptor();
-            Descriptors.Span[curr].NextDescIdx = next;
+            Descriptors.Span[curr % Size].NextDescIdx = next;
             return next;
         }
 
         /// <summary>
-        /// Commit all the descriptor heads pushed with GetNewDescriptor(true) and notify the device.
+        /// Commit all the descriptor heads pushed and notify the device.
         /// </summary>
         public void Notify()
         {
@@ -156,13 +156,13 @@ public class VirtioPciDevice
         public void FreeChain(ushort head)
         {
             var desc = head;
-            while ((int)(Descriptors.Span[desc].Flags & Descriptor.Flag.HasNext) > 0)
+            while ((Descriptors.Span[desc].Flags & Descriptor.Flag.HasNext) != 0)
             {
                 desc = Descriptors.Span[desc].NextDescIdx;
             }
             Descriptors.Span[desc].Flags = Descriptor.Flag.HasNext;
             Descriptors.Span[desc].NextDescIdx = FirstFree;
-            FirstFree = desc;
+            FirstFree = head;
             LastSeenUsed++;
         }
 
@@ -203,7 +203,7 @@ public class VirtioPciDevice
             {
                 Flags = r.CreateField<ushort>(0);
                 DescIdx = r.CreateField<ushort>(2);
-                Ring = r.CreateMemory<ushort>(4, size / 2);
+                Ring = r.CreateMemory<ushort>(4, size);
             }
         }
 
@@ -221,7 +221,7 @@ public class VirtioPciDevice
             {
                 Flags = r.CreateField<ushort>(0);
                 DescIdx = r.CreateField<ushort>(2);
-                Ring = r.CreateMemory<UsedElement>(4, size / 8);
+                Ring = r.CreateMemory<UsedElement>(4, size);
             }
 
             [StructLayout(LayoutKind.Sequential)]
