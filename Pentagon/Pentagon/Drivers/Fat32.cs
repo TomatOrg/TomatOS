@@ -115,15 +115,16 @@ namespace Pentagon.Drivers
 
             testing = fat;
             await fat.PrintRoot();
-            
-            await fat.AddDirent(rootCluster, "ThisIsALongerName", new DateTime(), 696969, 1024);
-            await fat.AddDirent(rootCluster, "ThisIsALongerName2", new DateTime(), 696969 + 1, 1024);
-            await fat.AddDirent(rootCluster, "ThisIsALongerName3", new DateTime(), 696969 + 2, 1024);
-            await fat.AddDirent(rootCluster, "ThisIsALongerName4", new DateTime(), 696969 + 2, 1024);
-            await fat.AddDirent(rootCluster, "Short", new DateTime(), 696969 + 6, 1024);
-            await fat.AddDirent(rootCluster, "Short2", new DateTime(), 696969 + 7, 1024);
-            await fat.AddDirent(rootCluster, "Short3", new DateTime(), 696969 + 7, 1024);
-            await fat.AddDirent(rootCluster, "Short4", new DateTime(), 696969 + 7, 1024);
+
+            var dt = new DateTime(1985, 11, 20);
+            await fat.AddDirent(rootCluster, "ThisIsALongerName", dt, 696969, 1024);
+            await fat.AddDirent(rootCluster, "ThisIsALongerName2", dt, 696969 + 1, 1024);
+            await fat.AddDirent(rootCluster, "ThisIsALongerName3", dt, 696969 + 2, 1024);
+            await fat.AddDirent(rootCluster, "ThisIsALongerName4", dt, 696969 + 2, 1024);
+            await fat.AddDirent(rootCluster, "Short", dt, 696969 + 6, 1024);
+            await fat.AddDirent(rootCluster, "Short2", dt, 696969 + 7, 1024);
+            await fat.AddDirent(rootCluster, "Short3", dt, 696969 + 7, 1024);
+            await fat.AddDirent(rootCluster, "Short4", dt, 696969 + 7, 1024);
         }
 
 
@@ -180,15 +181,24 @@ namespace Pentagon.Drivers
             public DateTime CreatedAt;
         };
 
-        static DateTime ConvertFatDate(uint datetime)
+        static DateTime FatToDateTime(uint dt)
         {
-            var hour = (int)(datetime >> 11) & 0b11111;
-            var min = (int)(datetime >> 5) & 0b111111;
-            var sec = (int)((datetime >> 0) & 0b11111) * 2; // yes, the second field stores two-second intervals
-            var year = (int)((datetime >> (16 + 9)) & 0b1111111) + 1980;
-            var month = (int)((datetime >> (16 + 5)) & 0b1111); // january is stored as month 1, but so does C# DateTime
-            var day = (int)((datetime >> (16 + 0)) & 0b11111);
+            var hour = (int)(dt >> 11) & 0b11111;
+            var min = (int)(dt >> 5) & 0b111111;
+            var sec = (int)((dt >> 0) & 0b11111) * 2; // yes, the second field stores two-second intervals
+            var year = (int)((dt >> (16 + 9)) & 0b1111111) + 1980;
+            var month = (int)((dt >> (16 + 5)) & 0b1111); // january is stored as month 1, but so does C# DateTime
+            var day = (int)((dt >> (16 + 0)) & 0b11111);
             return new DateTime(year, month, day, hour, min, sec);
+        }
+        static uint DateTimeToFat(DateTime dt)
+        {
+            return ((uint)(dt.Year - 1980) << (16 + 9)) |
+                   ((uint)dt.Month << (16 + 5)) |
+                   ((uint)dt.Day << (16 + 0)) |
+                   ((uint)dt.Hour << 11) |
+                   ((uint)dt.Minute << 5) |
+                   ((uint)(dt.Second / 2));
         }
 
         // TODO: replace this with an async iterator
@@ -255,7 +265,7 @@ namespace Pentagon.Drivers
                         Name = new string(lfnName, 0, lfnLen),
                         IsDirectory = (attributes & 0x10) != 0,
                         Cluster = cluste,
-                        CreatedAt = ConvertFatDate(sfn.cTime.Value),
+                        CreatedAt = FatToDateTime(sfn.cTime.Value),
                     };
 
                     await callback(ent);
@@ -311,6 +321,8 @@ namespace Pentagon.Drivers
             public Field<ushort> clusterLo;
             public Field<uint> fileSize;
             public Field<uint> cTime;
+            public Field<ushort> aDate;
+            public Field<uint> mTime;
 
             public Sfn(Region r)
             {
@@ -319,10 +331,15 @@ namespace Pentagon.Drivers
                 clusterLo = new(r, 26);
                 fileSize = new(r, 28);
                 cTime = new(r, 14);
+                aDate = new(r, 18);
+                mTime = new(r, 22);
             }
         }
         public async Task AddDirent(uint dirCluster, string name, DateTime creation, uint startCluster, uint size)
         {
+            // atime, ctime and mtime are gonna be the same, we're creating the file now
+            var fatTime = DateTimeToFat(creation);
+
             // how many contig entries do we need?
             var neededLfns = (name.Length + 13 - 1) / 13;
             var neededEnts = neededLfns + 1;
@@ -424,7 +441,9 @@ namespace Pentagon.Drivers
                 sfn.clusterHi.Value = (ushort)(startCluster >> 16);
                 sfn.clusterLo.Value = (ushort)(startCluster & 0xFFFF);
                 sfn.fileSize.Value = size;
-                sfn.cTime.Value = 0;
+                sfn.cTime.Value = fatTime;
+                sfn.aDate.Value = (ushort)(fatTime >> 16);
+                sfn.mTime.Value = fatTime;
             }
         }
     }
