@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Pentagon.Drivers;
 using Pentagon.Drivers.Virtio;
+using Pentagon.Interfaces;
 
 namespace Pentagon.Managers
 {
@@ -59,6 +60,8 @@ namespace Pentagon.Managers
     {
         static IBlock pp;
         public static List<BlockInfo> BlockDevices = new();
+        public static List<IFileSystem> FSes = new();
+
         public static async Task AddBlock(IBlock block)
         {
             var bi = new BlockInfo(block);
@@ -70,7 +73,10 @@ namespace Pentagon.Managers
                 var p = new Partition(block, start, end);
                 bi.PartitionInfo.Add(p);
                 pp = p;
-                _ = Fat32.CheckDevice(pp);
+                var d = Fat32.CheckDevice(pp);
+                d.GetAwaiter().OnCompleted(() => {
+                    if (d.Result != null) FSes.Add(d.Result);
+                });
             }
         }
     }

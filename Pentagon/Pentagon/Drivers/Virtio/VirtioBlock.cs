@@ -1,5 +1,6 @@
 using Pentagon.DriverServices;
 using Pentagon.DriverServices.Pci;
+using Pentagon.Interfaces;
 using Pentagon.Managers;
 using Pentagon.Resources;
 using System;

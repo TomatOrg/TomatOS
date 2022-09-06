@@ -2,7 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Pentagon.Drivers;
+namespace Pentagon.Interfaces;
 
 /// <summary>
 /// Represents a block device, which reads/writes in

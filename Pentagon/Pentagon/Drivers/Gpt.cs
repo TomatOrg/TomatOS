@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Pentagon.Drivers.Virtio;
 using Pentagon.DriverServices;
+using Pentagon.Interfaces;
 using Pentagon.Resources;
 
 namespace Pentagon.Drivers
