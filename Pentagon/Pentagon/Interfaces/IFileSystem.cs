@@ -91,6 +91,10 @@ public interface IDirectory : INode
     /// <returns></returns>
     public Task<IDirectory> OpenDirectory(string filename, FileOpenMode mode, CancellationToken token = default);
 
+    public Task<IFile> CreateFile(string name, DateTime creation, CancellationToken token = default);
+    public Task<IDirectory> CreateDirectory(string name, DateTime creation, CancellationToken token = default);
+
+
     /// <summary>
     /// Get all the files 
     /// </summary>

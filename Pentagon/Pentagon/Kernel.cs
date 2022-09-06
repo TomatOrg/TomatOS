@@ -20,14 +20,16 @@ public class Kernel
         Log.LogString("volume opened\n");
 
         var boot = await root.OpenDirectory("boot", 0);
+        var newfile = await boot.CreateFile("helloworld", new DateTime(2001, 9, 11));
+        var newdir = await boot.CreateDirectory("hellodir", new DateTime(2001, 9, 11));
 
         var lim = await boot.OpenFile("limine.cfg", 0);
 
-        var m = MemoryServices.AllocatePages(1).Memory;
-        await lim.Read(0, m.Slice(0, 128));
+        var m = new byte[128];
+        await lim.Read(0, m.AsMemory<byte>());
         
         var ch = new char[m.Length];
-        for (int i = 0; i < m.Length; i++) ch[i] = (char)m.Span[i];
+        for (int i = 0; i < m.Length; i++) ch[i] = (char)m[i];
         Log.LogString(new string(ch));
     }
     public static int Main()
