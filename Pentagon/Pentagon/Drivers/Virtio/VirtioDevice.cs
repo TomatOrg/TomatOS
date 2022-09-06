@@ -323,9 +323,9 @@ public class VirtioPciDevice
         _pci = a;
         foreach (var cap in a.GetCapabilities())
         {
-            if (cap.Span[0].Id == 0x09)
+            if (cap.Span[0] == 0x09)
             {
-                var mem = MemoryMarshal.Cast<PciCapability, Capability>(cap);
+                var mem = MemoryMarshal.Cast<byte, Capability>(cap);
                 ref var virtioCap = ref mem.Span[0];
                 var bar = _pci.MapBar(virtioCap.Bar);
 

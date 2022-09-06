@@ -22,10 +22,10 @@ public class Msix
     /// </summary>
     public int Count => _configuredIrqs;
 
-    internal Msix(PciDevice device, Memory<PciCapability> capability)
+    internal Msix(PciDevice device, Memory<byte> capability)
     {
         // get the cap
-        _capability = MemoryMarshal.Cast<PciCapability, PciCapability.Msix>(capability);
+        _capability = MemoryMarshal.Cast<byte, PciCapability.Msix>(capability);
         ref var cap = ref _capability.Span[0];
 
         // get the table

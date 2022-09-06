@@ -15,10 +15,9 @@ public class Kernel
         // setup the basic subsystems
         var acpi = new Acpi();
         Pci.Scan(acpi);
-        
+
         // register built-in drivers
         VirtioDevice.Register();
-
         return 0;
     }
 
