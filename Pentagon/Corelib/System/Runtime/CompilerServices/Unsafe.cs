@@ -165,7 +165,7 @@ public static unsafe class Unsafe
         ptr = (void*)((ulong)ptr + (ulong)byteOffset);
         return ref AsRef<T>(ptr);
     }
-    
+
     /// <summary>
     /// Reads a value of type <typeparamref name="T"/> from the given location.
     /// </summary>
@@ -204,5 +204,14 @@ public static unsafe class Unsafe
 
     [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
     internal static extern ref T AsRef<T>(void* source);
+
+    /// <summary>
+    /// Determines the byte offset from origin to target from the given references.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static nint ByteOffset<T>(ref T origin, ref T target)
+    {
+        return (nint)AsPointer(ref target) - (nint)AsPointer(ref origin);
+    }
     
 }
