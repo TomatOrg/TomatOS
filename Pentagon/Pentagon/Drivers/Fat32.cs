@@ -10,26 +10,43 @@ using System.Threading;
 
 namespace Pentagon.Drivers
 {
-    class Fat32File : IFile
+    class Fat32Node : INode
     {
         public string FileName => _fileName;
         public long PhysicalSize => _size;
         public long FileSize => _size;
 
-        readonly Fat32 _fs;
-        readonly uint _cluster;
-        string _fileName;
-        long _size;
-        long _currentClusterIdx = -1;
-        IMemoryOwner<byte> _currentCluster;
+        public DateTime CreateTime => _cTime;
+        public DateTime LastAccessTime => _aTime;
+        public DateTime ModificationTime => _mTime;
 
-        internal Fat32File(Fat32 fs, uint cluster, string filename, uint size)
+        public async Task Flush(CancellationToken token) { }
+
+        internal readonly Fat32 _fs;
+        internal uint _cluster;
+        internal uint _size;
+        internal string _fileName;
+        internal DateTime _cTime, _aTime, _mTime;
+
+
+        internal Fat32Node(Fat32 fs, uint cluster, string filename, uint size, DateTime ctime, DateTime atime, DateTime mtime)
         {
             _fs = fs;
             _cluster = cluster;
             _fileName = filename;
             _size = size;
+            _cTime = ctime;
+            _aTime = atime;
+            _mTime = mtime;
         }
+    }
+
+    class Fat32File : Fat32Node, IFile
+    {
+        long _currentClusterIdx = -1;
+        Memory<byte> _currentCluster;
+
+        internal Fat32File(Fat32 fs, uint cluster, string filename, uint size, DateTime c, DateTime a, DateTime m) : base(fs, cluster, filename, size, c, a, m) { }
 
         public async Task<int> Read(long offset, Memory<byte> buffer, CancellationToken token = default)
         {
@@ -53,7 +70,7 @@ namespace Pentagon.Drivers
                 if (length == 0) break;
                 for (int i = 0; i < length; i++)
                 {
-                    buffer.Span[bytesRead + i] = _currentCluster.Memory.Span[index + i];
+                    buffer.Span[bytesRead + i] = _currentCluster.Span[index + i];
                 }
                 index = 0;
                 _currentClusterIdx = await _fs.NextInClusterChain((uint)_currentClusterIdx);
@@ -67,33 +84,12 @@ namespace Pentagon.Drivers
         {
             return 0;
         }
-
-        public async Task Delete(CancellationToken token = default) { }
-
-        public async Task Flush(CancellationToken token = default) { }
     }
-    class Fat32Directory : IDirectory
+    class Fat32Directory : Fat32Node, IDirectory
     {
-        public string FileName => _fileName;
-        public long PhysicalSize => _fs.BlockSize;
-        public long FileSize => _fs.BlockSize;
+        internal Fat32Directory(Fat32 fs, uint cluster, DateTime c, DateTime a, DateTime m) : base(fs, cluster, "", 0, c, a, m) { }
 
-        readonly Fat32 _fs;
-        readonly uint _cluster;
-        readonly string _fileName = "";
-
-        internal Fat32Directory(Fat32 fs, uint cluster)
-        {
-            _fs = fs;
-            _cluster = cluster;
-        }
-
-        internal Fat32Directory(Fat32 fs, uint cluster, string filename)
-        {
-            _fs = fs;
-            _cluster = cluster;
-            _fileName = filename;
-        }
+        internal Fat32Directory(Fat32 fs, uint cluster, string filename, DateTime c, DateTime a, DateTime m) : base(fs, cluster, filename, 0, c, a, m) { }
 
         public async Task<IFile> OpenFile(string filename, FileOpenMode mode, CancellationToken token = default)
         {
@@ -103,7 +99,7 @@ namespace Pentagon.Drivers
             {
                 if (!f.IsDirectory && filename.Equals(f.Name))
                 {
-                    d = new(_fs, f.Cluster, f.Name, f.Size);
+                    d = new(_fs, f.Cluster, f.Name, f.Size, f.CreatedAt, f.AccessedAt, f.ModifiedAt);
                     return true;
                 }
                 return false;
@@ -119,7 +115,7 @@ namespace Pentagon.Drivers
             {
                 if (f.IsDirectory && filename.Equals(f.Name))
                 {
-                    d = new(_fs, f.Cluster, f.Name);
+                    d = new(_fs, f.Cluster, f.Name, f.CreatedAt, f.AccessedAt, f.ModifiedAt);
                     return true;
                 }
                 return false;
@@ -130,21 +126,72 @@ namespace Pentagon.Drivers
         public async Task<IFile> CreateFile(string name, DateTime creation, CancellationToken token = default)
         {
             var newCluster = await _fs.ClusterAllocate();
-            await _fs.AddDirent(_cluster, name, creation, newCluster, (uint)_fs.BlockSize, false);
-            return new Fat32File(_fs, newCluster, name, (uint)_fs.BlockSize);
+            await _fs.AddDirent(_cluster, name, creation, creation, creation, newCluster, (uint)_fs.BlockSize, false);
+            return new Fat32File(_fs, newCluster, name, (uint)_fs.BlockSize, creation, creation, creation);
         }
 
         public async Task<IDirectory> CreateDirectory(string name, DateTime creation, CancellationToken token = default)
         {
             var newCluster = await _fs.ClusterAllocate();
             // TODO: zerofill cluster to be sure
-            await _fs.AddDirent(_cluster, name, creation, newCluster, 0, true);
-            await _fs.AddDirent(newCluster, ".", creation, newCluster, 0, true);
-            await _fs.AddDirent(newCluster, "..", creation, newCluster, 0, true);
-            return new Fat32Directory(_fs, newCluster, name);
+            await _fs.AddDirent(_cluster, name, creation, creation, creation, newCluster, 0, true);
+            await _fs.AddDirent(newCluster, ".", creation, creation, creation, newCluster, 0, true);
+            await _fs.AddDirent(newCluster, "..", creation, creation, creation, newCluster, 0, true);
+            return new Fat32Directory(_fs, newCluster, name, creation, creation, creation);
         }
 
-        public async Task Delete(CancellationToken token = default) { }
+        async Task DeleteDir(uint entCluster)
+        {
+            // delete dirent entries
+            int start = 0, end = 0; uint direntCluster = 0;
+            await _fs.Traverse(_cluster, TraversalFn);
+
+            var entsPerCluster = _fs.BlockSize / 32;
+            Memory<byte> mem = (await _fs.ReadCached(_fs.ClusterToLba(direntCluster)));
+            for (int i = start; i <= end; i++)
+            {
+                var clusidx = (i / entsPerCluster);
+                var clusoff = (int)(i % entsPerCluster);
+                // read new cluster
+                if (i != start && clusidx != ((i - 1) / entsPerCluster))
+                {
+                    await _fs._block.WriteBlocks(_fs.ClusterToLba(direntCluster), mem);
+                    direntCluster = await _fs.NextInClusterChain(direntCluster);
+                    mem = (await _fs.ReadCached(_fs.ClusterToLba(direntCluster)));
+                }
+                mem.Span[clusoff * 32] = 0xE5;
+            }
+            await _fs._block.WriteBlocks(_fs.ClusterToLba(direntCluster), mem);
+
+            async Task<bool> TraversalFn(Fat32.DirentInfo f)
+            {
+                if (f.Cluster == entCluster)
+                {
+                    start = f.Start;
+                    end = f.End;
+                    direntCluster = f.DirentStartCluster;
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        public async Task Delete(INode toDelete_, CancellationToken token = default)
+        {
+            Fat32Node toDelete = (Fat32Node)toDelete_;
+            // free file clusterchain
+            var cluster = toDelete._cluster;
+            await _fs.FreeClusterChain(cluster);
+            await DeleteDir(toDelete._cluster);
+        }
+
+        public async Task Rename(INode toRename_, string newName, CancellationToken token = default)
+        {
+            Fat32Node toRename = (Fat32Node)toRename_;
+            await DeleteDir(toRename._cluster);
+            bool isDir = toRename_ is Fat32Directory;
+            await _fs.AddDirent(_cluster, newName, toRename._cTime, toRename._mTime, toRename._aTime, toRename._cluster, toRename._size, isDir);
+        }
 
         public async Task Flush(CancellationToken token = default) { }
     }
@@ -153,7 +200,7 @@ namespace Pentagon.Drivers
     class Fat32 : IFileSystem
     {
         public static Fat32 stati;
-        public long BlockSize => (_block.BlockSize * _sectorsPerCluster);
+        public long BlockSize => _bytesPerCluster;
         public bool ReadOnly => false;
         public long FreeSpace => 0;
         public string VolumeLabel => "";
@@ -161,20 +208,22 @@ namespace Pentagon.Drivers
 
         public async Task<IDirectory> OpenVolume()
         {
-            return new Fat32Directory(this, _rootCluster);
+            var defTime = new DateTime(1980, 1, 1);
+            return new Fat32Directory(this, _rootCluster, defTime, defTime, defTime);
         }
 
-        IBlock _block;
+        internal IBlock _block;
         uint _rootCluster;
-        public uint _sectorsPerCluster;
+        internal uint _sectorsPerCluster;
+        internal uint _bytesPerCluster;
         uint _firstFatSector;
         uint _firstDataSector;
         uint _sectorsPerFat;
-        Dictionary<long, IMemoryOwner<byte>> _cache;
+        Dictionary<long, Memory<byte>> _cache;
 
         internal long ClusterToLba(uint cluster) => (cluster - 2) * _sectorsPerCluster + _firstDataSector;
 
-        internal async Task<IMemoryOwner<byte>> ReadCached(long lba)
+        internal async Task<Memory<byte>> ReadCached(long lba)
         {
             if (_cache.ContainsKey(lba))
             {
@@ -182,9 +231,8 @@ namespace Pentagon.Drivers
             }
             else
             {
-                var mem = MemoryServices.AllocatePages(1);
-                await _block.ReadBlocks(lba, mem.Memory);
-                _cache[lba] = mem;
+                var mem = MemoryServices.AllocatePages(1).Memory.Slice(0, (int)_bytesPerCluster);
+                await _block.ReadBlocks(lba, mem);
                 return mem;
             }
         }
@@ -194,8 +242,26 @@ namespace Pentagon.Drivers
             var byteoff = (long)cluster * 4;
             var sector = _firstFatSector + byteoff / _block.BlockSize;
             var offset = (byteoff % _block.BlockSize) / 4;
-            var fatSector = MemoryMarshal.Cast<byte, uint>((await ReadCached(sector)).Memory);
+            var fatSector = MemoryMarshal.Cast<byte, uint>((await ReadCached(sector)));
             return fatSector.Span[(int)offset] & 0x0FFFFFFF;
+        }
+
+        // TODO: cache writes
+        internal async Task FreeClusterChain(uint cluster)
+        {
+            uint curr = cluster;
+            while (true)
+            {
+                var byteoff = (long)curr * 4;
+                var sector = _firstFatSector + byteoff / _block.BlockSize;
+                var offset = (byteoff % _block.BlockSize) / 4;
+                var mem = (await ReadCached(sector));
+                var fatSector = MemoryMarshal.Cast<byte, uint>(mem);
+                curr = fatSector.Span[(int)offset] & 0x0FFFFFFF;
+                if (curr >= 0x0FFFFFF8) break;
+                fatSector.Span[(int)offset] = 0;
+                await _block.WriteBlocks(sector, mem);
+            }
         }
 
         // TODO: this can be optimized dramatically, making use of FSInfo and also doing more than 1 op at the same time
@@ -203,7 +269,7 @@ namespace Pentagon.Drivers
         {
             for (int i = 0; i < _sectorsPerFat; i++)
             {
-                var fatMem = ((await ReadCached(_firstFatSector + i)).Memory);
+                var fatMem = ((await ReadCached(_firstFatSector + i)));
                 var fatArr = MemoryMarshal.Cast<byte, uint>(fatMem);
 
                 uint count = (uint)_block.BlockSize / 4;
@@ -219,17 +285,14 @@ namespace Pentagon.Drivers
                         // update previous FAT showing the continuation
                         if (cluster != 0xFFFFFFFF)
                         {
-                            var byteOff = (long)cluster * 4;
-                            var sector = _firstFatSector + byteOff / _block.BlockSize;
-                            if (sector != (_firstFatSector + i))
-                            {
-                                var offset = (byteOff % _block.BlockSize) / 4;
-                                var mem = (await ReadCached(sector)).Memory;
-                                var fatSector = MemoryMarshal.Cast<byte, uint>(mem);
-                                // FIXME: check if it's EOC
-                                fatSector.Span[(int)offset] = (fatSector.Span[(int)offset] & 0xF0000000) | newcluster;
-                                await _block.WriteBlocks(sector, mem); // update current end
-                            }
+                            var sector = _firstFatSector + cluster / count;
+                            var offset = cluster % count;
+                            var mem = (await ReadCached(sector));
+                            var fatSector = MemoryMarshal.Cast<byte, uint>(mem);
+                            // FIXME: check if it's EOC
+                            fatSector.Span[(int)offset] = (fatSector.Span[(int)offset] & 0xF0000000) | newcluster;
+
+                            await _block.WriteBlocks(sector, mem); // update current end
                         }
 
                         return newcluster;
@@ -271,6 +334,7 @@ namespace Pentagon.Drivers
                 _firstFatSector = reservedSectors,
                 _firstDataSector = firstDataSector,
                 _sectorsPerFat = sectorsPerFat,
+                _bytesPerCluster = (uint)block.BlockSize * sectorsPerCluster,
                 _cache = new(),
             };
             stati = fat;
@@ -301,89 +365,108 @@ namespace Pentagon.Drivers
         // TODO: replace this with an async iterator
         internal async Task Traverse(uint cluster, Func<DirentInfo, Task<bool>> callback)
         {
-            var r = new Region((await ReadCached(ClusterToLba(cluster))).Memory);
+            var r = new Region((await ReadCached(ClusterToLba(cluster))));
 
             var lfnName = new char[64];
             var lfnLen = 0;
-
-            // TODO: read whole clusterchain instead
-            for (int i = 0; i < (_sectorsPerCluster * _block.BlockSize) / 32; i++)
+            int startIdx = 0; uint startCluster = 0;
+            bool newDirentStart = true;
+            var curr = cluster;
+            int count = (int)(_sectorsPerCluster * _block.BlockSize) / 32;
+            for (int clusidx = 0; ; clusidx++)
             {
-                var rr = r.CreateRegion(i * 32);
-                var attributes = rr.Span[11];
-
-                // There's an LFN. TODO: actually use the checksum to make sure that it's the right LFN.
-                // DOS will ignore LFNs (by design) and may rearrange the SFN entry so it doesn't come immediately
-                if (attributes == 0xF)
+                for (int i = 0; i < count; i++)
                 {
-                    var lfn = new Lfn(rr);
-
-                    var order = (lfn.order.Value & (~0x40)) - 1;
-                    var start = order * 13;
-                    lfnLen = Math.Max(lfnLen, start + 13);
-
-                    for (int j = 0; j < lfn.part1.Length; j++) lfnName[start + j] = (char)lfn.part1.Span[j];
-                    for (int j = 0; j < lfn.part2.Length; j++) lfnName[start + 5 + j] = (char)lfn.part2.Span[j];
-                    for (int j = 0; j < lfn.part3.Length; j++) lfnName[start + 11 + j] = (char)lfn.part3.Span[j];
-                }
-                else
-                {
-                    var sfn = new Sfn(rr);
-                    if (sfn.name.Span[0] == 0) break;
-                    if (sfn.name.Span[0] == '.') continue; // exclude dot, dotdot and UNIX-like hidden entries
-                    if (sfn.name.Span[0] == 0xE5) continue; // exclude deleted files
-                    if (lfnLen == 0) // no LFN: there is only a SFN, so convert 8.3 to a normal filename 
+                    if (newDirentStart)
                     {
-                        // trim spaces from name
-                        int nameLen = 8;
-                        for (; nameLen > 0; nameLen--) if (sfn.name.Span[nameLen - 1] != ' ') break;
+                        startIdx = clusidx * count + i;
+                        startCluster = curr;
+                        newDirentStart = false;
+                    }
+                    var rr = r.CreateRegion(i * 32);
+                    var attributes = rr.Span[11];
 
-                        // trim spaces from extension
-                        int extLen = 3;
-                        for (; extLen > 0; extLen--) if (sfn.name.Span[8 + (extLen - 1)] != ' ') break;
+                    // There's an LFN. TODO: actually use the checksum to make sure that it's the right LFN.
+                    // DOS will ignore LFNs (by design) and may rearrange the SFN entry so it doesn't come immediately
+                    if (attributes == 0xF)
+                    {
+                        var lfn = new Lfn(rr);
 
-                        if (extLen == 0)
-                        {
-                            for (int j = 0; j < nameLen; j++) lfnName[j] = (char)sfn.name.Span[j];
-                            lfnLen = nameLen;
-                        }
-                        else
-                        {
-                            for (int j = 0; j < nameLen; j++) lfnName[j] = (char)sfn.name.Span[j];
-                            for (int j = 0; j < extLen; j++) lfnName[nameLen + 1 + j] = (char)sfn.name.Span[8 + j];
-                            lfnName[nameLen] = '.';
-                            lfnLen = nameLen + 1 + extLen;
-                        }
+                        var order = (lfn.order.Value & (~0x40)) - 1;
+                        var start = order * 13;
+                        lfnLen = Math.Max(lfnLen, start + 13);
+
+                        for (int j = 0; j < lfn.part1.Length; j++) lfnName[start + j] = (char)lfn.part1.Span[j];
+                        for (int j = 0; j < lfn.part2.Length; j++) lfnName[start + 5 + j] = (char)lfn.part2.Span[j];
+                        for (int j = 0; j < lfn.part3.Length; j++) lfnName[start + 11 + j] = (char)lfn.part3.Span[j];
                     }
                     else
                     {
-                        for (; lfnLen > 0; lfnLen--) if (lfnName[lfnLen - 1] != 0xFFFF) break;
-                        if (lfnName[lfnLen - 1] == 0) lfnLen--;
-                    }
+                        newDirentStart = true;
+                        var sfn = new Sfn(rr);
+                        if (sfn.name.Span[0] == 0) break;
+                        if (sfn.name.Span[0] == '.') continue; // exclude dot, dotdot and UNIX-like hidden entries
+                        if (sfn.name.Span[0] == 0xE5) continue; // exclude deleted files
+                        if (lfnLen == 0) // no LFN: there is only a SFN, so convert 8.3 to a normal filename 
+                        {
+                            // trim spaces from name
+                            int nameLen = 8;
+                            for (; nameLen > 0; nameLen--) if (sfn.name.Span[nameLen - 1] != ' ') break;
 
-                    var cluste = (((uint)sfn.clusterHi.Value) << 16) | sfn.clusterLo.Value;
-                    var ent = new DirentInfo
-                    {
-                        Name = new string(lfnName, 0, lfnLen),
-                        IsDirectory = (attributes & 0x10) != 0,
-                        Cluster = cluste,
-                        CreatedAt = FatToDateTime(sfn.cTime.Value),
-                        Size = sfn.fileSize.Value,
-                    };
+                            // trim spaces from extension
+                            int extLen = 3;
+                            for (; extLen > 0; extLen--) if (sfn.name.Span[8 + (extLen - 1)] != ' ') break;
 
-                    if (await callback(ent))
-                    {
-                        return;
+                            if (extLen == 0)
+                            {
+                                for (int j = 0; j < nameLen; j++) lfnName[j] = (char)sfn.name.Span[j];
+                                lfnLen = nameLen;
+                            }
+                            else
+                            {
+                                for (int j = 0; j < nameLen; j++) lfnName[j] = (char)sfn.name.Span[j];
+                                for (int j = 0; j < extLen; j++) lfnName[nameLen + 1 + j] = (char)sfn.name.Span[8 + j];
+                                lfnName[nameLen] = '.';
+                                lfnLen = nameLen + 1 + extLen;
+                            }
+                        }
+                        else
+                        {
+                            for (; lfnLen > 0; lfnLen--) if (lfnName[lfnLen - 1] != 0xFFFF) break;
+                            if (lfnName[lfnLen - 1] == 0) lfnLen--;
+                        }
+
+                        var cluste = (((uint)sfn.clusterHi.Value) << 16) | sfn.clusterLo.Value;
+                        var ent = new DirentInfo
+                        {
+                            Name = new string(lfnName, 0, lfnLen),
+                            IsDirectory = (attributes & 0x10) != 0,
+                            Cluster = cluste,
+                            CreatedAt = FatToDateTime(sfn.cTime.Value),
+                            ModifiedAt = FatToDateTime(sfn.mTime.Value),
+                            AccessedAt = FatToDateTime((uint)sfn.aDate.Value << 16),
+                            Size = sfn.fileSize.Value,
+                            Start = startIdx,
+                            DirentStartCluster = startCluster,
+                            End = clusidx * count + i,
+                        };
+
+                        if (await callback(ent))
+                        {
+                            return;
+                        }
+                        lfnLen = 0;
                     }
-                    lfnLen = 0;
                 }
+                curr = await NextInClusterChain(curr);
             }
         }
 
-        internal async Task AddDirent(uint dirCluster, string name, DateTime creation, uint startCluster, uint size, bool isDirectory)
+        internal async Task AddDirent(uint dirCluster, string name, DateTime creation, DateTime modify, DateTime access, uint startCluster, uint size, bool isDirectory)
         {
-            // atime, ctime and mtime are gonna be the same, we're creating the file now
-            var fatTime = DateTimeToFat(creation);
+            var fatcTime = DateTimeToFat(creation);
+            var fatmTime = DateTimeToFat(modify);
+            var fataTime = DateTimeToFat(access);
 
             // how many contig entries do we need?
             var neededLfns = (name.Length + 13 - 1) / 13;
@@ -401,25 +484,25 @@ namespace Pentagon.Drivers
             // i is the first free entry
             var remaining = total - i;
             var offset = i * 32;
-
-            if (remaining < neededEnts)
+            if (neededEnts > remaining)
             {
                 // place all entries we can on the current block
-                await PlaceNEntries(remaining);
+                if (remaining > 0) await PlaceNEntries(remaining);
 
                 // update entries to write and offset
                 neededEnts -= remaining;
                 offset = 0;
 
+                // if the dirent straddles two clusters, place the remaining entries in the newly-allocated one
                 // allocate new block
                 dirCluster = await ClusterAllocate(dirCluster);
-                r = new Region((await ReadCached(ClusterToLba(dirCluster))).Memory);
+                r = new Region((await ReadCached(ClusterToLba(dirCluster))));
 
                 // zerofill, TODO: improve
-                for (int j = 0; j < MemoryServices.PageSize; j++) r.Span[j] = 0;
+                for (int j = 0; j < _bytesPerCluster; j++) r.Span[j] = 0;
             }
 
-            // if the dirent straddles two clusters, place the remaining entries in the newly-allocated one
+            // place the last entries
             await PlaceNEntries(neededEnts);
 
 
@@ -428,7 +511,7 @@ namespace Pentagon.Drivers
                 while (true)
                 {
                     i = 0;
-                    var m = (await ReadCached(ClusterToLba(dirCluster))).Memory;
+                    var m = (await ReadCached(ClusterToLba(dirCluster)));
                     for (; i < total; i++)
                     {
                         // any entry with the first byte as 0x00 marks the end of the list
@@ -439,7 +522,15 @@ namespace Pentagon.Drivers
                             return;
                         }
                     }
-                    dirCluster = await NextInClusterChain(dirCluster);
+                    var next = await NextInClusterChain(dirCluster);
+                    if (next >= 0x0FFFFFF8)
+                    {
+                        i = total;
+                        return;
+                    } else
+                    {
+                        dirCluster = next;
+                    }
                 }
             }
 
@@ -486,9 +577,9 @@ namespace Pentagon.Drivers
                 sfn.clusterHi.Value = (ushort)(startCluster >> 16);
                 sfn.clusterLo.Value = (ushort)(startCluster & 0xFFFF);
                 sfn.fileSize.Value = size;
-                sfn.cTime.Value = fatTime;
-                sfn.aDate.Value = (ushort)(fatTime >> 16);
-                sfn.mTime.Value = fatTime;
+                sfn.cTime.Value = fatcTime;
+                sfn.aDate.Value = (ushort)(fataTime >> 16);
+                sfn.mTime.Value = fatmTime;
                 sfn.attribs.Value = (byte)(isDirectory ? 0x10 : 0);
             }
         }
@@ -508,26 +599,31 @@ namespace Pentagon.Drivers
 
         static readonly byte DefaultSfnChecksum = Checksum(DefaultSfn);
 
-        public class DirentInfo
+        internal class DirentInfo
         {
-            public uint Cluster;
-            public string Name;
-            public bool IsDirectory;
-            public DateTime CreatedAt;
-            public uint Size;
+            internal uint Cluster;
+            internal string Name;
+            internal bool IsDirectory;
+            internal DateTime CreatedAt;
+            internal DateTime ModifiedAt;
+            internal DateTime AccessedAt;
+            internal uint Size;
+
+            internal uint DirentStartCluster;
+            internal int Start, End;
         };
 
-        class Lfn
+        private class Lfn
         {
-            public Field<byte> order;
-            public Field<byte> attr;
-            public Field<byte> type;
-            public Field<byte> checksum;
-            public Field<ushort> clusterLo;
+            internal Field<byte> order;
+            internal Field<byte> attr;
+            internal Field<byte> type;
+            internal Field<byte> checksum;
+            internal Field<ushort> clusterLo;
 
-            public Memory<ushort> part1;
-            public Memory<ushort> part2;
-            public Memory<ushort> part3;
+            internal Memory<ushort> part1;
+            internal Memory<ushort> part2;
+            internal Memory<ushort> part3;
 
             public Lfn(Region r)
             {
@@ -542,16 +638,16 @@ namespace Pentagon.Drivers
             }
         }
 
-        class Sfn
+        private class Sfn
         {
-            public Memory<byte> name;
-            public Field<ushort> clusterHi;
-            public Field<ushort> clusterLo;
-            public Field<uint> fileSize;
-            public Field<uint> cTime;
-            public Field<ushort> aDate;
-            public Field<uint> mTime;
-            public Field<byte> attribs;
+            internal Memory<byte> name;
+            internal Field<ushort> clusterHi;
+            internal Field<ushort> clusterLo;
+            internal Field<uint> fileSize;
+            internal Field<uint> cTime;
+            internal Field<ushort> aDate;
+            internal Field<uint> mTime;
+            internal Field<byte> attribs;
 
             public Sfn(Region r)
             {

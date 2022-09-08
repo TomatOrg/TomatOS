@@ -21,23 +21,14 @@ public interface INode
     /// </summary>
     public long PhysicalSize { get; }
     
-    // public DateTime CreateTime { get; }
-    //
-    // public DateTime LastAccessTime { get; }
-    //
-    // public DateTime ModificationTime { get; }
+    public DateTime CreateTime { get; }
+    public DateTime LastAccessTime { get; }
+    public DateTime ModificationTime { get; }
 
     /// <summary>
     /// The name of the file.
     /// </summary>
     public string FileName { get; }
-
-    /// <summary>
-    /// Delete the file.
-    /// </summary>
-    /// <param name="token"></param>
-    /// <returns></returns>
-    public Task Delete(CancellationToken token = default);
 
     /// <summary>
     /// Flushes all modified data associated with a file to a device.
@@ -60,7 +51,6 @@ public enum FileOpenMode
 /// </summary>
 public interface IDirectory : INode
 {
-    
     /// <summary>
     /// Opens a new file relative to the source file's location
     /// </summary>
@@ -91,8 +81,44 @@ public interface IDirectory : INode
     /// <returns></returns>
     public Task<IDirectory> OpenDirectory(string filename, FileOpenMode mode, CancellationToken token = default);
 
+    /// <summary>
+    /// Create a new file with the speciied name.
+    /// </summary>
+    /// <param name="filename">
+    /// Name of the file. Must not contain the "/" character.
+    /// </param>
+    /// <param name="token"></param>
+    /// <returns></returns>
     public Task<IFile> CreateFile(string name, DateTime creation, CancellationToken token = default);
+    
+    /// <summary>
+    /// Create a new directory with the speciied name.
+    /// </summary>
+    /// <param name="filename">
+    /// Name of the file. Must not contain the "/" character, even as a suffix.
+    /// </param>
+    /// <param name="token"></param>
+    /// <returns></returns>
     public Task<IDirectory> CreateDirectory(string name, DateTime creation, CancellationToken token = default);
+
+
+    /// <summary>
+    /// Decrease the refcount on toDelete by one, deleting when it reaches zero
+    /// </summary>
+    /// <param name="toDelete">Node to delete</param>
+    /// <param name="token"></param>
+    /// <returns></returns>
+    public Task Delete(INode toDelete, CancellationToken token = default);
+
+
+    /// <summary>
+    /// Rename
+    /// </summary>
+    /// <param name="toRename">Node to rename</param>
+    /// <param name="newName">New name</param>
+    /// <param name="token"></param>
+    /// <returns></returns>
+    public Task Rename(INode toRename, string newName, CancellationToken token = default);
 
 
     /// <summary>

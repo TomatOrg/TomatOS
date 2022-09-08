@@ -8,12 +8,12 @@ using Pentagon.Interfaces;
 
 namespace Pentagon.Managers
 {
-    class Partition : IBlock
+    public class Partition : IBlock
     {
         IBlock _disk;
         public ulong StartLba;
         public ulong EndLba;
-        public long _last;
+        private long _last;
         public Partition(IBlock disk, ulong start, ulong end)
         {
             StartLba = start;
@@ -43,6 +43,7 @@ namespace Pentagon.Managers
         }
         public Task FlushBlocks(CancellationToken token = default) => _disk.FlushBlocks(token);
     }
+
     class BlockInfo
     {
         public IBlock Device;
@@ -56,11 +57,10 @@ namespace Pentagon.Managers
         }
     }
 
-    class IoManager
+    public class IoManager
     {
-        static IBlock pp;
-        public static List<BlockInfo> BlockDevices = new();
-        public static List<IFileSystem> FSes = new();
+        private static List<BlockInfo> BlockDevices = new();
+        private static List<IFileSystem> FSes = new();
 
         public static async Task AddBlock(IBlock block)
         {
@@ -72,8 +72,7 @@ namespace Pentagon.Managers
             {
                 var p = new Partition(block, start, end);
                 bi.PartitionInfo.Add(p);
-                pp = p;
-                var d = Fat32.CheckDevice(pp);
+                var d = Fat32.CheckDevice(p);
                 d.GetAwaiter().OnCompleted(() => {
                     if (d.Result != null) FSes.Add(d.Result);
                 });
