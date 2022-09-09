@@ -265,43 +265,75 @@ namespace Pentagon.Drivers
         }
 
         // TODO: this can be optimized dramatically, making use of FSInfo and also doing more than 1 op at the same time
-        internal async Task<uint> ClusterAllocate(uint cluster = 0xFFFFFFFF)
+
+        byte[] _bitmap;
+
+        internal async Task<uint> ClusterAllocate()
         {
+            uint newcluster = 0;
             for (int i = 0; i < _sectorsPerFat; i++)
             {
+                var mask = (byte)(1 << (i % 8));
+                if ((_bitmap[i / 8] & mask) != 0)
+                {
+                    // this sector has been analyzed and has no free entries
+                    continue;
+                }
+
                 var fatMem = ((await ReadCached(_firstFatSector + i)));
                 var fatArr = MemoryMarshal.Cast<byte, uint>(fatMem);
 
                 uint count = (uint)_block.BlockSize / 4;
+                bool oneFree = false, moreFree = false;
                 for (int j = 0; j < count; j++)
                 {
                     if ((fatArr.Span[j] & 0x0FFFFFFF) == 0)
                     {
-                        // update current FAT marking it as EOC
-                        fatArr.Span[j] = (fatArr.Span[j] & 0xF0000000) | 0x0FFFFFFF; // end of clusterchain
-                        var newcluster = ((uint)i * count) + (uint)j;
-                        await _block.WriteBlocks(_firstFatSector + i, fatMem); // update next end to be EOC
-
-                        // update previous FAT showing the continuation
-                        if (cluster != 0xFFFFFFFF)
+                        if (!oneFree)
                         {
-                            var sector = _firstFatSector + cluster / count;
-                            var offset = cluster % count;
-                            var mem = (await ReadCached(sector));
-                            var fatSector = MemoryMarshal.Cast<byte, uint>(mem);
-                            // FIXME: check if it's EOC
-                            fatSector.Span[(int)offset] = (fatSector.Span[(int)offset] & 0xF0000000) | newcluster;
-
-                            await _block.WriteBlocks(sector, mem); // update current end
+                            // it's the first free entry
+                            // update current FAT marking it as EOC
+                            fatArr.Span[j] = (fatArr.Span[j] & 0xF0000000) | 0x0FFFFFFF; // end of clusterchain
+                            newcluster = ((uint)i * count) + (uint)j;
+                            await _block.WriteBlocks(_firstFatSector + i, fatMem); // update next end to be EOC
+                            oneFree = true;
                         }
-
-                        return newcluster;
+                        else
+                        {
+                            // it's the second free
+                            moreFree = true;
+                        }
                     }
+                }
+                if (!moreFree)
+                {
+                    // there was no free entry, or only one free entry (which we now filled)
+                    // mark the sector as having no free entries anymore
+                    _bitmap[i / 8] |= mask;
+                }
+                if (oneFree)
+                {
+                    return newcluster;
                 }
             }
             return 0xFFFFFFFF;
         }
+        internal async Task<uint> ClusterAllocate(uint cluster)
+        {
+            var newcluster = await ClusterAllocate();
+            var count = _block.BlockSize / 4;
 
+            var sector = _firstFatSector + cluster / count;
+            var offset = cluster % count;
+            var mem = (await ReadCached(sector));
+            var fatSector = MemoryMarshal.Cast<byte, uint>(mem);
+            // FIXME: check if it's EOC
+            fatSector.Span[(int)offset] = (fatSector.Span[(int)offset] & 0xF0000000) | newcluster;
+
+            await _block.WriteBlocks(sector, mem); // update current end
+
+            return newcluster;
+        }
         static public async Task<Fat32> CheckDevice(IBlock block)
         {
             var mem = MemoryServices.AllocatePages(1).Memory;
@@ -336,6 +368,7 @@ namespace Pentagon.Drivers
                 _sectorsPerFat = sectorsPerFat,
                 _bytesPerCluster = (uint)block.BlockSize * sectorsPerCluster,
                 _cache = new(),
+                _bitmap = new byte[sectorsPerFat],
             };
             stati = fat;
             return fat;
@@ -527,7 +560,8 @@ namespace Pentagon.Drivers
                     {
                         i = total;
                         return;
-                    } else
+                    }
+                    else
                     {
                         dirCluster = next;
                     }
