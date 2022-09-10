@@ -4,153 +4,27 @@
 #include <stdbool.h>
 #include <limits.h>
 
-#define alias_load(T, p) \
-    ({ \
-        T value; \
-        __builtin_memcpy(&value, p, sizeof(T)); \
-        p += sizeof(T); \
-        value; \
-    })
-
-#define alias_store(T, p, value) \
-    do { \
-        T __value = value; \
-        __builtin_memcpy(p, &__value, sizeof(T)); \
-        p += sizeof(T); \
-    } while (0);
-
 void* memcpy(void* restrict dest, const void* restrict src, size_t n) {
-    unsigned char* curDest = dest;
-    const unsigned char* curSrc = src;
-
-    while(n >= 8 * 8) {
-        uint64_t w1 = alias_load(uint64_t, curSrc);
-        uint64_t w2 = alias_load(uint64_t, curSrc);
-        uint64_t w3 = alias_load(uint64_t, curSrc);
-        uint64_t w4 = alias_load(uint64_t, curSrc);
-        uint64_t w5 = alias_load(uint64_t, curSrc);
-        uint64_t w6 = alias_load(uint64_t, curSrc);
-        uint64_t w7 = alias_load(uint64_t, curSrc);
-        uint64_t w8 = alias_load(uint64_t, curSrc);
-        alias_store(uint64_t, curDest, w1);
-        alias_store(uint64_t, curDest, w2);
-        alias_store(uint64_t, curDest, w3);
-        alias_store(uint64_t, curDest, w4);
-        alias_store(uint64_t, curDest, w5);
-        alias_store(uint64_t, curDest, w6);
-        alias_store(uint64_t, curDest, w7);
-        alias_store(uint64_t, curDest, w8);
-        n -= 8 * 8;
-    }
-    if(n >= 4 * 8) {
-        uint64_t w1 = alias_load(uint64_t, curSrc);
-        uint64_t w2 = alias_load(uint64_t, curSrc);
-        uint64_t w3 = alias_load(uint64_t, curSrc);
-        uint64_t w4 = alias_load(uint64_t, curSrc);
-        alias_store(uint64_t, curDest, w1);
-        alias_store(uint64_t, curDest, w2);
-        alias_store(uint64_t, curDest, w3);
-        alias_store(uint64_t, curDest, w4);
-        n -= 4 * 8;
-    }
-    if(n >= 2 * 8) {
-        uint64_t w1 = alias_load(uint64_t, curSrc);
-        uint64_t w2 = alias_load(uint64_t, curSrc);
-        alias_store(uint64_t, curDest, w1);
-        alias_store(uint64_t, curDest, w2);
-        n -= 2 * 8;
-    }
-    if(n >= 8) {
-        uint64_t w = alias_load(uint64_t, curSrc);
-        alias_store(uint64_t, curDest, w);
-        n -= 8;
-    }
-    if(n >= 4) {
-        uint32_t w = alias_load(uint32_t, curSrc);
-        alias_store(uint32_t, curDest, w);
-        n -= 4;
-    }
-    if(n >= 2) {
-        uint16_t w = alias_load(uint16_t, curSrc);
-        alias_store(uint16_t, curDest, w);
-        n -= 2;
-    }
-    if(n)
-        *curDest = *curSrc;
-    return dest;
+    void* start = dest;
+    __asm__ volatile (
+            "rep movsb"
+            : "+D"(dest), "+S"(src), "+c"(n)
+            :
+            : "memory");
+    return start;
 }
 
 void* memset(void* dest, int val, size_t n) {
-    unsigned char* curDest = dest;
-    unsigned char byte = val;
-
-    // Get rid of misalignment.
-    while(n && ((uintptr_t)curDest & 7)) {
-        *curDest++ = byte;
-        --n;
-    }
-
-    uint64_t pattern64 = (
-            (uint64_t)(byte)
-            | ((uint64_t)(byte) << 8)
-            | ((uint64_t)(byte) << 16)
-            | ((uint64_t)(byte) << 24)
-            | ((uint64_t)(byte) << 32)
-            | ((uint64_t)(byte) << 40)
-            | ((uint64_t)(byte) << 48)
-            | ((uint64_t)(byte) << 56));
-
-    uint32_t pattern32 = (
-            (uint32_t)(byte)
-            | ((uint32_t)(byte) << 8)
-            | ((uint32_t)(byte) << 16)
-            | ((uint32_t)(byte) << 24));
-
-    uint16_t pattern16 = (
-            (uint16_t)(byte)
-            | ((uint16_t)(byte) << 8));
-
-    while(n >= 8 * 8) {
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        n -= 8 * 8;
-    }
-    if(n >= 4 * 8) {
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        n -= 4 * 8;
-    }
-    if(n >= 2 * 8) {
-        alias_store(uint64_t, curDest, pattern64);
-        alias_store(uint64_t, curDest, pattern64);
-        n -= 2 * 8;
-    }
-    if(n >= 8) {
-        alias_store(uint64_t, curDest, pattern64);
-        n -= 8;
-    }
-    if(n >= 4) {
-        alias_store(uint32_t, curDest, pattern32);
-        n -= 4;
-    }
-    if(n >= 2) {
-        alias_store(uint16_t, curDest, pattern16);
-        n -= 2;
-    }
-    if(n)
-        *curDest = byte;
-    return dest;
+    void* start = dest;
+    __asm__ volatile (
+            "rep stosb"
+            : "+D"(dest), "+a"(val), "+c"(n)
+            :
+            : "memory");
+    return start;
 }
 
-void* memmove (void* dest, const void* src, size_t len) {
+void* memmove(void* dest, const void* src, size_t len) {
     char *d = dest;
     const char *s = src;
     if (d < s) {
