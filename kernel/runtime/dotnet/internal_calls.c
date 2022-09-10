@@ -96,12 +96,12 @@ static jit_generic_extern_hook_t m_jit_extern_hook = {
 };
 
 static System_Exception Pentagon_DriverServices_Log_LogHex(uint64_t val) {
-    printf("LogHex(0x%p)\n", val);
+    printf("%02x", val);
     return NULL;
 }
 
 static System_Exception Pentagon_DriverServices_Log_LogString(System_String val) {
-    printf("LogString(\"%U\")\n", val);
+    printf("%U", val);
     return NULL;
 }
 
