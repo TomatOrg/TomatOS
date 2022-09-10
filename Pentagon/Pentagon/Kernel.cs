@@ -1,4 +1,5 @@
 using System.Drawing;
+using Pentagon.Drivers.Graphics;
 using Pentagon.Drivers.Graphics.Raster;
 using Pentagon.Drivers.Virtio;
 using Pentagon.DriverServices;
@@ -28,9 +29,9 @@ public class Kernel
         var buffer = MemoryServices.Map(addr, pitch * height);
 
         var surface = new RasterSurface(width, height, buffer, pitch);
-        var canvas = surface.Canvas;
-        
-        canvas.Clear((uint)Color.Red.ToArgb());
+        var canvas = new Canvas(surface.Canvas);
+
+        canvas.Clear(Color.Red);
         
         return 0;
     }

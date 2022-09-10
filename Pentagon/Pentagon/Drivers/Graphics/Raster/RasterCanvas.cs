@@ -34,9 +34,20 @@ public class RasterCanvas : ICanvas
         throw new NotImplementedException();
     }
 
-    public void DrawRect(RectangleF rect, in ICanvas.Paint paint)
+    public void DrawRect(RectangleF rectF, in ICanvas.Paint paint)
     {
-        throw new NotImplementedException();
+        var rect = rectF;
+
+        // do the fill 
+        if (paint.Style is ICanvas.PaintStyle.Fill or ICanvas.PaintStyle.StrokeAndFill)
+        {
+            for (var y = 0; y < Height; y++)
+            {
+                Pixels[y * x]
+            }
+        }
+        
+        // TODO: do the stroke
     }
 
     public void DrawCircle(PointF center, float radius, in ICanvas.Paint paint)
