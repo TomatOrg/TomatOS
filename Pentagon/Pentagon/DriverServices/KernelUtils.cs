@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace Pentagon.DriverServices;
 
 public static class KernelUtils
@@ -35,4 +37,7 @@ public static class KernelUtils
 
     #endregion
     
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+    internal static extern bool GetNextFramebuffer(ref int index, out ulong addr, out int width, out int height, out int pitch);
+
 }

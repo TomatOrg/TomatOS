@@ -5,7 +5,6 @@ namespace Pentagon.Interfaces;
 
 public interface ICanvas
 {
-
     
     public enum PaintStyle
     {
@@ -14,21 +13,16 @@ public interface ICanvas
         StrokeAndFill
     }
 
-    public enum PointMode
+    public enum PaintCap
     {
-        Points,
-        Lines,
-        Polygon
+        Butt,
+        Round,
+        Square,
     }
-    
+
     public struct Paint
     {
         
-        /// <summary>
-        /// Returns true if paint prevents all drawing
-        /// </summary>
-        public bool NothingToDraw { get; set; }
-    
         /// <summary>
         /// Returns the color that should be used to draw
         /// </summary>
@@ -45,21 +39,45 @@ public interface ICanvas
         public PaintStyle Style { get; set; }
         
         /// <summary>
+        /// Returns the geometry drawn at the beginning and end of strokes.
+        /// </summary>
+        public PaintCap StrokeCap { get; set; }
+        
+        /// <summary>
         /// Returns the requested width of strokes
         /// </summary>
         public float StrokeWidth { get; set; }
         
     }
 
-    public void FillPaint(in Paint paint);
-    public void DrawPoints(PointMode mode, in Paint paint, params PointF[] pts);
-    public void DrawPoint(SizeF p, in Paint paint);
-    public void DrawLine(SizeF x0, SizeF x1, in Paint paint);
+    /// <summary>
+    /// 
+    /// </summary>
+    public void Clear(uint color);
+    
+    /// <summary>
+    /// 
+    /// </summary>
+    public void DrawLine(PointF x0, PointF x1, in Paint paint);
+    
+    /// <summary>
+    /// 
+    /// </summary>
     public void DrawRect(RectangleF rect, in Paint paint);
-    public void DrawOval(RectangleF rect, in Paint paint);
+    
+    /// <summary>
+    /// 
+    /// </summary>
     public void DrawCircle(PointF center, float radius, in Paint paint);
-    public void DrawArc(RectangleF oval, float startAngle, float sweepAngle, bool useCenter, in Paint paint);
+    
+    /// <summary>
+    /// 
+    /// </summary>
     public void DrawRoundRect(RectangleF rect, float rx, float ry, in Paint paint);
+    
+    /// <summary>
+    /// 
+    /// </summary>
     public void DrawGlyph(int codePoint, float x, float y, in Paint paint);
 
 }

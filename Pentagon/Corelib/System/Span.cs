@@ -217,22 +217,29 @@ public readonly ref struct Span<T>
     /// <summary>
     /// Clears the contents of this span.
     /// </summary>
-    public void Clear()
+    public unsafe void Clear()
     {
-        for (var i = 0; i < _length; i++)
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
         {
-            this[i] = default;
+            // if has references use the fill method 
+            Fill(default);
+        }
+        else
+        {
+            // otherwise we can call a native zero memory function
+            Buffer._ZeroMemory(ref Unsafe.AsRef<byte>(_pointer._value), (nuint)Unsafe.SizeOf<T>() * (nuint)Length);
         }
     }
         
     /// <summary>
     /// Fills the contents of this span with the given value.
     /// </summary>
-    public void Fill(T value)
+    public unsafe void Fill(T value)
     {
+        ref var ptr = ref Unsafe.AsRef<T>(_pointer._value);
         for (var i = 0; i < _length; i++)
         {
-            this[i] = value;
+            Unsafe.Add(ref ptr, i) = value;
         }
     }
     

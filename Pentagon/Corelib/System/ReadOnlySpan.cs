@@ -2,6 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -213,6 +214,46 @@ public readonly ref struct ReadOnlySpan<T>
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private unsafe void DoCopy(Span<T> destination)
+    {
+        // this branch should be optimized out when the instance of the function is created
+        // for the type because this is a jit time constant 
+        if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            // if this is a managed type then we will need to do a more expensive
+            // copy because we need GC barriers, we will make it a tad faster by 
+            // removing the length checks
+            // TODO: in the future this can be made faster by not doing a GC barrier
+            //       every iteration but every X iterations or something alike 
+            
+            var ptr = Unsafe.AsRef<T>(_pointer._value);
+            var dstPtr = Unsafe.AsRef<T>(destination._pointer._value);
+            
+            if (Unsafe.IsAddressLessThan(ref ptr, ref dstPtr) && Unsafe.IsAddressLessThan(ref dstPtr, ref Unsafe.Add<T>(ref ptr, _length)))
+            {
+                for (var i = _length - 1; i >= 0; i--)
+                {
+                    Unsafe.Add(ref dstPtr, i) = Unsafe.Add(ref ptr, i);
+                }
+            }
+            else
+            {
+                for (var i = _length - 1; i >= 0; i--)
+                {
+                    Unsafe.Add(ref dstPtr, i) = Unsafe.Add(ref ptr, i);
+                }
+            }
+        }
+        else
+        {
+            // For unmanaged types we can use the native memmove function which should be quite fast
+            var ptr = Unsafe.AsRef<byte>(_pointer._value);
+            var dstPtr = Unsafe.AsRef<byte>(destination._pointer._value);
+            Buffer.Memmove(ref dstPtr, ref ptr, ((nuint)Unsafe.SizeOf<T>() * (nuint)Length));
+        }
+    }
+    
     /// <summary>
     /// Copies the contents of this read-only span into destination span. If the source
     /// and destinations overlap, this method behaves as if the original values in
@@ -224,7 +265,7 @@ public readonly ref struct ReadOnlySpan<T>
     /// </exception>
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public unsafe void CopyTo(Span<T> destination)
+    public void CopyTo(Span<T> destination)
     {
         // Using "if (!TryCopyTo(...))" results in two branches: one for the length
         // check, and one for the result of TryCopyTo. Since these checks are equivalent,
@@ -233,22 +274,7 @@ public readonly ref struct ReadOnlySpan<T>
         if ((uint)_length > destination.Length)
             ThrowHelper.ThrowArgumentException_DestinationTooShort();
 
-        var ptr = _pointer._value;
-        var dstPtr = destination._pointer._value;
-        if (ptr < dstPtr && dstPtr < Unsafe.Add<T>(ptr, _length))
-        {
-            for (var i = _length - 1; i >= 0; i--)
-            {
-                destination[i] = this[i];
-            }
-        }
-        else
-        {
-            for (var i = 0; i < _length; i++)
-            {
-                destination[i] = this[i];
-            }
-        }
+        DoCopy(destination);
     }
     
     /// <summary>
@@ -264,23 +290,8 @@ public readonly ref struct ReadOnlySpan<T>
         if ((uint)_length > (uint)destination.Length) 
             return false;
         
-        var ptr = _pointer._value;
-        var dstPtr = destination._pointer._value;
-        if (ptr < dstPtr && dstPtr < Unsafe.Add<T>(ptr, _length))
-        {
-            for (var i = _length - 1; i >= 0; i--)
-            {
-                destination[i] = this[i];
-            }
-        }
-        else
-        {
-            for (var i = 0; i < _length; i++)
-            {
-                destination[i] = this[i];
-            }
-        }
-        
+        DoCopy(destination);
+
         return true;
     }
     

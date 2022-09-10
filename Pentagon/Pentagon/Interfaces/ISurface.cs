@@ -23,12 +23,12 @@ public interface ISurface
     /// <summary>
     /// Draws surface contents to canvas, with top-left corner at (x-y)
     /// </summary>
-    public void Draw(ICanvas canvas, float x, float y);
+    public void Draw(ICanvas canvas, int startX, int startY);
 
     /// <summary>
-    /// Creates a sufrace that can be drawn to the this surface in an
+    /// Creates a canvas that can be drawn to the this surface in an
     /// accelerated manner.
     /// </summary>
-    public ISurface CreateSubSurface(int width, int height);
+    public ISurface CreateSurface(int width, int height);
 
 }
