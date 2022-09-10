@@ -136,7 +136,7 @@ namespace Pentagon.Drivers
             // TODO: zerofill cluster to be sure
             await _fs.AddDirent(_cluster, name, creation, creation, creation, newCluster, 0, true);
             await _fs.AddDirent(newCluster, ".", creation, creation, creation, newCluster, 0, true);
-            await _fs.AddDirent(newCluster, "..", creation, creation, creation, newCluster, 0, true);
+            await _fs.AddDirent(newCluster, "..", creation, creation, creation, _cluster, 0, true);
             return new Fat32Directory(_fs, newCluster, name, creation, creation, creation);
         }
 
@@ -250,15 +250,20 @@ namespace Pentagon.Drivers
         internal async Task FreeClusterChain(uint cluster)
         {
             uint curr = cluster;
+            var count = _block.BlockSize / 4;
             while (true)
             {
-                var byteoff = (long)curr * 4;
-                var sector = _firstFatSector + byteoff / _block.BlockSize;
-                var offset = (byteoff % _block.BlockSize) / 4;
+                var sector = _firstFatSector + curr / count;
+                var offset = curr % count;
                 var mem = (await ReadCached(sector));
                 var fatSector = MemoryMarshal.Cast<byte, uint>(mem);
                 curr = fatSector.Span[(int)offset] & 0x0FFFFFFF;
                 if (curr >= 0x0FFFFFF8) break;
+                
+                var mask = 1 << ((int)(sector & 0b111));
+                var index = unchecked((int)(sector / 8));
+                _bitmap[index] &= (byte)(~mask);
+                
                 fatSector.Span[(int)offset] = 0;
                 await _block.WriteBlocks(sector, mem);
             }
@@ -273,6 +278,13 @@ namespace Pentagon.Drivers
             uint newcluster = 0;
             for (int i = 0; i < _sectorsPerFat; i++)
             {
+                if (_bitmap[i / 8] == 0xFF)
+                {
+                    // this can only happen for i being a multiple of 8
+                    i += 7; // once this goes to i++, it will be +8
+                    continue;
+                }
+
                 var mask = (byte)(1 << (i % 8));
                 if ((_bitmap[i / 8] & mask) != 0)
                 {
@@ -497,15 +509,18 @@ namespace Pentagon.Drivers
 
         internal async Task AddDirent(uint dirCluster, string name, DateTime creation, DateTime modify, DateTime access, uint startCluster, uint size, bool isDirectory)
         {
+            bool isDot = name.Equals(".");
+            bool isDotDot = name.Equals("..");
+            bool onlySfn = isDot || isDotDot;
+
             var fatcTime = DateTimeToFat(creation);
             var fatmTime = DateTimeToFat(modify);
             var fataTime = DateTimeToFat(access);
 
             // how many contig entries do we need?
-            var neededLfns = (name.Length + 13 - 1) / 13;
+            var neededLfns = onlySfn ? 0 : ((name.Length + 13 - 1) / 13);
             var neededEnts = neededLfns + 1;
             var placed = 0;
-
 
             int total = (int)(_sectorsPerCluster * _block.BlockSize) / 32;
 
@@ -517,6 +532,11 @@ namespace Pentagon.Drivers
             // i is the first free entry
             var remaining = total - i;
             var offset = i * 32;
+
+            var sfnName = new byte[11];
+            byte sfnChecksum = 0;
+            CalculateSfn();
+
             if (neededEnts > remaining)
             {
                 // place all entries we can on the current block
@@ -538,6 +558,31 @@ namespace Pentagon.Drivers
             // place the last entries
             await PlaceNEntries(neededEnts);
 
+            void CalculateSfn()
+            {
+                if (isDot)
+                {
+                    sfnName[0] = (byte)'.';
+                    for (int j = 1; j < 11; j++) sfnName[j] = (byte)' ';
+                }
+                else if (isDotDot)
+                {
+                    sfnName[0] = sfnName[1] = (byte)'.';
+                    for (int j = 2; j < 11; j++) sfnName[j] = (byte)' ';
+                }
+                else
+                {
+                    int curr = i;
+                    sfnName[10] = sfnName[9] = sfnName[8] = 0x41;
+                    for (int j = 0; j < 8; j++)
+                    {
+                        sfnName[7 - j] = (byte)(0x30 + curr % 10);
+                        curr /= 10;
+                    }
+                }
+                sfnChecksum = Checksum(sfnName);
+
+            }
 
             async Task FindDirlistEnd()
             {
@@ -588,7 +633,7 @@ namespace Pentagon.Drivers
                 lfn.order.Value = (byte)(idx | (j == 0 ? 0x40 : 0));
                 lfn.attr.Value = 0xF;
                 lfn.type.Value = 0;
-                lfn.checksum.Value = DefaultSfnChecksum;
+                lfn.checksum.Value = sfnChecksum;
                 lfn.clusterLo.Value = 0;
 
                 var entry = new ushort[13];
@@ -607,7 +652,7 @@ namespace Pentagon.Drivers
             {
                 var sfn = new Sfn(r.CreateRegion(offset));
                 offset += 32;
-                for (int j = 0; j < 11; j++) sfn.name.Span[j] = DefaultSfn[j];
+                for (int j = 0; j < 11; j++) sfn.name.Span[j] = sfnName[j];
                 sfn.clusterHi.Value = (ushort)(startCluster >> 16);
                 sfn.clusterLo.Value = (ushort)(startCluster & 0xFFFF);
                 sfn.fileSize.Value = size;
@@ -628,10 +673,6 @@ namespace Pentagon.Drivers
             }
             return sum;
         }
-
-        static readonly byte[] DefaultSfn = new byte[11] { 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41 };
-
-        static readonly byte DefaultSfnChecksum = Checksum(DefaultSfn);
 
         internal class DirentInfo
         {
