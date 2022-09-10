@@ -9,5 +9,9 @@ public class MethodImpl
     
     private MethodInfo _body;
     private MethodInfo _declaration;
+
+    private MethodImpl()
+    {
+    }
     
 }

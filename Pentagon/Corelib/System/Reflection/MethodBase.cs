@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace System.Reflection;
 
 [StructLayout(LayoutKind.Sequential)]
-public class MethodBase : MemberInfo
+public abstract class MethodBase : MemberInfo
 {
 
     private ushort _implAttributes;
@@ -13,4 +13,8 @@ public class MethodBase : MemberInfo
     private Type[] _genericArguments;
     private MethodInfo _genericMethodDefinition;
 
+    internal MethodBase()
+    {
+    }
+    
 }

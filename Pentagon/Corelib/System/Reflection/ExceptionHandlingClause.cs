@@ -12,4 +12,9 @@ public class ExceptionHandlingClause
     private int _handlerOffset;
     private int _tryLength;
     private int _tryOffset;
+
+    protected ExceptionHandlingClause()
+    {
+    }
+    
 }
