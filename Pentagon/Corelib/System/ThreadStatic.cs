@@ -1,6 +1,6 @@
 namespace System;
 
 [AttributeUsage(AttributeTargets.Field)]
-public class ThreadStatic : Attribute
+public class ThreadStaticAttribute : Attribute
 {
 }
