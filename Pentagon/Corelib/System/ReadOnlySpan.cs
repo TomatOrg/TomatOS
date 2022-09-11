@@ -227,8 +227,8 @@ public readonly ref struct ReadOnlySpan<T>
             // TODO: in the future this can be made faster by not doing a GC barrier
             //       every iteration but every X iterations or something alike 
             
-            var ptr = Unsafe.AsRef<T>(_pointer._value);
-            var dstPtr = Unsafe.AsRef<T>(destination._pointer._value);
+            ref var ptr = ref Unsafe.AsRef<T>(_pointer._value);
+            ref var dstPtr = ref Unsafe.AsRef<T>(destination._pointer._value);
             
             if (Unsafe.IsAddressLessThan(ref ptr, ref dstPtr) && Unsafe.IsAddressLessThan(ref dstPtr, ref Unsafe.Add<T>(ref ptr, _length)))
             {
@@ -248,8 +248,8 @@ public readonly ref struct ReadOnlySpan<T>
         else
         {
             // For unmanaged types we can use the native memmove function which should be quite fast
-            var ptr = Unsafe.AsRef<byte>(_pointer._value);
-            var dstPtr = Unsafe.AsRef<byte>(destination._pointer._value);
+            ref var ptr = ref Unsafe.AsRef<byte>(_pointer._value);
+            ref var dstPtr = ref Unsafe.AsRef<byte>(destination._pointer._value);
             Buffer.Memmove(ref dstPtr, ref ptr, ((nuint)Unsafe.SizeOf<T>() * (nuint)Length));
         }
     }
