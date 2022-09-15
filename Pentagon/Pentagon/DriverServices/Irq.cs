@@ -32,8 +32,14 @@ public class Irq
         /// The address should point to the vector control dword in the msix table
         /// </summary>
         Msix,
-            
-        // TODO: MSI support
+
+        // TODO: just a placeholder
+        Msi,
+
+        /// <summary>
+        /// Page aligned IOAPIC address ORed with the index in the IoRedTbl 
+        /// </summary>
+        IoApic,
     }
 
     /// <summary>
