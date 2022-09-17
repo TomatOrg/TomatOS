@@ -6,6 +6,7 @@
 #include "dotnet/loader.h"
 #include "acpi/acpi.h"
 #include <irq/irq.h>
+#include <arch/intrin.h>
 
 // Uncomment this if you need to debug MamMemory-related stuff
 #define MAPMEMORY_TRACE
@@ -173,6 +174,11 @@ static System_Exception Pentagon_IrqWait(uint64_t irq) {
     return NULL;
 }
 
+
+static method_result_t Pentagon_DriverServices_IoPorts_In8(uint16_t port) {
+    return (method_result_t){ .exception = NULL, .value = __inbyte(port) };
+}
+
 err_t init_kernel_internal_calls() {
     err_t err = NO_ERROR;
 
@@ -195,6 +201,8 @@ err_t init_kernel_internal_calls() {
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Irq::IrqWait(int32)", Pentagon_IrqWait);
 
     MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
+
+    MIR_load_external(ctx, "uint8 [Pentagon-v1]Pentagon.DriverServices.IoPorts::In8(uint16)", Pentagon_DriverServices_IoPorts_In8);
 
     MIR_module_t pentagon = MIR_new_module(ctx, "pentagon");
     jit_MemoryServices_GetSpanPtr(ctx);
