@@ -179,6 +179,12 @@ static method_result_t Pentagon_DriverServices_IoPorts_In8(uint16_t port) {
     return (method_result_t){ .exception = NULL, .value = __inbyte(port) };
 }
 
+static System_Exception Pentagon_DriverServices_IoPorts_Out8(uint16_t port, uint8_t value) {
+    __outbyte(port, value);
+    return NULL;
+}
+
+
 err_t init_kernel_internal_calls() {
     err_t err = NO_ERROR;
 
@@ -203,6 +209,7 @@ err_t init_kernel_internal_calls() {
     MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
 
     MIR_load_external(ctx, "uint8 [Pentagon-v1]Pentagon.DriverServices.IoPorts::In8(uint16)", Pentagon_DriverServices_IoPorts_In8);
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.IoPorts::Out8(uint16,uint8)", Pentagon_DriverServices_IoPorts_Out8);
 
     MIR_module_t pentagon = MIR_new_module(ctx, "pentagon");
     jit_MemoryServices_GetSpanPtr(ctx);

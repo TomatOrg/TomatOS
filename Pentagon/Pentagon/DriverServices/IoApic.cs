@@ -57,11 +57,15 @@ public static class IoApic
         var idx = gsi - ioapic.GsiBase;
         var vector = Irq.AllocateIrq(1, Irq.IrqMaskType.IoApic, ioapic.Address | idx);
 
-        // TODO: actually use flags for pin polarity and trigger mode
         ulong redirVal = 0;
         redirVal |= (uint)vector;
-        redirVal |= 0b001ul << 8; // lowest priority mode
+        redirVal |= 0b001u << 8; // lowest priority mode
         redirVal |= 1ul << 16; // like MSI(X), masked by default
+        if ((flags & (1u << 1)) != 0) redirVal |= 1u << 13; // pin polarity, 0 = active high, 1 = low
+        // THIS IS VERY IMPORTANT
+        // IF YOU GET AN EDGE TRIGGERED IOAPIC IRQ WHILE IT'S MASKED, YOU WON'T GET IT
+        // SO PUT IT AS LEVEL TRIGGERED TO AVOID LOSING IRQS
+        redirVal |= 1u << 15; // 0 = edge triggered, 1 = level triggered
         ioapic.IoRedTbl(idx, redirVal);
         return new Irq(vector);
     }
