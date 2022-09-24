@@ -67,6 +67,16 @@ public class Type : MemberInfo
     internal Type()
     {
     }
+
+    public bool IsArray => _isArray;
+    public bool IsByRef => _isByRef;
+
+    public bool IsEnum => _baseType == typeof(Enum);
+
+    public Type GetElementType()
+    {
+        return _elementType;
+    }
     
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern Type GetTypeFromHandle(RuntimeTypeHandle handle);

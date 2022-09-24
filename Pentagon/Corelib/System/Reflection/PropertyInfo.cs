@@ -11,6 +11,10 @@ public class PropertyInfo : MemberInfo
     private MethodInfo _getMethod;
     private Type _propertyType;
 
+    public bool CanRead => _getMethod != null;
+    public bool CanWrite => _setMethod != null;
+    public Type PropertyType => _propertyType;
+
     internal PropertyInfo()
     {
     }
