@@ -41,15 +41,6 @@ public class PS2
     const byte KBD_COMMAND_SCANCODE = 0xF0;
     const byte KBD_COMMAND_SCANCODE_SET2 = 2;
 
-    /*private static byte KbdWrite(byte value)
-    {
-        WaitIn();
-        IoPorts.Out8(DATA_PORT, value);
-        WaitOut();
-        return IoPorts.In8(DATA_PORT);
-        // TODO: handle resends (when in8 is 0xFE)
-    }*/
-
     // TODO: use AML and have this actually register into the ResourceManager
     internal static void Register()
     {
@@ -84,11 +75,12 @@ public class PS2
         // here you need to check, enabling mouse when not supported is bad
         if (hasMouse) IoPorts.Out8(COMMAND_PORT, COMMAND_ENABLE_MOUSE);
 
+        // TODO:
         // yes, here we need to put set 2 if we want to receive set 1. KbdWriteCommands sends commands to the keyboard, not the controller
         // and CONFIG_KBD_SET2_TO_1 specifies that it wants to take set 2 from the keyboard to convert it to set 1 scancodes for the kernel
         // if for some cursed reason the keyboard sends set 3 or set 1, the translation will still interpret them as set 2 
-        //KbdWrite(KBD_COMMAND_SCANCODE);
-        //KbdWrite(KBD_COMMAND_SCANCODE_SET2);
+        // KbdWrite(KBD_COMMAND_SCANCODE);
+        // KbdWrite(KBD_COMMAND_SCANCODE_SET2);
 
         // do i need to flush again? i think so
         
