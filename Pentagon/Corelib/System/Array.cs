@@ -23,8 +23,18 @@ public class Array
     internal extern unsafe void* GetDataPtr();
 
     #endregion
+    
+    private static class EmptyArray<T>
+    {
+        internal static readonly T[] Value = new T[0];
+    }
 
-    #region Copy
+    public static T[] Empty<T>()
+    {
+        return EmptyArray<T>.Value;
+    }
+    
+    #region Clear
 
     public static void Clear(Array array)
     {
@@ -79,30 +89,18 @@ public class Array
     private static extern void CopyInternal(Array sourceArray, long sourceIndex, Array destinationArray, long destinationIndex, long length);
 
     #endregion
-    
-    private static class EmptyArray<T>
-    {
-        internal static readonly T[] Value = new T[0];
-    }
-
-    public static T[] Empty<T>()
-    {
-        return EmptyArray<T>.Value;
-    }
 
     #region Fill
 
     public static void Fill<T>(T[] array, T value)
     {
+        array.AsSpan().Fill(value);
         Fill(array, value, 0, array.Length);
     }
     
     public static void Fill<T>(T[] array, T value, int startIndex, int count)
     {
-        for (var i = startIndex; i < startIndex + count; i++)
-        {
-            array[i] = value;
-        }
+        array.AsSpan(startIndex, count).Fill(value);
     }
 
     #endregion

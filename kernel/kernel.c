@@ -48,6 +48,7 @@ volatile struct limine_smp_request g_limine_smp = { .id = LIMINE_SMP_REQUEST };
 volatile struct limine_memmap_request g_limine_memmap = { .id = LIMINE_MEMMAP_REQUEST };
 volatile struct limine_rsdp_request g_limine_rsdp = { .id = LIMINE_RSDP_REQUEST };
 volatile struct limine_kernel_address_request g_limine_kernel_address = { .id = LIMINE_KERNEL_ADDRESS_REQUEST };
+volatile struct limine_framebuffer_request g_limine_framebuffer = { .id = LIMINE_FRAMEBUFFER_REQUEST };
 
 __attribute__((section(".limine_reqs"), used))
 static void* m_limine_reqs[] = {
@@ -58,6 +59,7 @@ static void* m_limine_reqs[] = {
     (void*)&g_limine_memmap,
     (void*)&g_limine_rsdp,
     (void*)&g_limine_kernel_address,
+    (void*)&g_limine_framebuffer,
     NULL,
 };
 

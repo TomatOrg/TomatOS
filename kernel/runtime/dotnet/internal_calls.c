@@ -5,6 +5,7 @@
 #include "mem/mem.h"
 #include "dotnet/loader.h"
 #include "acpi/acpi.h"
+#include "kernel.h"
 #include <irq/irq.h>
 #include <arch/intrin.h>
 
@@ -169,6 +170,37 @@ static method_result_t Pentagon_AllocateIrq(int count, int type, void* addr) {
     return (method_result_t){ .exception = NULL, .value = interrupt };
 }
 
+static method_result_t Pentagon_GetNextFramebuffer(int* index, uint64_t* addr, int* width, int* height, int* pitch) {
+    while (true) {
+        if (*index >= g_limine_framebuffer.response->framebuffer_count) {
+            return (method_result_t){ .exception = NULL, .value = false };
+        }
+
+        // get it and increment
+        struct limine_framebuffer* framebuffer = g_limine_framebuffer.response->framebuffers[*index];
+        (*index)++;
+
+        // check it is valid for us
+        if (framebuffer->bpp != 32) continue;
+        if (framebuffer->red_mask_size != 8) continue;
+        if (framebuffer->green_mask_size != 8) continue;
+        if (framebuffer->blue_mask_size != 8) continue;
+        if (framebuffer->red_mask_shift != 16) continue;
+        if (framebuffer->green_mask_shift != 8) continue;
+        if (framebuffer->blue_mask_shift != 0) continue;
+        if (framebuffer->memory_model != LIMINE_FRAMEBUFFER_RGB) continue;
+
+        // move it out
+        *addr = (uint64_t)DIRECT_TO_PHYS(framebuffer->address);
+        *width = (int)framebuffer->width;
+        *height = (int)framebuffer->height;
+        *pitch = (int)framebuffer->pitch;
+
+        // return we found one
+        return (method_result_t){ .exception = NULL, .value = true };
+    }
+}
+
 static System_Exception Pentagon_IrqWait(uint64_t irq) {
     irq_wait(irq);
     return NULL;
@@ -207,6 +239,7 @@ err_t init_kernel_internal_calls() {
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Irq::IrqWait(int32)", Pentagon_IrqWait);
 
     MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
+    MIR_load_external(ctx, "bool [Pentagon-v1]Pentagon.DriverServices.KernelUtils::GetNextFramebuffer([Corelib-v1]System.Int32&,[Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&)", Pentagon_GetNextFramebuffer);
 
     MIR_load_external(ctx, "uint8 [Pentagon-v1]Pentagon.DriverServices.IoPorts::In8(uint16)", Pentagon_DriverServices_IoPorts_In8);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.IoPorts::Out8(uint16,uint8)", Pentagon_DriverServices_IoPorts_Out8);
