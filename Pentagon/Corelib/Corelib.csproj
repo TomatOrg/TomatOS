@@ -16,10 +16,6 @@
       <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
-    <ItemGroup>
-      <Folder Include="System\Linq" />
-    </ItemGroup>
-
     <Target Name="CustomizeReferences" BeforeTargets="BeforeCompile" AfterTargets="FindReferenceAssembliesForReferences">
         <ItemGroup>
             <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)" />

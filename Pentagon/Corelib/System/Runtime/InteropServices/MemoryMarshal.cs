@@ -110,7 +110,7 @@ public static class MemoryMarshal
         var fromLength = (uint)mem.Length;
         // TODO: checked
         var toLength = (int)((ulong)fromLength * (ulong)fromSize / (ulong)toSize);
-        return new Memory<TTo>(mem._obj, mem._ptr, toLength);
+        return new Memory<TTo>(mem._object, mem._ptr, toLength);
     }
     
     public static unsafe ReadOnlyMemory<TTo> Cast<TFrom, TTo>(ReadOnlyMemory<TFrom> mem)

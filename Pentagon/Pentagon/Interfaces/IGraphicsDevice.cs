@@ -32,12 +32,21 @@ public interface IGraphicsOutput
 /// </summary>
 public interface IFramebuffer : IDisposable
 {
-
+    /// <summary>
+    /// The width of the framebuffer
+    /// </summary>
+    int Width { get; }
+    
+    /// <summary>
+    /// The height of the framebuffer
+    /// </summary>
+    int Height { get; }
+    
     /// <summary>
     /// Allows to attach multiple 
     /// </summary>
     Memory<byte> Backing { set; }
-    
+   
     /// <summary>
     /// Blit from the buffer starting at the given offset, to the Rectangle inside
     /// the framebuffer.

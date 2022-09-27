@@ -29,7 +29,7 @@ ifeq ($(DEBUG),1)
 	CFLAGS 	+= -fno-sanitize=alignment
 	CFLAGS 	+= -fstack-protector-all
 else
-	CFLAGS	+= -O3 -g0 -flto
+	CFLAGS	+= -O3 -g -flto
 	CFLAGS 	+= -DNDEBUG
 endif
 

@@ -81,6 +81,17 @@ public readonly unsafe struct ReadOnlyMemory<T>
         _length = length;
     }
     
+    // Constructor for internal use only.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal ReadOnlyMemory(object obj, ref T ptr, int length)
+    {
+        Debug.Assert(length >= 0);
+
+        _object = obj;
+        _pointer = Unsafe.AsPointer(ref ptr);
+        _length = length;
+    }
+
     /// <summary>
     /// Defines an implicit conversion of an array to a <see cref="ReadOnlyMemory{T}"/>
     /// </summary>

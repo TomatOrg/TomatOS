@@ -10,6 +10,9 @@ using Pentagon.DriverServices;
 using Pentagon.DriverServices.Acpi;
 using Pentagon.DriverServices.Pci;
 using Pentagon.Graphics;
+using Pentagon.Gui;
+using Pentagon.Gui.Framework;
+using Pentagon.Gui.Widgets;
 using Pentagon.Interfaces;
 using Pentagon.Resources;
 
@@ -17,6 +20,12 @@ namespace Pentagon;
 
 public class Kernel
 {
+
+
+    private static Widget MainModel()
+    {
+        return new RectangleWidget(Color.Red);
+    }
 
     public static int Main()
     {
@@ -29,45 +38,20 @@ public class Kernel
         
         IoApic.Scan(acpi);
         PS2.Register(); // this is a misnomer, since it doesn't use ResourceManager yet, but we need AML for that
-
-        ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-        // TODO: register the output 
-        // get the device and output 
-        //
+        
+        // Create a plain graphics device (from a framebuffer) and 
         IGraphicsDevice dev = new PlainGraphicsDevice();
         var output = dev.Outputs[0];
-
-        // allocate a framebuffer and set the backing for it 
         var framebuffer = dev.CreateFramebuffer(output.Width, output.Height);
-        var backing = MemoryServices.AllocatePages(KernelUtils.DivideUp(output.Width * output.Height * 4, 4096)).Memory;
-        framebuffer.Backing = backing;
-        var memory = MemoryMarshal.Cast<byte, uint>(backing);
-        
-        // attach the framebuffer to the output
         output.SetFramebuffer(framebuffer, new Rectangle(0, 0, output.Width, output.Height));
 
-        // update the framebuffer 
+        // create the app and a local renderer to render the app
+        var renderer = new LocalGuiServer(framebuffer);
         
-        {
-            var blitter = new Blitter(memory, output.Width, (uint)Color.Red.ToArgb());
-            blitter.BlitRect(10, 10, 100, 100);
-        }
-        
-        {
-            var blitter = new Blitter(memory, output.Width, (uint)Color.Green.ToArgb());
-            blitter.BlitRect(50, 5, 20, 20);
-        }
-        
-        {
-            var blitter = new Blitter(memory, output.Width, (uint)Color.White.ToArgb());
-            blitter.BlitRect(80, 20, 10, 10);
-        }
-        
-        framebuffer.Blit(0, new Rectangle(0, 0, output.Width, output.Height));
+        // run the app
+        var app = new App(MainModel);
+        app.Run(renderer);
 
-        // draw to the screen
-        framebuffer.Flush();
-        
         return 0;
     }
 

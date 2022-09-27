@@ -110,7 +110,7 @@ public sealed class PciDevice
         // make sure it is an io bar
         if ((barLow & 1) == 1) {
             //throw new NotImplementedException("IO Bars are currently not supported");
-            return null;
+            return Memory<byte>.Empty;
         }
 
         // TODO: map prefetchable nicely

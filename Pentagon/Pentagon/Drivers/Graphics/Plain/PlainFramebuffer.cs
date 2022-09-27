@@ -11,13 +11,16 @@ internal class PlainFramebuffer : IFramebuffer
     internal readonly List<PlainGraphicsOutput> Outputs = new();
     
     private Memory<byte> _memory;
-    private int _width;
 
     private Memory<byte> _backing = Memory<byte>.Empty;
 
+    public int Width { get; }
+    public int Height { get; }
+
     public PlainFramebuffer(int width, int height)
     {
-        _width = width;
+        Width = width;
+        Height = height;
         _memory = new Memory<byte>(new byte[width * height * 4]);
     }
     
@@ -29,24 +32,24 @@ internal class PlainFramebuffer : IFramebuffer
     public void Blit(int offset, in Rectangle rectangle)
     {
 
-        if (rectangle.X == 0 && _width == rectangle.Width)
+        if (rectangle.X == 0 && Width == rectangle.Width)
         {
             // a single copy can be used
             var src = _backing.Span.Slice(offset, rectangle.Width * rectangle.Height * 4);
-            var dst = _memory.Span.Slice(rectangle.Y * _width * 4);
+            var dst = _memory.Span.Slice(rectangle.Y * Width * 4);
             src.CopyTo(dst);
         }
         else
         {
             // need to do multiple iterations 
             var src = _backing.Span.Slice(offset);
-            var dst = _memory.Span.Slice((rectangle.X + rectangle.Y * _width) * 4);
+            var dst = _memory.Span.Slice((rectangle.X + rectangle.Y * Width) * 4);
             var bytesPerLine = 4 * rectangle.Width;
 
             for (
                 var srcY = 0; srcY < rectangle.Height; srcY++,
                 src = src.Slice(bytesPerLine), 
-                dst = dst.Slice(_width)
+                dst = dst.Slice(Width)
             )
             {
                 src.Slice(0, bytesPerLine).CopyTo(dst);
@@ -63,10 +66,10 @@ internal class PlainFramebuffer : IFramebuffer
             var src = _memory.Span;
             
             var rect = output.Rectangle;
-            if (rect.X == 0 && _width * 4 == output.RowBytes)
+            if (rect.X == 0 && Width * 4 == output.RowBytes)
             {
                 // fast blit path
-                var dst = output.Address.Span.Slice(rect.Y * _width * 4);
+                var dst = output.Address.Span.Slice(rect.Y * Width * 4);
                 src.CopyTo(dst);
             }
             else
@@ -78,7 +81,7 @@ internal class PlainFramebuffer : IFramebuffer
                 for (
                     var srcY = 0; srcY < rect.Height; srcY++,
                     src = src.Slice(bytesPerLine), 
-                    dst = dst.Slice(_width)
+                    dst = dst.Slice(Width)
                 )
                 {
                     src.Slice(0, bytesPerLine).CopyTo(dst);

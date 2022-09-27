@@ -93,6 +93,36 @@ public class Type : MemberInfo
             return !string.IsNullOrEmpty(_namespace) ? string.Concat(_namespace, ".", _name) : _name;
         }
     }
+
+    public bool IsPointer => _isPointer;
+
+    public bool IsGenericTypeDefinition => _genericArguments != null && _genericTypeDefinition == null;
+    
+    public bool ContainsGenericParameters
+    {
+        get
+        {
+            if (_genericParmaeterPosition >= 0)
+                return true;
+
+            if (_isArray)
+                return _elementType.ContainsGenericParameters;
+
+            if (_isByRef)
+                return _baseType.ContainsGenericParameters;
+
+            if (_genericArguments != null)
+            {
+                foreach (var arg in _genericArguments)
+                {
+                    if (arg.ContainsGenericParameters)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+    }
     
     public bool IsValueType => _isValueType;
     
