@@ -1,3 +1,5 @@
+using System.Threading;
+using Pentagon.Drivers;
 using System;
 using System.Drawing;
 using System.Runtime.CompilerServices;
@@ -16,16 +18,17 @@ namespace Pentagon;
 public class Kernel
 {
 
-    
-    
     public static int Main()
     {
         // setup the basic subsystems
-        // var acpi = new Acpi();
+        var acpi = new Acpi();
         // Pci.Scan(acpi);
         //
         // // register built-in drivers
         // VirtioDevice.Register();
+        
+        IoApic.Scan(acpi);
+        PS2.Register(); // this is a misnomer, since it doesn't use ResourceManager yet, but we need AML for that
 
         ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
         // TODO: register the output 

@@ -45,7 +45,7 @@ public sealed class PciDevice
     /// <summary>
     /// MSI-X support on the pci device
     /// </summary>
-    public Msix Msix { get; private set; }
+    internal Msix Msix { get; private set; }
 
     public PciDevice(byte bus, byte dev, byte fn, Memory<byte> ecamSlice)
     {

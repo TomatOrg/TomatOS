@@ -7,6 +7,7 @@
 #include "acpi/acpi.h"
 #include "kernel.h"
 #include <irq/irq.h>
+#include <arch/intrin.h>
 
 // Uncomment this if you need to debug MamMemory-related stuff
 #define MAPMEMORY_TRACE
@@ -97,12 +98,12 @@ static jit_generic_extern_hook_t m_jit_extern_hook = {
 };
 
 static System_Exception Pentagon_DriverServices_Log_LogHex(uint64_t val) {
-    printf("LogHex(0x%p)\n", val);
+    printf("%02x", val);
     return NULL;
 }
 
 static System_Exception Pentagon_DriverServices_Log_LogString(System_String val) {
-    printf("LogString(\"%U\")\n", val);
+    printf("%U", val);
     return NULL;
 }
 
@@ -114,6 +115,7 @@ static method_result_t Pentagon_GetMappedPhysicalAddress(System_Memory memory) {
     return (method_result_t){ .exception = NULL, .value = DIRECT_TO_PHYS(memory.Ptr) };
 }
 
+// `ctx` is the vector mask address
 void msix_irq_mask(void *ctx) {
     *(uint32_t*)(PHYS_TO_DIRECT(ctx)) = 1;
 }
@@ -127,10 +129,44 @@ irq_ops_t m_msix_irq_ops = {
     .unmask = msix_irq_unmask
 };
 
+// `ctx` is the page aligned IOAPIC address ORed with the index in the IoRedTbl
+// FIXME: this code does one VMEXIT more than it needs to, since it reads the flags value
+
+void ioapic_irq_mask(void *ctx) {
+    uintptr_t c = (uintptr_t)ctx;
+    uint32_t index = c & 4095;
+    volatile uint32_t *sel = PHYS_TO_DIRECT(c - index), *win = sel + 4;
+    *sel = 0x10 + index * 2;
+    *win |= 1u << 16;
+}
+
+void ioapic_irq_unmask(void *ctx) {
+    uintptr_t c = (uintptr_t)ctx;
+    uint32_t index = c & 4095;
+    volatile uint32_t *sel = PHYS_TO_DIRECT(c - index), *win = sel + 4;
+    *sel = 0x10 + index * 2;
+    *win &= ~(1u << 16);
+}
+
+irq_ops_t m_ioapic_irq_ops = {
+    .mask = ioapic_irq_mask,
+    .unmask = ioapic_irq_unmask
+};
+
 static method_result_t Pentagon_AllocateIrq(int count, int type, void* addr) {
-    ASSERT(type == 0);
     uint8_t interrupt = 0;
-    alloc_irq(count, m_msix_irq_ops, addr, &interrupt);
+    irq_ops_t ops = {};
+    switch (type) {
+    case 0: // MSIX
+        ops = m_msix_irq_ops;
+        break;
+    case 2: // IOAPIC
+        ops = m_ioapic_irq_ops;
+        break;
+    default:
+        ASSERT(!"IRQ type not supported yet");
+    }
+    alloc_irq(count, ops, addr, &interrupt);
     return (method_result_t){ .exception = NULL, .value = interrupt };
 }
 
@@ -170,6 +206,17 @@ static System_Exception Pentagon_IrqWait(uint64_t irq) {
     return NULL;
 }
 
+
+static method_result_t Pentagon_DriverServices_IoPorts_In8(uint16_t port) {
+    return (method_result_t){ .exception = NULL, .value = __inbyte(port) };
+}
+
+static System_Exception Pentagon_DriverServices_IoPorts_Out8(uint16_t port, uint8_t value) {
+    __outbyte(port, value);
+    return NULL;
+}
+
+
 err_t init_kernel_internal_calls() {
     err_t err = NO_ERROR;
 
@@ -193,6 +240,9 @@ err_t init_kernel_internal_calls() {
 
     MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
     MIR_load_external(ctx, "bool [Pentagon-v1]Pentagon.DriverServices.KernelUtils::GetNextFramebuffer([Corelib-v1]System.Int32&,[Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&)", Pentagon_GetNextFramebuffer);
+
+    MIR_load_external(ctx, "uint8 [Pentagon-v1]Pentagon.DriverServices.IoPorts::In8(uint16)", Pentagon_DriverServices_IoPorts_In8);
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.IoPorts::Out8(uint16,uint8)", Pentagon_DriverServices_IoPorts_Out8);
 
     MIR_module_t pentagon = MIR_new_module(ctx, "pentagon");
     jit_MemoryServices_GetSpanPtr(ctx);

@@ -39,11 +39,8 @@ typedef enum irq {
      */
     IRQ_WAKEUP      = 0x30,
 
-    // TODO: we need some space for legacy PIC irqs
-    //       mostly for stuff like PS2
-
     /**
-     * IRQ allocation range, used for MSI/MSI-x
+     * IRQ allocation range, used for LAPIC IRQs like MSI(X) and IOAPIC ones
      */
     IRQ_ALLOC_BASE = 0x40,
     IRQ_ALLOC_END = 0xEF,
