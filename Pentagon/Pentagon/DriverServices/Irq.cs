@@ -2,13 +2,13 @@
 
 namespace Pentagon.DriverServices;
 
-public class Irq
+internal class Irq
 {
 
     /// <summary>
     /// The vector number allocated for this IRQ 
     /// </summary>
-    public readonly int Vector;
+    internal readonly int Vector;
         
     internal Irq(int vector)
     {
@@ -18,7 +18,7 @@ public class Irq
     /// <summary>
     /// Blocks the current thread, waiting for an IRQ to happen
     /// </summary>
-    public void Wait()
+    internal void Wait()
     {
         IrqWait(Vector);
     }

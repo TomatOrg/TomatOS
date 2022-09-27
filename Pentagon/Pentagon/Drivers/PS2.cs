@@ -10,7 +10,7 @@ using System.Threading;
 
 namespace Pentagon.Drivers;
 
-public class PS2
+internal class PS2
 {
     const int IRQ = 1; // replace it with ACPI
     const ushort DATA_PORT = 0x60; // replace it with ACPI

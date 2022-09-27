@@ -5,11 +5,11 @@ using Pentagon.Resources;
 
 namespace Pentagon.DriverServices;
 
-public static class IoApic
+internal static class IoApic
 {
     static List<IoApicData> _ioApics = new(16);
     static List<Acpi.Madt.Iso> _isos;
-    public static void Scan(Acpi.Acpi acpi)
+    internal static void Scan(Acpi.Acpi acpi)
     {
         var madtMem = acpi.FindTable(Acpi.Madt.Signature);
         var madt = new Acpi.Madt(madtMem);
@@ -40,7 +40,7 @@ public static class IoApic
         }
     }
 
-    public static Irq RegisterIrq(uint irqNum)
+    internal static Irq RegisterIrq(uint irqNum)
     {
         uint gsi = irqNum; // assume 1:1 mapping if no ISOs
         ushort flags = 0;
@@ -71,7 +71,7 @@ public static class IoApic
     }
 
     // FIXME: for some weird reason if I return directly from the if, it doesn't work. TDN bug
-    static public IoApicData GetFromGsi(uint gsi)
+    static internal IoApicData GetFromGsi(uint gsi)
     {
         IoApicData data = null;
         foreach (var ioapic in _ioApics)
@@ -84,7 +84,7 @@ public static class IoApic
         return data;
     }
 
-    public class IoApicData
+    internal class IoApicData
     {
         internal ulong Address;
         internal Field<uint> IoRegSel;

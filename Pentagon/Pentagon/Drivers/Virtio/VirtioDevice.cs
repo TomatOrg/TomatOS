@@ -67,11 +67,11 @@ public class VirtioPciDevice
 
         internal ulong DescPhys, AvailPhys, UsedPhys;
         Field<ushort> Notifier;
-        readonly public Irq Interrupt;
+        readonly internal Irq Interrupt;
 
         public TaskCompletionSource[] Completions;
 
-        public QueueInfo(int index, int size, Field<ushort> notifier, Irq interrupt)
+        internal QueueInfo(int index, int size, Field<ushort> notifier, Irq interrupt)
         {
             Index = index;
             Size = size;
