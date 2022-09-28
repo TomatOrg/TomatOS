@@ -4,7 +4,7 @@ using System.Linq.Expressions;
 
 namespace Pentagon.Gui.Widgets;
 
-public class RectangleWidget : Widget
+public class Rectangle : Widget
 {
 
     public override bool BuildsChildren => true;
@@ -12,19 +12,14 @@ public class RectangleWidget : Widget
     public override float FlexX => 1.0f;
     public override float FlexY => 1.0f;
 
-    public Expression Color { get; set; }
+    public Expr Color { get; set; }
 
-    public RectangleWidget(Expression color)
+    public Rectangle(Expr color)
     {
         Color = color;
     }
 
-    public RectangleWidget(uint color)
-        : this(Expression.Constant(color))
-    {
-    }
-
-    public RectangleWidget(Color color)
+    public Rectangle(Color color)
         : this((uint)color.ToArgb())
     {
     }
@@ -34,12 +29,12 @@ public class RectangleWidget : Widget
         return this;
     }
 
-    public override (Expression, Expression) Layout(Expression minWidth, Expression minHeight, Expression maxWidth, Expression maxHeight)
+    public override (Expr, Expr) Layout(Expr minWidth, Expr minHeight, Expr maxWidth, Expr maxHeight)
     {
         return (maxWidth, maxHeight);
     }
 
-    public override List<Command> Render(Expression left, Expression top, Expression right, Expression bottom)
+    public override List<Command> Render(Expr left, Expr top, Expr right, Expr bottom)
     {
         return new List<Command>
         {
@@ -49,7 +44,6 @@ public class RectangleWidget : Widget
                 Top = top,
                 Right = right,
                 Bottom = bottom,
-                
                 Color = Color
             }
         };

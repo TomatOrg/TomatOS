@@ -24,14 +24,14 @@ public static class MathF
 
     public const float Tau = 6.283185307f;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static float Abs(float x)
-    {
-        return Math.Abs(x);
-    }
+    // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    // public static float Abs(float x)
+    // {
+    //     return Math.Abs(x);
+    // }
     
-    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
-    public static extern float Sqrt(float x);
+    // [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+    // public static extern float Sqrt(float x);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float Min(float x, float y)

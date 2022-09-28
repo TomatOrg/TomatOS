@@ -2,7 +2,7 @@
 # Build constants
 ########################################################################################################################
 
-CC 			:= ccache clang
+CC 			:= ccache clang-13
 LD			:= ld.lld
 
 # Build in debug or release mode

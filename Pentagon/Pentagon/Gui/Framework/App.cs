@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,17 +35,10 @@ public class App
             _sceneInstance.Build();
         }
 
-        var builtScene = new ClearWidget(_sceneInstance, 0xff000000).BuildRecursively();
-        var size = builtScene.Layout(
-            Expression.Constant(0), Expression.Constant(0),
-            Expression.Variable(typeof(int), "width"),
-            Expression.Variable(typeof(int), "height")
-        );
+        var builtScene = new Clear(_sceneInstance, Color.Black).BuildRecursively();
+        var size = builtScene.Layout(0, 0, Expr.Width, Expr.Height);
 
-        var renderedScene = builtScene.Render(
-            Expression.Constant(0), Expression.Constant(0),
-            size.Item1, size.Item2
-        );
+        var renderedScene = builtScene.Render(0, 0, size.Item1, size.Item2);
 
         return new Scene
         {

@@ -1,14 +1,11 @@
 using System;
 using System.Drawing;
-using System.Linq.Expressions;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Pentagon.DriverServices;
 using Pentagon.Graphics;
 using Pentagon.Interfaces;
 
-namespace Pentagon.Gui;
+namespace Pentagon.Gui.Server;
 
 /// <summary>
 /// This is both a client and server implementation for apps running and displaying locally.
@@ -40,20 +37,16 @@ public class LocalGuiServer : GuiServer
 
     // TODO: add support for compiling expressions, it will
     //       make the code much faster :)
-    private int Eval(Expression e)
+    private long Eval(Expr e)
     {
-        switch (e.NodeType)
+        switch (e.Type)
         {
-            case ExpressionType.Constant:
+            case ExprType.IntLiteral: 
+                return ((IntLiteralExpr)e).Value;
+            
+            case ExprType.Var:
             {
-                // TODO: better support for other types
-                var node = (ConstantExpression)e;
-                return (int)node.Value!;
-            } break;
-
-            case ExpressionType.Parameter:
-            {
-                var node = (ParameterExpression)e;
+                var node = (VarExpr)e;
                 // TODO: type checking
                 return node.Name switch
                 {
@@ -61,8 +54,33 @@ public class LocalGuiServer : GuiServer
                     "height" => _height,
                     _ => throw new InvalidOperationException($"unknown gui variable {node.Name}")
                 };
-            } break;
-            
+            }
+
+            case ExprType.Add: { var add = (BinaryExpr)e; return Eval(add.A) + Eval(add.B); }
+            case ExprType.Mul: { var add = (BinaryExpr)e; return Eval(add.A) * Eval(add.B); }
+            case ExprType.Div: { var add = (BinaryExpr)e; return Eval(add.A) / Eval(add.B); }
+            case ExprType.Mod: { var add = (BinaryExpr)e; return Eval(add.A) % Eval(add.B); }
+            // case ExprType.Pow: { var add = (BinaryExpr)e; return Eval(add.A) ** Eval(add.B); }
+            case ExprType.Eq: { var add = (BinaryExpr)e; return Eval(add.A) == Eval(add.B) ? 1 : 0; }
+            case ExprType.Neq: { var add = (BinaryExpr)e; return Eval(add.A) != Eval(add.B) ? 1 : 0; }
+            case ExprType.Lt: { var add = (BinaryExpr)e; return Eval(add.A) < Eval(add.B) ? 1 : 0; }
+            case ExprType.Lte: { var add = (BinaryExpr)e; return Eval(add.A) <= Eval(add.B) ? 1 : 0; }
+            case ExprType.Gt: { var add = (BinaryExpr)e; return Eval(add.A) > Eval(add.B) ? 1 : 0; }
+            case ExprType.Gte: { var add = (BinaryExpr)e; return Eval(add.A) >= Eval(add.B) ? 1 : 0; }
+            case ExprType.BAnd: { var add = (BinaryExpr)e; return Eval(add.A) & Eval(add.B); }
+            case ExprType.BOr: { var add = (BinaryExpr)e; return Eval(add.A) | Eval(add.B); }
+            case ExprType.Neg: { var add = (UnaryExpr)e; return -Eval(add.A); }
+            case ExprType.BInvert: { var add = (UnaryExpr)e; return ~Eval(add.A); }
+            case ExprType.Min: { var add = (BinaryExpr)e; return Math.Min(Eval(add.A), Eval(add.B)); }
+            case ExprType.Max: { var add = (BinaryExpr)e; return Math.Max(Eval(add.A), Eval(add.B)); }
+            case ExprType.Abs: { var add = (UnaryExpr)e; return Math.Abs(Eval(add.A)); }
+
+            case ExprType.If:
+            {
+                var @if = (IfExpr)e;
+                return Eval(Eval(@if.Condition) != 0 ? @if.True : @if.False);
+            }
+
             default:
                 throw new InvalidOperationException("Invalid gui expression type");
         }
@@ -106,13 +124,15 @@ public class LocalGuiServer : GuiServer
                 {
                     var cmd = (RectCommand)command;
                     var blitter = new Blitter(_memory, _width, (uint)Eval(cmd.Color));
-                    var left = Eval(cmd.Left);
-                    var top = Eval(cmd.Top);
-                    var right = Eval(cmd.Right);
-                    var bottom = Eval(cmd.Bottom);
-                    Log.LogHex((ulong)(right - left));
-                    Log.LogString("\n");
-                    Log.LogHex((ulong)(bottom - top));
+                    Log.LogString("Rect\n");
+                    Log.LogString($"\tLeft == {cmd.Left.ToString()}\n");
+                    Log.LogString($"\tTop == {cmd.Top.ToString()}\n");
+                    Log.LogString($"\tRight == {cmd.Right.ToString()}\n");
+                    Log.LogString($"\tBottom == {cmd.Bottom.ToString()}\n");
+                    var left = (int)Eval(cmd.Left);
+                    var top = (int)Eval(cmd.Top);
+                    var right = (int)Eval(cmd.Right);
+                    var bottom = (int)Eval(cmd.Bottom);
                     blitter.BlitRect(left, top, unchecked(right - left), unchecked(bottom - top));
                 } break;
                 
