@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using Pentagon.Gui;
 
 namespace Pentagon.Interfaces
 {
-    internal class KeyEvent
+    internal class KeyEvent : GuiEvent
     {
         public KeyCode Code;
         public bool Released;
@@ -238,8 +240,8 @@ namespace Pentagon.Interfaces
         WwwStarred = 0x111,
     }
 
-    internal interface IKeyboard
+    public interface IKeyboard
     {
-        internal void RegisterCallback(Action<KeyEvent> callback);
+        internal abstract void RegisterCallback(Action<KeyEvent> callback);
     }
 }

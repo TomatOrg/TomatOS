@@ -17,12 +17,18 @@ public class LocalGuiServer : GuiServer
 {
 
     private IFramebuffer _framebuffer;
+    private IKeyboard _keyboard;
+
+    private AutoResetEvent _reset = new(false);
+    private GuiEvent _event = null;
+    
     private Memory<uint> _memory;
     private int _width, _height;
 
-    public LocalGuiServer(IFramebuffer framebuffer)
+    public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard)
     {
         _framebuffer = framebuffer;
+        _keyboard = keyboard;
         _width = framebuffer.Width;
         _height = framebuffer.Height;
      
@@ -36,6 +42,16 @@ public class LocalGuiServer : GuiServer
         
         // keep it as a uint array for blitter
         _memory = MemoryMarshal.Cast<byte, uint>(memory);
+
+        _keyboard.RegisterCallback(KeyboardCallback);
+    }
+    
+    void KeyboardCallback(KeyEvent e)
+    {
+        {
+            _event = e;
+            _reset.Set();
+        }
     }
 
     // TODO: add support for compiling expressions, it will
@@ -82,8 +98,12 @@ public class LocalGuiServer : GuiServer
     public override void Handle()
     {
         // TODO: handle inputs in here and push them to the event queue
-        //       for the GetEvent to handle
-        while (true) ;
+        //       for the EventHandler to handle
+        while (true)
+        {
+            _reset.WaitOne();
+            EventHandler.Invoke(_event);
+        }
     }
 
     public override void UpdateScene(Scene scene)
