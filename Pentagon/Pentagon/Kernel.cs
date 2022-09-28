@@ -20,11 +20,23 @@ namespace Pentagon;
 
 public class Kernel
 {
-
+    static Memory<byte> kbdLayout;
+    static int shift = 0, altgr = 0;
     static void KbdCallback(KeyEvent k)
     {
+        if (!k.Released && (k.Code == KeyCode.LeftShift || k.Code == KeyCode.RightShift)) { shift = 1; return; }
+        if (k.Released && (k.Code == KeyCode.LeftShift || k.Code == KeyCode.RightShift)) { shift = 0; return; }
+
+        if (!k.Released && (k.Code == KeyCode.RightAlt)) { altgr = 1; return; }
+        if (k.Released && (k.Code == KeyCode.RightAlt)) { altgr = 0; return; }
+
         if (k.Released) return;
-        Log.LogHex((ulong)k.Code);
+        
+        var c = GetCodepoint(k.Code, shift > 0, altgr > 0);
+        char[] chars = new char[1];
+        chars[0] = (char)c;
+        Log.LogString(new string(chars));
+
     }
 
     private static Widget MainModel()
@@ -32,8 +44,29 @@ public class Kernel
         return new RectangleWidget(Color.Red);
     }
 
+    // TODO: use Rune
+    internal static int GetCodepoint(KeyCode c, bool shiftHeld, bool altGrHeld)
+    {
+        int off = (int)c;
+        //if (off >= 0x200) throw exception
+        if (shiftHeld) off |= 0x200;
+        if (altGrHeld) off |= 0x400;
+        var offset = MemoryMarshal.Cast<byte, ushort>(kbdLayout).Span[off];
+        // TODO: proper unicode
+        int codepoint = kbdLayout.Span[0x1000 + offset];
+        if ((codepoint & 0xE0) == 0xC0) // twobyte UTF8
+        {
+            codepoint = (codepoint & 0x1F) << 6;
+            codepoint |= kbdLayout.Span[0x1001 + offset] & 0x3F;
+        }
+        return codepoint;
+    }
+
     public static int Main()
     {
+        KernelUtils.GetKbdLayout(out ulong kbdAddr, out ulong kbdSize);
+        kbdLayout = MemoryServices.Map(kbdAddr, (int)kbdSize);
+
         // setup the basic subsystems
         var acpi = new Acpi();
         // Pci.Scan(acpi);

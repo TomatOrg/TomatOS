@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+if [ ! -f test/kbd.dat ]
+then
+  wget https://gitlab.com/nakst/essence/-/raw/master/res/Keyboard%20Layouts/us.dat -O test/kbd.dat
+fi
+
 # Create the disk, single partition which is the ESP
 rm -f out/build/test.hdd
 dd if=/dev/zero bs=1M count=0 seek=64 of=out/build/test.hdd
@@ -28,6 +33,7 @@ sudo cp -rv limine/limine.sys out/build/test_image/boot/
 sudo cp -rv \
   out/bin/pentagon.elf \
   test/limine.cfg \
+  test/kbd.dat \
   Pentagon/Corelib/bin/Release/net6.0/Corelib.dll \
   Pentagon/Pentagon/bin/Release/net6.0/Pentagon.dll \
   out/build/test_image/boot/

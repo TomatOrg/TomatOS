@@ -40,4 +40,6 @@ public static class KernelUtils
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
     internal static extern bool GetNextFramebuffer(ref int index, out ulong addr, out int width, out int height, out int pitch);
 
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+    internal static extern void GetKbdLayout(out ulong addr, out ulong size);
 }

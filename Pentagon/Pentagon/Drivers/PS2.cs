@@ -75,7 +75,7 @@ internal class PS2Keyboard : IKeyboard
         KeyCode.Period,
         KeyCode.Slash,
         KeyCode.RightShift,
-        KeyCode.NumMultiply,
+        KeyCode.NumpadMultiply,
         KeyCode.LeftAlt,
         KeyCode.Space,
         KeyCode.CapsLock,
@@ -296,13 +296,13 @@ internal class PS2Keyboard : IKeyboard
                 _irq.Wait();
                 inputByte = PS2.KeyboardReceive();
                 bool released = (inputByte & 0x80) != 0;
-                var code = (KeyCode)((inputByte & mask) | 0x80);
+                var code = set1[(inputByte & mask) | 0x80];
                 _callback(new KeyEvent(code, released));
             }
             else
             {
                 bool released = (inputByte & 0x80) != 0;
-                var code = (KeyCode)(inputByte & mask);
+                var code = set1[inputByte & mask];
                 _callback(new KeyEvent(code, released));
             }
         }

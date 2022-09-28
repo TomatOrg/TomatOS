@@ -216,6 +216,13 @@ static System_Exception Pentagon_DriverServices_IoPorts_Out8(uint16_t port, uint
     return NULL;
 }
 
+static System_Exception Pentagon_GetKbdLayout(uint64_t* addr, size_t* size) {
+    extern uintptr_t m_kbdlayout_file_ptr;
+    extern size_t m_kbdlayout_file_size;
+    *addr = (uint64_t)m_kbdlayout_file_ptr;
+    *size = (size_t)m_kbdlayout_file_size;
+    return NULL;
+}
 
 err_t init_kernel_internal_calls() {
     err_t err = NO_ERROR;
@@ -240,6 +247,8 @@ err_t init_kernel_internal_calls() {
 
     MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
     MIR_load_external(ctx, "bool [Pentagon-v1]Pentagon.DriverServices.KernelUtils::GetNextFramebuffer([Corelib-v1]System.Int32&,[Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&)", Pentagon_GetNextFramebuffer);
+    
+    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.KernelUtils::GetKbdLayout([Corelib-v1]System.UInt64&,[Corelib-v1]System.UInt64&)", Pentagon_GetKbdLayout);
 
     MIR_load_external(ctx, "uint8 [Pentagon-v1]Pentagon.DriverServices.IoPorts::In8(uint16)", Pentagon_DriverServices_IoPorts_In8);
     MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.IoPorts::Out8(uint16,uint8)", Pentagon_DriverServices_IoPorts_Out8);
