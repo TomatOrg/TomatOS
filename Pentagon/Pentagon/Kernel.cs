@@ -21,6 +21,11 @@ namespace Pentagon;
 public class Kernel
 {
 
+    static void KbdCallback(KeyEvent k)
+    {
+        if (k.Released) return;
+        Log.LogHex((ulong)k.Code);
+    }
 
     private static Widget MainModel()
     {
@@ -38,6 +43,7 @@ public class Kernel
         
         IoApic.Scan(acpi);
         PS2.Register(); // this is a misnomer, since it doesn't use ResourceManager yet, but we need AML for that
+        PS2.Keyboard.RegisterCallback(KbdCallback);
         
         // Create a plain graphics device (from a framebuffer) and 
         IGraphicsDevice dev = new PlainGraphicsDevice();
