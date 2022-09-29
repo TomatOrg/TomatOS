@@ -309,11 +309,60 @@ internal class PS2Keyboard : IKeyboard
     }
 }
 
+
+// TODO: put specifically keyboard related code here
+internal class PS2Mouse
+{
+    Irq _irq;
+
+    internal PS2Mouse()
+    {
+        _irq = IoApic.RegisterIrq(PS2.MOUSE_IRQ);
+        var irqThread = new Thread(IrqWait);
+        irqThread.Start();
+    }
+    private void IrqWait()
+    {
+        int cycle = 0;
+        short xPkt = 0, yPkt = 0, statusPkt = 0;
+        while (true)
+        {
+            _irq.Wait();
+            var data = PS2.MouseReceive();
+            switch (cycle)
+            {
+                case 0:
+                    statusPkt = data;
+                    cycle++;
+                    break;
+                case 1:
+                    xPkt = data;
+                    cycle++;
+                    break;
+                case 2:
+                    yPkt = data;
+                    cycle = 0;
+                    // x and y are 9bit twos complemebt numnber
+                    if ((statusPkt & (1 << 4)) != 0) xPkt = (short)((ushort)xPkt | 0xFF00);
+                    if ((statusPkt & (1 << 5)) != 0) yPkt = (short)((ushort)yPkt | 0xFF00);
+
+                    if ((statusPkt & 1) != 0)
+                    {
+                        Log.LogString("Left press\n");
+                    }
+                    break;
+            }
+        }
+    }
+}
+
 internal class PS2
 {
     internal static PS2Keyboard Keyboard;
+    internal static PS2Mouse Mouse;
 
     internal const int KBD_IRQ = 1; // replace it with ACPI
+    internal const int MOUSE_IRQ = 12; // replace it with ACPI
     const ushort DATA_PORT = 0x60; // replace it with ACPI
 
     const ushort STATUS_PORT = 0x64; // replace it with ACPI
@@ -327,6 +376,7 @@ internal class PS2
     const byte COMMAND_ENABLE_KBD = 0xAE;
     const byte COMMAND_DISABLE_MOUSE = 0xA7;
     const byte COMMAND_ENABLE_MOUSE = 0xA8;
+    const byte COMMAND_SEND_TO_MOUSE = 0xD4;
 
 
     const byte CONFIG_KBD_IRQ = 1 << 0;
@@ -341,6 +391,10 @@ internal class PS2
     const byte KBD_COMMAND_SCANCODE_SET2 = 2;
     const byte KBD_COMMAND_RESET_DISABLE = 0xF5;
 
+    const byte MOUSE_COMMAND_SELFTEST = 0xFF;
+    const byte MOUSE_COMMAND_SETDEFAULTS = 0xF6;
+    const byte MOUSE_COMMAND_ENABLE_DATA_REPORTING = 0xF4;
+    
     private static void ControllerWaitRead()
     {
         while (true)
@@ -357,6 +411,11 @@ internal class PS2
             if ((IoPorts.In8(STATUS_PORT) & STATUS_INBUFF_STATUS) == 0) return;
             // TODO: delay
         }
+    }
+
+    private static void ControllerFlush()
+    {
+        while ((IoPorts.In8(STATUS_PORT) & STATUS_OUTBUFF_STATUS) != 0) IoPorts.In8(DATA_PORT);
     }
 
     private static void ControllerSendCommand(byte command)
@@ -382,10 +441,24 @@ internal class PS2
         ControllerWaitWrite();
         IoPorts.Out8(DATA_PORT, data);
     }
+
     internal static byte KeyboardReceive()
     {
         // receive ack or error byte
         // TODO: actually ensure it succeeds
+        ControllerWaitRead();
+        return IoPorts.In8(DATA_PORT);
+    }
+    private static void MouseSend(byte data)
+    {
+        ControllerWaitWrite();
+        IoPorts.Out8(COMMAND_PORT, COMMAND_SEND_TO_MOUSE);
+        ControllerWaitWrite();
+        IoPorts.Out8(DATA_PORT, data);
+    }
+    internal static byte MouseReceive()
+    {
+        // TODO: assert that im reading from mouse
         ControllerWaitRead();
         return IoPorts.In8(DATA_PORT);
     }
@@ -395,63 +468,49 @@ internal class PS2
     internal static void Register()
     {
         // ------------ initialize controller ------------
-        // disable controllers during setup
         ControllerSendCommand(COMMAND_DISABLE_KBD);
-        // this is acceptable, if the mouse isn't supported the command is a nop
         ControllerSendCommand(COMMAND_DISABLE_MOUSE);
-
-        // flush output buffer
-        while ((IoPorts.In8(STATUS_PORT) & STATUS_OUTBUFF_STATUS) != 0) IoPorts.In8(DATA_PORT);
-
-        // TODO: do self test and keyboard test
+        ControllerFlush();
 
         // get configuration
         ControllerSendCommand(COMMAND_READBYTE);
         var conf = ControllerReceiveCommandParam();
-
-        // modify the configuration
-        bool hasMouse = (conf & CONFIG_MOUSE_CLOCK) != 0;
-
-        // disable irqs for now. TODO: make this less ugly
-        conf &= (byte)(~((uint)(CONFIG_KBD_IRQ | CONFIG_MOUSE_IRQ)) & 0xFF);
-
-        // i can just use set 1 and pretend the hell that is the late 90s PC industry never happened
-        conf |= CONFIG_KBD_SET2_TO_1;
-
+        
+        conf |= CONFIG_KBD_IRQ;
+        conf |= CONFIG_MOUSE_IRQ;
+        conf |= CONFIG_KBD_SET2_TO_1; // i can just use set 1 and pretend the hell that is the late 90s PC industry never happened
+        
         // set configuration
         ControllerSendCommand(COMMAND_WRITEBYTE);
         ControllerSendCommandParam(conf);
 
         // setup finished, reenable controllers
-        IoPorts.Out8(COMMAND_PORT, COMMAND_ENABLE_KBD);
-        // here you need to check, enabling mouse when not supported is bad
-        if (hasMouse) IoPorts.Out8(COMMAND_PORT, COMMAND_ENABLE_MOUSE);
+        ControllerSendCommand(COMMAND_ENABLE_KBD);
+        ControllerSendCommand(COMMAND_ENABLE_MOUSE);
 
         // ------------ initialize keyboard ------------
         KeyboardSend(KBD_COMMAND_RESET_DISABLE);
         KeyboardReceive();
-
         // yes, here we need to put set 2 if we want to receive set 1. KbdWriteCommands sends commands to the keyboard, not the controller
         // and CONFIG_KBD_SET2_TO_1 specifies that it wants to take set 2 from the keyboard to convert it to set 1 scancodes for the kernel
         // if for some cursed reason the keyboard sends set 3 or set 1, the translation will still interpret them as set 2 
         KeyboardSend(KBD_COMMAND_SCANCODE);
         KeyboardSend(KBD_COMMAND_SCANCODE_SET2);
         KeyboardReceive();
-
         KeyboardSend(KBD_COMMAND_ENABLE);
         KeyboardReceive();
 
-        // ------------ terminate controller setup ------------
-        // enable interrupts
-        ControllerSendCommand(COMMAND_READBYTE);
-        conf = ControllerReceiveCommandParam();
-        conf |= CONFIG_KBD_IRQ;
-        if (hasMouse) conf |= CONFIG_MOUSE_IRQ;
-        ControllerSendCommand(COMMAND_WRITEBYTE);
-        ControllerSendCommandParam(conf);
+        // ------------ initialize mouse ------------
+        MouseSend(MOUSE_COMMAND_SELFTEST);
+        MouseReceive();
+        MouseSend(MOUSE_COMMAND_SETDEFAULTS);
+        MouseReceive();
+        MouseSend(MOUSE_COMMAND_ENABLE_DATA_REPORTING);
+        MouseReceive();
 
-        // do i need to flush again?
-
+        // ------------ terminate setup ------------
+        ControllerFlush();
         Keyboard = new PS2Keyboard();
+        Mouse = new PS2Mouse();
     }
 }
