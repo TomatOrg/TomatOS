@@ -30,6 +30,7 @@ sudo cp -rv \
   test/limine.cfg \
   Pentagon/Corelib/bin/Release/net6.0/Corelib.dll \
   Pentagon/Pentagon/bin/Release/net6.0/Pentagon.dll \
+  artifacts/fonts/ubuntu-regular.sdfnt \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it

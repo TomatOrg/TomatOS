@@ -26,6 +26,16 @@ void debug_disasm_at(void* ptr, int opcodes);
 void debug_load_symbols();
 
 /**
+ * Create a new symbol
+ */
+void debug_create_symbol(const char* name, uintptr_t addr, size_t size);
+
+/**
+ * Get the size of code by finding the first ret
+ */
+size_t debug_get_code_size(void* code);
+
+/**
  * Lookup for a symbol, returns NULL if unknown
  */
 symbol_t* debug_lookup_symbol(uintptr_t addr);

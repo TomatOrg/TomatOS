@@ -65,6 +65,31 @@ static ZyanStatus ZydisFormatterPrintAddressAbsolute(const ZydisFormatter* forma
     return default_print_address_absolute(formatter, buffer, context);
 }
 
+size_t debug_get_code_size(void* ptr) {
+    // initialize decoder and formatter
+    ZydisDecoder decoder;
+    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
+
+    // decode and print it
+    void* start = ptr;
+    ZydisDecodedInstruction instruction;
+    ZydisDecodedOperand operands[ZYDIS_MAX_OPERAND_COUNT_VISIBLE];
+    while (ZYAN_SUCCESS(ZydisDecoderDecodeFull(&decoder, ptr, UINT64_MAX,
+                                               &instruction, operands, ZYDIS_MAX_OPERAND_COUNT_VISIBLE,
+                                               ZYDIS_DFLAG_VISIBLE_OPERANDS_ONLY))) {
+
+        // found the instruction we wanted, return it
+        if (instruction.mnemonic == ZYDIS_MNEMONIC_RET) {
+            return ptr - start;
+        }
+
+        // next...
+        ptr += instruction.length;
+    }
+
+    return 0;
+}
+
 void debug_disasm_at(void* ptr, int opcodes) {
     // initialize decoder and formatter
     ZydisDecoder decoder;
@@ -177,6 +202,19 @@ static char* strdup(const char* str) {
     char* str2 = malloc(len + 1);
     strcpy(str2, str);
     return str2;
+}
+
+void debug_create_symbol(const char* name, uintptr_t addr, size_t size) {
+    // don't insert one if already exists
+    if (debug_lookup_symbol(addr) != NULL) {
+        return;
+    }
+
+    insert_symbol((symbol_t){
+        .address = addr,
+        .size = size,
+        .name = strdup(name)
+    });
 }
 
 void debug_load_symbols() {

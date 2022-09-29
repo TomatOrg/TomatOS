@@ -1,6 +1,4 @@
-using System.Linq.Expressions;
-
-namespace Pentagon.Gui;
+namespace Pentagon.Gui.Framework;
 
 internal enum CommandType
 {
@@ -13,7 +11,7 @@ internal enum CommandType
     // EventHandler,
     // WatchVar,
     // AckWatch,
-    // Text,
+    Text,
     // If,
     // Save,
     // Restore,
@@ -48,3 +46,17 @@ public class RectCommand : Command
     public Expr Color { get; set; }
 
 }
+
+public class TextCommand : Command
+{
+    
+    internal override CommandType CommandType => CommandType.Text;
+
+    public string Text { get; set; } // TODO: expression
+    public Expr X { get; set; }
+    public Expr Y { get; set; }
+    public Expr FontSize { get; set; }
+    public Expr Color { get; set; }
+
+}
+

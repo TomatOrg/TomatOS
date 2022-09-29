@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using Pentagon.DriverServices;
 using Pentagon.Graphics;
+using Pentagon.Gui.Framework;
 using Pentagon.Interfaces;
 
 namespace Pentagon.Gui.Server;
@@ -16,6 +18,7 @@ public class LocalGuiServer : GuiServer
     private IFramebuffer _framebuffer;
     private Memory<uint> _memory;
     private int _width, _height;
+    private Dictionary<int, Font> _fonts = new();
 
     public LocalGuiServer(IFramebuffer framebuffer)
     {
@@ -76,22 +79,45 @@ public class LocalGuiServer : GuiServer
             case ExprType.Abs: { var add = (UnaryExpr)e; return Math.Abs(Eval(add.A)); }
 
             case ExprType.If:
-            {
                 var @if = (IfExpr)e;
                 return Eval(Eval(@if.Condition) != 0 ? @if.True : @if.False);
-            }
 
+            case ExprType.MeasureTextX:
+                var measureTextX = (MeasureTextXExpr)e;
+                return MeasureTextX(measureTextX.Text, (int)Eval(measureTextX.FontSize));
+            
+            case ExprType.MeasureTextY:
+                var measureTextY = (MeasureTextYExpr)e;
+                var font = GetFont((int)Eval(measureTextY.FontSize));
+                return font.Size;
+            
             default:
                 throw new InvalidOperationException("Invalid gui expression type");
         }
     }
 
-    #region API
-
+    private Font GetFont(int fontSize)
+    {
+        if (!_fonts.ContainsKey(fontSize))
+        {
+            _fonts[fontSize] = new Font(Typeface.Default, fontSize);
+        }
+        return _fonts[fontSize];
+    }
     
+    private long MeasureTextX(string text, int fontSize)
+    {
+        var font = GetFont(fontSize);
+        var length = 0;
+        foreach (var c in text)
+        {
+            if (c < font.First || c > font.Last)
+                continue;
+            length += font.Glyphs[c - font.First].Advance;
+        }
+        return length;
+    }
 
-    #endregion
-    
     public override void Accept()
     {
         // nothing to do in here
@@ -124,16 +150,23 @@ public class LocalGuiServer : GuiServer
                 {
                     var cmd = (RectCommand)command;
                     var blitter = new Blitter(_memory, _width, (uint)Eval(cmd.Color));
-                    Log.LogString("Rect\n");
-                    Log.LogString($"\tLeft == {cmd.Left.ToString()}\n");
-                    Log.LogString($"\tTop == {cmd.Top.ToString()}\n");
-                    Log.LogString($"\tRight == {cmd.Right.ToString()}\n");
-                    Log.LogString($"\tBottom == {cmd.Bottom.ToString()}\n");
                     var left = (int)Eval(cmd.Left);
                     var top = (int)Eval(cmd.Top);
                     var right = (int)Eval(cmd.Right);
                     var bottom = (int)Eval(cmd.Bottom);
                     blitter.BlitRect(left, top, unchecked(right - left), unchecked(bottom - top));
+                } break;
+
+                case CommandType.Text:
+                {
+                    var cmd = (TextCommand)command;
+                    var fontSize = (int)Eval(cmd.FontSize);
+                    var font = GetFont(fontSize);
+                    var blitter = new FontBlitter(font, _memory, _width, _height, (uint)Eval(cmd.Color));
+                    var measurement = MeasureTextX(cmd.Text, fontSize);
+                    var x = Eval(cmd.X);
+                    var y = Eval(cmd.Y);
+                    blitter.DrawString(cmd.Text, (int)(x - measurement / 2), (int)(y + font.Size / 2));
                 } break;
                 
                 default:
