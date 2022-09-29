@@ -26,7 +26,23 @@ public class Kernel
             // Contents
             new Padding(
                 all: 32,
-                child: new Text("Hello World!", fontSize: 64)
+                child: new Column(new Widget[]
+                    {
+                        // A bit title
+                        new Text("Hello World!", fontSize: 32),
+                        
+                        // Make some space
+                        new Flexible(flexY:10),
+                        
+                        new Row(new Widget[]
+                        {
+                            new Flexible(),
+                            new Text("Cancel"),
+                            new SizedBox(null, width:4),
+                            new Text("OK")
+                        })
+                    }
+                )
             )
         });
     }

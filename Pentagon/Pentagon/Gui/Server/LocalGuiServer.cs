@@ -47,6 +47,9 @@ public class LocalGuiServer : GuiServer
             case ExprType.IntLiteral: 
                 return ((IntLiteralExpr)e).Value;
             
+            case ExprType.InfLiteral:
+                return long.MaxValue;
+            
             case ExprType.Var:
             {
                 var node = (VarExpr)e;
@@ -59,10 +62,10 @@ public class LocalGuiServer : GuiServer
                 };
             }
 
-            case ExprType.Add: { var add = (BinaryExpr)e; return Eval(add.A) + Eval(add.B); }
-            case ExprType.Mul: { var add = (BinaryExpr)e; return Eval(add.A) * Eval(add.B); }
-            case ExprType.Div: { var add = (BinaryExpr)e; return Eval(add.A) / Eval(add.B); }
-            case ExprType.Mod: { var add = (BinaryExpr)e; return Eval(add.A) % Eval(add.B); }
+            case ExprType.Add: { var add = (BinaryExpr)e; var a = Eval(add.A); var b = Eval(add.B); if (a == long.MaxValue || b == long.MaxValue) return long.MaxValue; return a + b; }
+            case ExprType.Mul: { var add = (BinaryExpr)e; var a = Eval(add.A); var b = Eval(add.B); if (a == long.MaxValue || b == long.MaxValue) return long.MaxValue; return a * b; }
+            case ExprType.Div: { var add = (BinaryExpr)e; var a = Eval(add.A); var b = Eval(add.B); if (a == long.MaxValue || b == long.MaxValue) return long.MaxValue; return a / b; }
+            case ExprType.Mod: { var add = (BinaryExpr)e; var a = Eval(add.A); var b = Eval(add.B); if (a == long.MaxValue || b == long.MaxValue) return long.MaxValue; return a % b; }
             // case ExprType.Pow: { var add = (BinaryExpr)e; return Eval(add.A) ** Eval(add.B); }
             case ExprType.Eq: { var add = (BinaryExpr)e; return Eval(add.A) == Eval(add.B) ? 1 : 0; }
             case ExprType.Neq: { var add = (BinaryExpr)e; return Eval(add.A) != Eval(add.B) ? 1 : 0; }
