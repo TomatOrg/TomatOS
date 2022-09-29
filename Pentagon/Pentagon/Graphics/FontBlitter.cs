@@ -13,7 +13,7 @@ public struct FontBlitter
     private int _height;
     private uint _color;
     private Font _font;
-    private float _screenPxRange;
+    private int _screenPxRange;
 
     public FontBlitter(Font font, Memory<uint> memory, int width, int height, uint color)
     {
@@ -23,7 +23,7 @@ public struct FontBlitter
         _font = font;
         _color = color;
 
-        _screenPxRange = (font.Size / font.Typeface.Atlas.Size) * font.Typeface.Atlas.DistanceRange;
+        _screenPxRange = (font.Size * 256 / (int)font.Typeface.Atlas.Size) * font.Typeface.Atlas.DistanceRange;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -33,7 +33,7 @@ public struct FontBlitter
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static float Clamp(float value, float min, float max)
+    private static int Clamp(int value, int min, int max)
     {
         if (value < min)
         {
@@ -43,7 +43,7 @@ public struct FontBlitter
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint Mix(uint back, uint fore, float opacity)
+    private static uint Mix(uint back, uint fore, int opacity)
     {
         var br = (byte)back;
         var bg = (byte)(back >> 8);
@@ -53,22 +53,22 @@ public struct FontBlitter
         var fg = (byte)(fore >> 8);
         var fb = (byte)(fore >> 16);
 
-        var r = (byte)(fr * opacity + br * (1.0f - opacity));
-        var g = (byte)(fg * opacity + bg * (1.0f - opacity));
-        var b = (byte)(fb * opacity + bb * (1.0f - opacity));
+        var r = (fr * opacity + br * (256 - opacity)) / 256;
+        var g = (fg * opacity + bg * (256 - opacity)) / 256;
+        var b = (fb * opacity + bb * (256 - opacity)) / 256;
 
-        return r | ((uint)g << 8) | ((uint)b << 16);
+        return (uint)r | ((uint)g << 8) | ((uint)b << 16);
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private uint ProcessPixel(uint mtsdf, uint bg, uint fg)
     {
-        var r = (byte)mtsdf;
+        var r = (byte)(mtsdf >> 0);
         var g = (byte)(mtsdf >> 8);
         var b = (byte)(mtsdf >> 16);
-        var sd = Median(r, g, b) / 255.0f;
-        var screenPxDistance = _screenPxRange * (sd - 0.5f);
-        var opacity = Clamp(screenPxDistance + 0.5f, 0.0f, 1.0f);
+        var sd = Median(r, g, b);
+        var screenPxDistance = (_screenPxRange * (sd - 128)) / 256;
+        var opacity = Clamp(screenPxDistance + 128, 0, 256);
         return Mix(bg, fg, opacity);
     }
 
@@ -91,8 +91,8 @@ public struct FontBlitter
         {
             for (var xx = 0; xx < planeWidth; xx++)
             {
-                var fax = (xx / (float)planeWidth) * atlasWidth;
-                var fay = (yy / (float)planeHeight) * atlasHeight;
+                var fax = xx * atlasWidth / planeWidth;
+                var fay = yy * atlasHeight / planeHeight;
 
                 var atlasSampledX = (int)(atlasX + fax);
                 var atlasSampledY = (int)(atlasY + fay);
