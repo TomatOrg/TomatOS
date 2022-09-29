@@ -1,3 +1,4 @@
+using System;
 using Pentagon.Drivers;
 using Pentagon.Drivers.Graphics.Plain;
 using Pentagon.DriverServices;
@@ -30,17 +31,6 @@ public class Kernel
                     {
                         // A bit title
                         new Text("Hello World!", fontSize: 32),
-                        
-                        // Make some space
-                        new Flexible(flexY:10),
-                        
-                        new Row(new Widget[]
-                        {
-                            new Flexible(),
-                            new Text("Cancel"),
-                            new SizedBox(null, width:4),
-                            new Text("OK")
-                        })
                     }
                 )
             )
