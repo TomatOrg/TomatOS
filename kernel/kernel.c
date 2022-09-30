@@ -184,6 +184,7 @@ static struct limine_file m_kernel_file;
  */
 uintptr_t m_kbdlayout_file_ptr;
 size_t m_kbdlayout_file_size;
+struct limine_file g_default_font;
 
 // TODO: driver files
 
@@ -344,12 +345,19 @@ void _start(void) {
         } else if (strcmp(file->path, "/boot/kbd.dat") == 0) {
             m_kbdlayout_file_ptr = DIRECT_TO_PHYS(file->address);
             m_kbdlayout_file_size = file->size;
+        } else if (strcmp(file->path, "/boot/ubuntu-regular.sdfnt") == 0) {
+            // TODO: find by extension
+            g_default_font = *file;
         } else {
             // TODO: if in /drivers/ folder then load it
             // TODO: load a driver manifest for load order
         }
         TRACE("\t%s", file->path);
     }
+
+    CHECK(m_corelib_file.size != 0);
+    CHECK(m_kernel_file.size != 0);
+    CHECK(g_default_font.size != 0);
 
     TRACE("Corelib: %S", m_corelib_file.size);
     TRACE("Kernel: %S", m_kernel_file.size);

@@ -288,6 +288,35 @@ public static class Math
 
     #endregion
 
+    #region Clamp
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static float Clamp(float value, float min, float max)
+    {
+        if (min > max)
+        {
+            ThrowMinMaxException(min, max);
+        }
+
+        if (value < min)
+        {
+            return min;
+        }
+        else if (value > max)
+        {
+            return max;
+        }
+
+        return value;
+    }
+
+    #endregion
+    
+    private static void ThrowMinMaxException<T>(T min, T max)
+    {
+        throw new ArgumentException($"'{min}' cannot be greater than {max}.");
+    }
+    
     private static void ThrowAbsOverflow()
     {
         throw new OverflowException(OverflowException.NegateTwosCompNum);

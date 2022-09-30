@@ -1,4 +1,3 @@
-using System.Threading;
 using Pentagon.Drivers;
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -6,10 +5,8 @@ using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Pentagon.Drivers.Graphics.Plain;
-using Pentagon.Drivers.Virtio;
 using Pentagon.DriverServices;
 using Pentagon.DriverServices.Acpi;
-using Pentagon.DriverServices.Pci;
 using Pentagon.Graphics;
 using Pentagon.Gui;
 using Pentagon.Gui.Framework;
@@ -53,7 +50,7 @@ public class Kernel
             // Contents
             new Padding(
                 all: 32,
-                child: new Rectangle(Color.Red)
+                child: new Text("Hello World!", fontSize: 64)
             )
         });
     }
@@ -73,6 +70,9 @@ public class Kernel
         IoApic.Scan(acpi);
         PS2.Register(); // this is a misnomer, since it doesn't use ResourceManager yet, but we need AML for that
         
+        // load the default font 
+        Typeface.Load();
+
         // Create a plain graphics device (from a framebuffer) and 
         IGraphicsDevice dev = new PlainGraphicsDevice();
         var output = dev.Outputs[0];

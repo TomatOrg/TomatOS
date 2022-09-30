@@ -42,4 +42,8 @@ public static class KernelUtils
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
     internal static extern void GetKbdLayout(out ulong addr, out ulong size);
+    
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+    internal static extern void GetDefaultFont(out ulong addr, out int size);
+
 }

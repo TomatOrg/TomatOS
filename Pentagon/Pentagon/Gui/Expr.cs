@@ -1,5 +1,6 @@
 using System;
 using Pentagon.DriverServices;
+using Pentagon.Graphics;
 
 namespace Pentagon.Gui;
 
@@ -26,6 +27,8 @@ public enum ExprType
     Max,
     Abs,
     If,
+    MeasureTextX,
+    MeasureTextY,
 }
 
 public abstract class Expr
@@ -221,6 +224,16 @@ public abstract class Expr
     public static Expr Var(string name)
     {
         return new VarExpr(name).Optimize();
+    }
+
+    public static Expr MeasureTextX(string text, Expr fontSize)
+    {
+        return new MeasureTextXExpr(text, fontSize);
+    }
+
+    public static Expr MeasureTextY(string text, Expr fontSize)
+    {
+        return new MeasureTextYExpr(text, fontSize);
     }
 
     public virtual Expr Optimize()
@@ -766,3 +779,40 @@ public sealed class AbsExpr : UnaryExpr
     }
 }
 
+public sealed class MeasureTextXExpr : Expr
+{
+    public override ExprType Type => ExprType.MeasureTextX;
+
+    public string Text { get; }
+    public Expr FontSize { get; }
+
+    public MeasureTextXExpr(string text, Expr fontSize)
+    {
+        Text = text;
+        FontSize = fontSize;
+    }
+
+    public override string ToString()
+    {
+        return $"measureTextX(text={Text}, fontSize={FontSize})";
+    }
+}
+
+public sealed class MeasureTextYExpr : Expr
+{
+    public override ExprType Type => ExprType.MeasureTextY;
+
+    public string Text { get; }
+    public Expr FontSize { get; }
+
+    public MeasureTextYExpr(string text, Expr fontSize)
+    {
+        Text = text;
+        FontSize = fontSize;
+    }
+
+    public override string ToString()
+    {
+        return $"measureTextY(text={Text}, fontSize={FontSize})";
+    }
+}
