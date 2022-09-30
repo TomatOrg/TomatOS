@@ -24,7 +24,10 @@ public class LocalGuiServer : GuiServer
     private GuiEvent _event = null;
 
     private Memory<uint> _memory;
+    private Memory<uint> _memoryUnderMouse;
     private int _width, _height;
+
+    private int _mouseX, _mouseY;
     private Dictionary<int, Font> _fonts = new();
 
     public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard, IRelMouse mouse)
@@ -36,15 +39,26 @@ public class LocalGuiServer : GuiServer
         _height = framebuffer.Height;
      
         // allocate the framebuffer
-        var size = framebuffer.Width * framebuffer.Height * 4;
+        var size = _width * _height * 4;
         var pageCount = KernelUtils.DivideUp(size, MemoryServices.PageSize);
         var memory = MemoryServices.AllocatePages(pageCount).Memory;
+        var memoryUnderMouse = MemoryServices.AllocatePages(1).Memory;
         
         // set the backing 
         _framebuffer.Backing = memory;
         
         // keep it as a uint array for blitter
         _memory = MemoryMarshal.Cast<byte, uint>(memory);
+        _memoryUnderMouse = MemoryMarshal.Cast<byte, uint>(memoryUnderMouse);
+
+        _mouseX = _width / 2;
+        _mouseY = _height / 2;
+
+        for (int i = 0; i < 8; i++)
+        {
+            var span = _memory.Span.Slice((_mouseY + i) * _framebuffer.Width + _mouseX, 16);
+            for (int j = 0; j < 8; j++) span[j] ^= 0xFFFFFFF;
+        }
 
         _keyboard.RegisterCallback(KeyboardCallback);
         _mouse.RegisterCallback(MouseCallback);
@@ -58,9 +72,35 @@ public class LocalGuiServer : GuiServer
 
     void MouseCallback(RelMouseEvent e)
     {
+        for (int i = 0; i < 8; i++)
+        {
+            var under = _memoryUnderMouse.Span.Slice(8 * i, 8);
+            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 16);
+            for (int j = 0; j < 8; j++) fb[j] = under[j];
+        }
+        _mouseX += e.deltaX;
+        _mouseY += e.deltaY;
+        for (int i = 0; i < 8; i++)
+        {
+            var under = _memoryUnderMouse.Span.Slice(8 * i, 8);
+            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 16);
+            for (int j = 0; j < 8; j++) under[j] = fb[j];
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 16);
+            for (int j = 0; j < 8; j++) fb[j] = 0xFFFFFFF;
+        }
+        // blit the backing to the framebuffer
+        _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
+        // flush the framebuffer to the output 
+        _framebuffer.Flush();
+        
         _event = e;
         _reset.Set();
     }
+
 
     // TODO: add support for compiling expressions, it will
     //       make the code much faster :)
@@ -204,7 +244,14 @@ public class LocalGuiServer : GuiServer
                     throw new InvalidOperationException("Invalid gui command type");
             }
         }
-        
+
+        for (int i = 0; i < 8; i++)
+        {
+            var under = _memoryUnderMouse.Span.Slice(8 * i, 8);
+            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 16);
+            for (int j = 0; j < 8; j++) under[j] = fb[j];
+        }
+
         // blit the backing to the framebuffer
         _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
         

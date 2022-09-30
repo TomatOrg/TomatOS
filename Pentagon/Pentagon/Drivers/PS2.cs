@@ -354,7 +354,7 @@ internal class PS2Mouse : IRelMouse
 
                     bool left = ((statusPkt & 1) != 0);
                     bool right = ((statusPkt & 2) != 0);
-                    _callback(new RelMouseEvent(xPkt, yPkt, left, right));
+                    _callback(new RelMouseEvent(xPkt, -yPkt, left, right));
 
                     break;
             }
