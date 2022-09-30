@@ -35,24 +35,20 @@ internal class PlainFramebuffer : IFramebuffer
         if (rectangle.X == 0 && Width == rectangle.Width)
         {
             // a single copy can be used
-            var src = _backing.Span.Slice(offset, rectangle.Width * rectangle.Height * 4);
+            var src = _backing.Span.Slice(offset * 4, rectangle.Width * rectangle.Height * 4);
             var dst = _memory.Span.Slice(rectangle.Y * Width * 4);
             src.CopyTo(dst);
         }
         else
         {
             // need to do multiple iterations 
-            var src = _backing.Span.Slice(offset);
+            var src = _backing.Span.Slice(offset * 4);
             var dst = _memory.Span.Slice((rectangle.X + rectangle.Y * Width) * 4);
-            var bytesPerLine = 4 * rectangle.Width;
-
-            for (
-                var srcY = 0; srcY < rectangle.Height; srcY++,
-                src = src.Slice(bytesPerLine), 
-                dst = dst.Slice(Width)
-            )
+            var bytesPerLine = 4 * Width;
+            for (var srcY = 0; srcY < rectangle.Height; srcY++)
             {
-                src.Slice(0, bytesPerLine).CopyTo(dst);
+                var off = srcY * bytesPerLine;
+                src.Slice(off, rectangle.Width * 4).CopyTo(dst.Slice(off));
             }
         }
         

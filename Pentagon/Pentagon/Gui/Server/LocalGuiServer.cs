@@ -72,28 +72,32 @@ public class LocalGuiServer : GuiServer
 
     void MouseCallback(RelMouseEvent e)
     {
-        for (int i = 0; i < 8; i++)
-        {
-            var under = _memoryUnderMouse.Span.Slice(8 * i, 8);
-            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 16);
-            for (int j = 0; j < 8; j++) fb[j] = under[j];
-        }
+        var oldMouseX = _mouseX;
+        var oldMouseY = _mouseY;
         _mouseX += e.deltaX;
         _mouseY += e.deltaY;
-        for (int i = 0; i < 8; i++)
-        {
-            var under = _memoryUnderMouse.Span.Slice(8 * i, 8);
-            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 16);
-            for (int j = 0; j < 8; j++) under[j] = fb[j];
-        }
 
         for (int i = 0; i < 8; i++)
         {
-            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 16);
-            for (int j = 0; j < 8; j++) fb[j] = 0xFFFFFFF;
+            var under = _memoryUnderMouse.Span.Slice(8 * i, 8);
+            var fb = _memory.Span.Slice((oldMouseY + i) * _width + oldMouseX, 8);
+            under.CopyTo(fb);
         }
+        for (int i = 0; i < 8; i++)
+        {
+            var under = _memoryUnderMouse.Span.Slice(8 * i, 8);
+            var fb = _memory.Span.Slice((_mouseY + i) * _width + _mouseX, 8);
+            fb.CopyTo(under);
+            fb.Fill(0xFFFFFFFF);
+        }
+
         // blit the backing to the framebuffer
-        _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
+        var sx = Math.Min(oldMouseX, _mouseX);
+        var sy = Math.Min(oldMouseY, _mouseY);
+        var ex = Math.Max(oldMouseX, _mouseX)+8;
+        var ey = Math.Max(oldMouseY, _mouseY)+8;
+        _framebuffer.Blit(sy * _width + sx, new Rectangle(sx, sy, ex-sx, ey-sy));
+
         // flush the framebuffer to the output 
         _framebuffer.Flush();
         
