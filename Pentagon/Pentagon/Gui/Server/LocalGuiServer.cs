@@ -18,6 +18,7 @@ public class LocalGuiServer : GuiServer
 
     private IFramebuffer _framebuffer;
     private IKeyboard _keyboard;
+    private IRelMouse _mouse;
 
     private AutoResetEvent _reset = new(false);
     private GuiEvent _event = null;
@@ -26,10 +27,11 @@ public class LocalGuiServer : GuiServer
     private int _width, _height;
     private Dictionary<int, Font> _fonts = new();
 
-    public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard)
+    public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard, IRelMouse mouse)
     {
         _framebuffer = framebuffer;
         _keyboard = keyboard;
+        _mouse = mouse;
         _width = framebuffer.Width;
         _height = framebuffer.Height;
      
@@ -45,15 +47,21 @@ public class LocalGuiServer : GuiServer
         _memory = MemoryMarshal.Cast<byte, uint>(memory);
 
         _keyboard.RegisterCallback(KeyboardCallback);
+        _mouse.RegisterCallback(MouseCallback);
     }
     
     void KeyboardCallback(KeyEvent e)
     {
-        {
-            _event = e;
-            _reset.Set();
-        }
+        _event = e;
+        _reset.Set();
     }
+
+    void MouseCallback(RelMouseEvent e)
+    {
+        _event = e;
+        _reset.Set();
+    }
+
     // TODO: add support for compiling expressions, it will
     //       make the code much faster :)
     private long Eval(Expr e)
