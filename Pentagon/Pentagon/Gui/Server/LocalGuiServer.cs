@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using Pentagon.DriverServices;
 using Pentagon.Graphics;
+using System.Threading;
 using Pentagon.Gui.Framework;
 using Pentagon.Interfaces;
 
@@ -16,13 +17,19 @@ public class LocalGuiServer : GuiServer
 {
 
     private IFramebuffer _framebuffer;
+    private IKeyboard _keyboard;
+
+    private AutoResetEvent _reset = new(false);
+    private GuiEvent _event = null;
+
     private Memory<uint> _memory;
     private int _width, _height;
     private Dictionary<int, Font> _fonts = new();
 
-    public LocalGuiServer(IFramebuffer framebuffer)
+    public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard)
     {
         _framebuffer = framebuffer;
+        _keyboard = keyboard;
         _width = framebuffer.Width;
         _height = framebuffer.Height;
      
@@ -36,8 +43,17 @@ public class LocalGuiServer : GuiServer
         
         // keep it as a uint array for blitter
         _memory = MemoryMarshal.Cast<byte, uint>(memory);
-    }
 
+        _keyboard.RegisterCallback(KeyboardCallback);
+    }
+    
+    void KeyboardCallback(KeyEvent e)
+    {
+        {
+            _event = e;
+            _reset.Set();
+        }
+    }
     // TODO: add support for compiling expressions, it will
     //       make the code much faster :)
     private long Eval(Expr e)
@@ -130,7 +146,11 @@ public class LocalGuiServer : GuiServer
     {
         // TODO: handle inputs in here and push them to the event queue
         //       for the GetEvent to handle
-        while (true) ;
+        while (true)
+        {
+            _reset.WaitOne();
+            EventHandler.Invoke(_event);
+        }
     }
 
     public override void UpdateScene(Scene scene)

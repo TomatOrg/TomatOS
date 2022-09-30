@@ -180,8 +180,10 @@ static struct limine_file m_corelib_file;
 static struct limine_file m_kernel_file;
 
 /**
- * The default font (do we really want this here?)
+ * The keyboard layout file. Currently, the code hardcodes en-US.
  */
+uintptr_t m_kbdlayout_file_ptr;
+size_t m_kbdlayout_file_size;
 struct limine_file g_default_font;
 
 // TODO: driver files
@@ -340,6 +342,9 @@ void _start(void) {
             m_corelib_file = *file;
         } else if (strcmp(file->path, "/boot/Pentagon.dll") == 0) {
             m_kernel_file = *file;
+        } else if (strcmp(file->path, "/boot/kbd.dat") == 0) {
+            m_kbdlayout_file_ptr = DIRECT_TO_PHYS(file->address);
+            m_kbdlayout_file_size = file->size;
         } else if (strcmp(file->path, "/boot/ubuntu-regular.sdfnt") == 0) {
             // TODO: find by extension
             g_default_font = *file;
