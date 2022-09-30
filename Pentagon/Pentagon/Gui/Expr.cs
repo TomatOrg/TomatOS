@@ -7,6 +7,7 @@ namespace Pentagon.Gui;
 public enum ExprType
 {
     IntLiteral,
+    InfLiteral,
     Var,
     Add,
     Mul,
@@ -41,6 +42,8 @@ public abstract class Expr
     public static readonly Expr Width = new VarExpr("width");
     public static readonly Expr Height = new VarExpr("height");
 
+    public static readonly Expr Inf = new InfLiteralExpr();
+    
     public abstract ExprType Type { get; }
 
     #region Int Literals
@@ -298,6 +301,26 @@ public sealed class VarExpr : Expr
     }
 }
 
+public sealed class InfLiteralExpr : Expr
+{
+    public override ExprType Type => ExprType.InfLiteral;
+
+    public InfLiteralExpr()
+    {
+    }
+
+    public override bool Equals(Expr expr)
+    {
+        return expr.Type == ExprType.InfLiteral;
+    }
+    
+    public override string ToString()
+    {
+        return "inf";
+    }
+}
+
+
 public sealed class IfExpr : Expr
 {
 
@@ -413,6 +436,10 @@ public sealed class AddExpr : BinaryExpr
         // a + x == x + a
         if (A.Type == ExprType.IntLiteral) 
             return B + A;
+        
+        // x + inf = inf
+        if (A.Equals(Inf) || B.Equals(Inf))
+            return Inf;
         
         return this;
     }
@@ -716,11 +743,13 @@ public sealed class MinExpr : BinaryExpr
         return this;
 #endif
         
+        // min(x, inf) == x
+        if (B.Equals(Inf)) return A;
+        if (A.Equals(Inf)) return B;
+
         // min(x, y) == min(x, y)
         if (A.Type == ExprType.IntLiteral && B.Type == ExprType.IntLiteral)
-        {
             return Math.Min(((IntLiteralExpr)A).Value, ((IntLiteralExpr)B).Value);
-        }
         
         return this;
     }
@@ -747,12 +776,36 @@ public sealed class MaxExpr : BinaryExpr
         return this;
 #endif
         
+        // max(x, inf) == inf
+        if (A.Equals(Inf) || B.Equals(Inf))
+            return Inf;
+
         // max(x, y) == max(x, y)
         if (A.Type == ExprType.IntLiteral && B.Type == ExprType.IntLiteral)
         {
             return Math.Max(((IntLiteralExpr)A).Value, ((IntLiteralExpr)B).Value);
         }
         
+        // max(-c, measureText()) == measureText(...)
+        // MeasureText is non-negative
+        if (A.Type == ExprType.IntLiteral && B.Type is ExprType.MeasureTextX or ExprType.MeasureTextY)
+        {
+            var c = ((IntLiteralExpr)A).Value;
+            if (c <= 0)
+            {
+                return B;
+            }
+        }
+
+        if (B.Type == ExprType.IntLiteral && A.Type is ExprType.MeasureTextX or ExprType.MeasureTextY)
+        {
+            var c = ((IntLiteralExpr)B).Value;
+            if (c <= 0)
+            {
+                return A;
+            }
+        }
+
         return this;
     }
     
@@ -775,7 +828,7 @@ public sealed class AbsExpr : UnaryExpr
 
     public override string ToString()
     {
-        return $"abs({A})";
+        return $"abs({A.ToString()})";
     }
 }
 

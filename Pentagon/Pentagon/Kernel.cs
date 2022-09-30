@@ -1,3 +1,4 @@
+using System;
 using Pentagon.Drivers;
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -50,7 +51,12 @@ public class Kernel
             // Contents
             new Padding(
                 all: 32,
-                child: new Text("Hello World!", fontSize: 64)
+                child: new Column(new Widget[]
+                    {
+                        // A bit title
+                        new Text("Hello World!", fontSize: 32),
+                    }
+                )
             )
         });
     }
