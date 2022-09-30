@@ -322,7 +322,7 @@ internal class PS2Mouse : IRelMouse
         var irqThread = new Thread(IrqWait);
         irqThread.Start();
     }
-    void RegisterCallback(Action<RelMouseEvent> cb)
+    public void RegisterCallback(Action<RelMouseEvent> cb)
     {
         _callback = cb;
     }

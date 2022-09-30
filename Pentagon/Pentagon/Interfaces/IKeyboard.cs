@@ -5,18 +5,18 @@ using Pentagon.Gui;
 
 namespace Pentagon.Interfaces
 {
-    internal class KeyEvent : GuiEvent
+    public class KeyEvent : GuiEvent
     {
         public KeyCode Code;
         public bool Released;
-        internal KeyEvent(KeyCode c, bool r)
+        public KeyEvent(KeyCode c, bool r)
         {
             Code = c;
             Released = r;
         }
     }
 
-    internal enum KeyCode
+    public enum KeyCode
     {
         None = 0,
         A = 0x04,

@@ -5,11 +5,11 @@ using Pentagon.Gui;
 
 namespace Pentagon.Interfaces
 {
-    internal class RelMouseEvent : GuiEvent
+    public class RelMouseEvent : GuiEvent
     {
         public int deltaX, deltaY;
         public bool leftPressed, rightPressed;
-        internal RelMouseEvent(int dx, int dy, bool left, bool right)
+        public RelMouseEvent(int dx, int dy, bool left, bool right)
         {
             deltaX = dx;
             deltaY = dy;
@@ -17,7 +17,7 @@ namespace Pentagon.Interfaces
             rightPressed = right;
         }
     }
-
+    
     public interface IRelMouse
     {
         internal abstract void RegisterCallback(Action<RelMouseEvent> callback);
