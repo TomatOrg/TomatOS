@@ -33,7 +33,7 @@ public class ClearCommand : Command
 {
     internal override CommandType CommandType => CommandType.Clear;
     
-    public Expression Color { get; set; }
+    public Expr Color { get; set; }
 
 }
 
@@ -41,10 +41,10 @@ public class RectCommand : Command
 {
     internal override CommandType CommandType => CommandType.Rect;
 
-    public Expression Left { get; set; }
-    public Expression Top { get; set; }
-    public Expression Right { get; set; }
-    public Expression Bottom { get; set; }
-    public Expression Color { get; set; }
+    public Expr Left { get; set; }
+    public Expr Top { get; set; }
+    public Expr Right { get; set; }
+    public Expr Bottom { get; set; }
+    public Expr Color { get; set; }
 
 }

@@ -1,6 +1,7 @@
 using System.Threading;
 using Pentagon.Drivers;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -12,9 +13,11 @@ using Pentagon.DriverServices.Pci;
 using Pentagon.Graphics;
 using Pentagon.Gui;
 using Pentagon.Gui.Framework;
+using Pentagon.Gui.Server;
 using Pentagon.Gui.Widgets;
 using Pentagon.Interfaces;
 using Pentagon.Resources;
+using Rectangle = Pentagon.Gui.Widgets.Rectangle;
 
 namespace Pentagon;
 
@@ -42,7 +45,17 @@ public class Kernel
 
     private static Widget MainModel()
     {
-        return new RectangleWidget(Color.Red);
+        return new Stack(new Widget[]
+        {
+            // Background
+            new Rectangle(0xff242424),
+            
+            // Contents
+            new Padding(
+                all: 32,
+                child: new Rectangle(Color.Red)
+            )
+        });
     }
 
     public static int Main()
@@ -64,7 +77,7 @@ public class Kernel
         IGraphicsDevice dev = new PlainGraphicsDevice();
         var output = dev.Outputs[0];
         var framebuffer = dev.CreateFramebuffer(output.Width, output.Height);
-        output.SetFramebuffer(framebuffer, new Rectangle(0, 0, output.Width, output.Height));
+        output.SetFramebuffer(framebuffer, new System.Drawing.Rectangle(0, 0, output.Width, output.Height));
 
         // create the app and a local renderer to render the app
         var renderer = new LocalGuiServer(framebuffer, PS2.Keyboard);

@@ -77,6 +77,29 @@ public class Type : MemberInfo
     {
         return _elementType;
     }
+
+    public Type[] GetGenericArguments()
+    {
+        return _genericArguments.AsSpan().ToArray();
+    }
+
+    public bool IsConstructedGenericType
+    {
+        get
+        {
+            // TODO: does this return true for non-generic types
+            if (_genericArguments == null)
+                return false;
+
+            // just return is this contains any generic parameters
+            return !ContainsGenericParameters;
+        }
+    }
+
+    public Type GetGenericTypeDefinition()
+    {
+        return _genericTypeDefinition;
+    }
     
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern Type GetTypeFromHandle(RuntimeTypeHandle handle);

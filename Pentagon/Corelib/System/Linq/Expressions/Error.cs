@@ -20,6 +20,22 @@ internal static class Error
     }
     
     /// <summary>
+    /// InvalidOperationException with message like "The binary operator {0} is not defined for the types '{1}' and '{2}'."
+    /// </summary>
+    internal static Exception BinaryOperatorNotDefined(object? p0, object? p1, object? p2)
+    {
+        return new InvalidOperationException($"The binary operator {p0} is not defined for the types '{p1}' and '{p2}'.");
+    }
+    
+    /// <summary>
+    /// ArgumentException with message like "Unhandled binary: {0}"
+    /// </summary>
+    internal static Exception UnhandledBinary(object? p0, string? paramName)
+    {
+        return new ArgumentException($"Unhandled binary: {p0}", paramName);
+    }
+    
+    /// <summary>
     /// InvalidOperationException with message like "Extension node must override the property {0}."
     /// </summary>
     internal static Exception ExtensionNodeMustOverrideProperty(object? p0)

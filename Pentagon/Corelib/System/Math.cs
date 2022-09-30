@@ -116,11 +116,11 @@ public static class Math
         return value;
     }
 
-    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
-    public static extern double Abs(double value);
-
-    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
-    public static extern float Abs(float value);
+    // [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+    // public static extern double Abs(double value);
+    
+    // [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+    // public static extern float Abs(float value);
 
     #endregion
     

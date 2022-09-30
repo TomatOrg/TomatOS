@@ -1,14 +1,12 @@
 using System;
 using System.Drawing;
-using System.Linq.Expressions;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Pentagon.DriverServices;
 using Pentagon.Graphics;
 using Pentagon.Interfaces;
 
-namespace Pentagon.Gui;
+namespace Pentagon.Gui.Server;
 
 /// <summary>
 /// This is both a client and server implementation for apps running and displaying locally.
@@ -31,15 +29,15 @@ public class LocalGuiServer : GuiServer
         _keyboard = keyboard;
         _width = framebuffer.Width;
         _height = framebuffer.Height;
-     
+
         // allocate the framebuffer
         var size = framebuffer.Width * framebuffer.Height * 4;
         var pageCount = KernelUtils.DivideUp(size, MemoryServices.PageSize);
         var memory = MemoryServices.AllocatePages(pageCount).Memory;
-        
+
         // set the backing 
         _framebuffer.Backing = memory;
-        
+
         // keep it as a uint array for blitter
         _memory = MemoryMarshal.Cast<byte, uint>(memory);
 
@@ -56,29 +54,50 @@ public class LocalGuiServer : GuiServer
 
     // TODO: add support for compiling expressions, it will
     //       make the code much faster :)
-    private int Eval(Expression e)
+    private long Eval(Expr e)
     {
-        switch (e.NodeType)
+        switch (e.Type)
         {
-            case ExpressionType.Constant:
-            {
-                // TODO: better support for other types
-                var node = (ConstantExpression)e;
-                return (int)node.Value!;
-            } break;
+            case ExprType.IntLiteral:
+                return ((IntLiteralExpr)e).Value;
 
-            case ExpressionType.Parameter:
-            {
-                var node = (ParameterExpression)e;
-                // TODO: type checking
-                return node.Name switch
+            case ExprType.Var:
                 {
-                    "width" => _width,
-                    "height" => _height,
-                    _ => throw new InvalidOperationException($"unknown gui variable {node.Name}")
-                };
-            } break;
-            
+                    var node = (VarExpr)e;
+                    // TODO: type checking
+                    return node.Name switch
+                    {
+                        "width" => _width,
+                        "height" => _height,
+                        _ => throw new InvalidOperationException($"unknown gui variable {node.Name}")
+                    };
+                }
+
+            case ExprType.Add: { var add = (BinaryExpr)e; return Eval(add.A) + Eval(add.B); }
+            case ExprType.Mul: { var add = (BinaryExpr)e; return Eval(add.A) * Eval(add.B); }
+            case ExprType.Div: { var add = (BinaryExpr)e; return Eval(add.A) / Eval(add.B); }
+            case ExprType.Mod: { var add = (BinaryExpr)e; return Eval(add.A) % Eval(add.B); }
+            // case ExprType.Pow: { var add = (BinaryExpr)e; return Eval(add.A) ** Eval(add.B); }
+            case ExprType.Eq: { var add = (BinaryExpr)e; return Eval(add.A) == Eval(add.B) ? 1 : 0; }
+            case ExprType.Neq: { var add = (BinaryExpr)e; return Eval(add.A) != Eval(add.B) ? 1 : 0; }
+            case ExprType.Lt: { var add = (BinaryExpr)e; return Eval(add.A) < Eval(add.B) ? 1 : 0; }
+            case ExprType.Lte: { var add = (BinaryExpr)e; return Eval(add.A) <= Eval(add.B) ? 1 : 0; }
+            case ExprType.Gt: { var add = (BinaryExpr)e; return Eval(add.A) > Eval(add.B) ? 1 : 0; }
+            case ExprType.Gte: { var add = (BinaryExpr)e; return Eval(add.A) >= Eval(add.B) ? 1 : 0; }
+            case ExprType.BAnd: { var add = (BinaryExpr)e; return Eval(add.A) & Eval(add.B); }
+            case ExprType.BOr: { var add = (BinaryExpr)e; return Eval(add.A) | Eval(add.B); }
+            case ExprType.Neg: { var add = (UnaryExpr)e; return -Eval(add.A); }
+            case ExprType.BInvert: { var add = (UnaryExpr)e; return ~Eval(add.A); }
+            case ExprType.Min: { var add = (BinaryExpr)e; return Math.Min(Eval(add.A), Eval(add.B)); }
+            case ExprType.Max: { var add = (BinaryExpr)e; return Math.Max(Eval(add.A), Eval(add.B)); }
+            case ExprType.Abs: { var add = (UnaryExpr)e; return Math.Abs(Eval(add.A)); }
+
+            case ExprType.If:
+                {
+                    var @if = (IfExpr)e;
+                    return Eval(Eval(@if.Condition) != 0 ? @if.True : @if.False);
+                }
+
             default:
                 throw new InvalidOperationException("Invalid gui expression type");
         }
@@ -86,10 +105,10 @@ public class LocalGuiServer : GuiServer
 
     #region API
 
-    
+
 
     #endregion
-    
+
     public override void Accept()
     {
         // nothing to do in here
@@ -110,40 +129,44 @@ public class LocalGuiServer : GuiServer
     {
         // TODO: use an oplist instead of a plain expression, that can be 
         //       used to calculate common expressions just once 
-        
+
         foreach (var command in scene.Commands)
         {
             switch (command.CommandType)
             {
                 case CommandType.Clear:
-                {
-                    var cmd = (ClearCommand)command;
-                    var blitter = new Blitter(_memory, _width, (uint)Eval(cmd.Color));
-                    blitter.BlitRect(0, 0, _framebuffer.Width, _height);
-                } break;
-                
+                    {
+                        var cmd = (ClearCommand)command;
+                        var blitter = new Blitter(_memory, _width, (uint)Eval(cmd.Color));
+                        blitter.BlitRect(0, 0, _framebuffer.Width, _height);
+                    }
+                    break;
+
                 case CommandType.Rect:
-                {
-                    var cmd = (RectCommand)command;
-                    var blitter = new Blitter(_memory, _width, (uint)Eval(cmd.Color));
-                    var left = Eval(cmd.Left);
-                    var top = Eval(cmd.Top);
-                    var right = Eval(cmd.Right);
-                    var bottom = Eval(cmd.Bottom);
-                    Log.LogHex((ulong)(right - left));
-                    Log.LogString("\n");
-                    Log.LogHex((ulong)(bottom - top));
-                    blitter.BlitRect(left, top, unchecked(right - left), unchecked(bottom - top));
-                } break;
-                
+                    {
+                        var cmd = (RectCommand)command;
+                        var blitter = new Blitter(_memory, _width, (uint)Eval(cmd.Color));
+                        Log.LogString("Rect\n");
+                        Log.LogString($"\tLeft == {cmd.Left.ToString()}\n");
+                        Log.LogString($"\tTop == {cmd.Top.ToString()}\n");
+                        Log.LogString($"\tRight == {cmd.Right.ToString()}\n");
+                        Log.LogString($"\tBottom == {cmd.Bottom.ToString()}\n");
+                        var left = (int)Eval(cmd.Left);
+                        var top = (int)Eval(cmd.Top);
+                        var right = (int)Eval(cmd.Right);
+                        var bottom = (int)Eval(cmd.Bottom);
+                        blitter.BlitRect(left, top, unchecked(right - left), unchecked(bottom - top));
+                    }
+                    break;
+
                 default:
                     throw new InvalidOperationException("Invalid gui command type");
             }
         }
-        
+
         // blit the backing to the framebuffer
         _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
-        
+
         // flush the framebuffer to the output 
         _framebuffer.Flush();
     }

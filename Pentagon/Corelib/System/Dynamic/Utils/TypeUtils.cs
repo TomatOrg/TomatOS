@@ -1,10 +1,15 @@
 using System.Linq.Expressions;
+using System.Runtime.Serialization;
 
 namespace System.Dynamic.Utils;
 
 internal static class TypeUtils
 {
     
+    public static Type GetNonNullableType(this Type type) => IsNullableType(type) ? type.GetGenericArguments()[0] : type;
+
+    public static bool IsNullableType(this Type type) => type.IsConstructedGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>);
+
     public static void ValidateType(Type type, string? paramName) => ValidateType(type, paramName, false, false);
     
     public static void ValidateType(Type type, string? paramName, bool allowByRef, bool allowPointer)
@@ -39,5 +44,28 @@ internal static class TypeUtils
 
         return true;
     }
+    
+    public static bool IsArithmetic(this Type type)
+    {
+        type = GetNonNullableType(type);
+        if (!type.IsEnum)
+        {
+            switch (type.GetTypeCode())
+            {
+                case TypeCode.Int16:
+                case TypeCode.Int32:
+                case TypeCode.Int64:
+                case TypeCode.Double:
+                case TypeCode.Single:
+                case TypeCode.UInt16:
+                case TypeCode.UInt32:
+                case TypeCode.UInt64:
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     
 }

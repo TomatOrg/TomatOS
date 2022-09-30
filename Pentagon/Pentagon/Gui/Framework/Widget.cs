@@ -12,12 +12,12 @@ public abstract class Widget
     public virtual float FlexX => 0.0f;
     public virtual float FlexY => 0.0f;
 
-    public virtual (Expression, Expression) Layout(Expression minWidth, Expression minHeight, Expression maxWidth, Expression maxHeight)
+    public virtual (Expr, Expr) Layout(Expr minWidth, Expr minHeight, Expr maxWidth, Expr maxHeight)
     {
         throw new InvalidOperationException("This widget shouldn't be rendered directly");
     }
     
-    public virtual List<Command> Render(Expression left, Expression top, Expression right, Expression bottom)
+    public virtual List<Command> Render(Expr left, Expr top, Expr right, Expr bottom)
     {
         throw new InvalidOperationException("This widget shouldn't be rendered directly");
     }
