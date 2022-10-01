@@ -28,6 +28,7 @@ public class LocalGuiServer : GuiServer
     private int _width, _height;
 
     private int _mouseX, _mouseY;
+    private int _oldMouseX, _oldMouseY;
     private Dictionary<int, Font> _fonts = new();
 
     public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard, IRelMouse mouse)
@@ -37,7 +38,7 @@ public class LocalGuiServer : GuiServer
         _mouse = mouse;
         _width = framebuffer.Width;
         _height = framebuffer.Height;
-     
+        
         // allocate the framebuffer
         var size = _width * _height * 4;
         var pageCount = KernelUtils.DivideUp(size, MemoryServices.PageSize);
@@ -51,8 +52,8 @@ public class LocalGuiServer : GuiServer
         _memory = MemoryMarshal.Cast<byte, uint>(memory);
         _memoryUnderMouse = MemoryMarshal.Cast<byte, uint>(memoryUnderMouse);
 
-        _mouseX = _width / 2;
-        _mouseY = _height / 2;
+        _oldMouseX = _mouseX = _width / 2;
+        _oldMouseY = _mouseY = _height / 2;
 
         for (int i = 0; i < 8; i++)
         {
@@ -62,8 +63,50 @@ public class LocalGuiServer : GuiServer
 
         _keyboard.RegisterCallback(KeyboardCallback);
         _mouse.RegisterCallback(MouseCallback);
+
+        var flusherThread = new Thread(Flusher);
+        flusherThread.Start();
     }
     
+    void Flusher()
+    {
+        while (true)
+        {
+            if (_oldMouseX != _mouseX || _oldMouseY != _mouseY)
+            {
+                int oldStartX = Bound(_oldMouseX - 4, 0, _width - 1), oldStartY = Bound(_oldMouseY - 4, 0, _height - 1);
+                int oldEndX = Bound(_oldMouseX + 4, 0, _width - 1), oldEndY = Bound(_oldMouseY + 4, 0, _height - 1);
+
+                for (int i = 0; i < oldEndY - oldStartY; i++)
+                {
+                    var under = _memoryUnderMouse.Span.Slice(8 * i, oldEndX - oldStartX);
+                    var fb = _memory.Span.Slice((oldStartY + i) * _width + oldStartX);
+                    under.CopyTo(fb);
+                }
+
+                int startX = Bound(_mouseX - 4, 0, _width - 1), startY = Bound(_mouseY - 4, 0, _height - 1);
+                int endX = Bound(_mouseX + 4, 0, _width - 1), endY = Bound(_mouseY + 4, 0, _height - 1);
+                for (int i = 0; i < endY - startY; i++)
+                {
+                    var under = _memoryUnderMouse.Span.Slice(8 * i);
+                    var fb = _memory.Span.Slice((startY + i) * _width + startX, endX - startX);
+                    fb.CopyTo(under);
+                    fb.Fill(0xFFFFFFFF);
+                }
+
+                // blit the backing to the framebuffer
+                int sx = Math.Min(oldStartX, startX), sy = Math.Min(oldStartY, startY);
+                int ex = Math.Max(oldEndX, endX), ey = Math.Max(oldEndY, endY);
+                _framebuffer.Blit(sy * _width + sx, new Rectangle(sx, sy, ex - sx, ey - sy));
+
+                _oldMouseX = _mouseX;
+                _oldMouseY = _mouseY;
+            }
+
+            _framebuffer.Flush();
+        }
+    }
+
     void KeyboardCallback(KeyEvent e)
     {
         _event = e;
@@ -74,39 +117,9 @@ public class LocalGuiServer : GuiServer
 
     void MouseCallback(RelMouseEvent e)
     {
-        var oldMouseX = _mouseX;
-        var oldMouseY = _mouseY;
         _mouseX += e.deltaX;
         _mouseY += e.deltaY;
 
-        int oldStartX = Bound(oldMouseX - 4, 0, _width - 1), oldStartY = Bound(oldMouseY - 4, 0, _height - 1);
-        int oldEndX = Bound(oldMouseX + 4, 0, _width - 1), oldEndY = Bound(oldMouseY + 4, 0, _height - 1);
-
-        for (int i = 0; i < oldEndY - oldStartY; i++)
-        {
-            var under = _memoryUnderMouse.Span.Slice(8 * i, oldEndX - oldStartX);
-            var fb = _memory.Span.Slice((oldStartY + i) * _width + oldStartX);
-            under.CopyTo(fb);
-        }
-
-        int startX = Bound(_mouseX - 4, 0, _width - 1), startY = Bound(_mouseY - 4, 0, _height - 1);
-        int endX = Bound(_mouseX + 4, 0, _width - 1), endY = Bound(_mouseY + 4, 0, _height - 1);
-        for (int i = 0; i < endY - startY; i++)
-        {
-            var under = _memoryUnderMouse.Span.Slice(8 * i);
-            var fb = _memory.Span.Slice((startY + i) * _width + startX, endX - startX);
-            fb.CopyTo(under);
-            fb.Fill(0xFFFFFFFF);
-        }
-
-        // blit the backing to the framebuffer
-        int sx = Math.Min(oldStartX, startX), sy = Math.Min(oldStartY, startY);
-        int ex = Math.Max(oldEndX, endX), ey = Math.Max(oldEndY, endY);
-        _framebuffer.Blit(sy * _width + sx, new Rectangle(sx, sy, ex-sx, ey-sy));
-
-        // flush the framebuffer to the output 
-        _framebuffer.Flush();
-        
         _event = e;
         _reset.Set();
     }
@@ -266,9 +279,6 @@ public class LocalGuiServer : GuiServer
 
         // blit the backing to the framebuffer
         _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
-        
-        // flush the framebuffer to the output 
-        _framebuffer.Flush();
     }
 
 }
