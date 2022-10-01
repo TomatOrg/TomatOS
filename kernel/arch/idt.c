@@ -46,9 +46,7 @@ typedef struct idt {
 // Exception handling code
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-__asm__ (
-    "common_exception_stub:\n"
-    ".cfi_startproc simple\n"
+__attribute__((used,naked)) void common_exception_stub() { __asm__ (
     ".cfi_signal_frame\n"
     ".cfi_def_cfa %rsp, 0\n"
     ".cfi_offset %rip, 16\n"
@@ -149,8 +147,7 @@ __asm__ (
     "addq $16, %rsp\n"
     ".cfi_adjust_cfa_offset -16\n"
     "iretq\n"
-    ".cfi_endproc\n"
-);
+); }
 
 #define EXCEPTION_STUB(num) \
     __attribute__((naked)) \
@@ -408,9 +405,7 @@ cleanup:
 // Interrupt handling code
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-__asm__(
-    "common_interrupt_stub:\n"
-    ".cfi_startproc simple\n"
+__attribute__((used,naked)) void common_interrupt_stub() { __asm__ (
     ".cfi_signal_frame\n"
     ".cfi_def_cfa %rsp, 0\n"
     ".cfi_offset %rip, 8\n"
@@ -511,8 +506,7 @@ __asm__(
     "addq $8, %rsp\n"
     ".cfi_adjust_cfa_offset -16\n"
     "iretq\n"
-    ".cfi_endproc\n"
-);
+); }
 
 #define INTERRUPT_HANDLER(num) \
     __attribute__((naked)) \

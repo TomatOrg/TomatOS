@@ -345,7 +345,7 @@ static void waitable_select_park(thread_t* thread) {
 
 selected_waitable_t waitable_select(waitable_t** waitables, int send_count, int wait_count, bool block) {
     int waitable_count = send_count + wait_count;
-    ASSERT(waitable_count < UINT16_MAX);
+    ASSERT(waitable_count != 0 && waitable_count < UINT16_MAX);
 
     uint16_t pollorder[waitable_count];
     uint16_t lockorder[waitable_count];

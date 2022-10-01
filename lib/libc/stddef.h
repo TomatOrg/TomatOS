@@ -6,6 +6,9 @@
  *
  *===-----------------------------------------------------------------------===
  */
+#ifndef __clang__
+#define __has_feature(val) 0
+#endif
 
 #if !defined(__STDDEF_H) || defined(__need_ptrdiff_t) ||                       \
     defined(__need_size_t) || defined(__need_wchar_t) ||                       \
