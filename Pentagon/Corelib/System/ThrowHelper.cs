@@ -101,6 +101,11 @@ namespace System
                                                     ExceptionResource.ArgumentOutOfRange_IndexMustBeLessOrEqual);
         }
 
+        internal static void ThrowArgumentOutOfRange_IndexException()
+        {
+            throw GetArgumentOutOfRangeException(ExceptionArgument.index,
+                                                    ExceptionResource.ArgumentOutOfRange_Index);
+        }
         internal static void ThrowArgumentException_BadComparer(object comparer)
         {
             throw new ArgumentException( $"Unable to sort because the IComparer.Compare() method returns inconsistent results. Either a value does not compare equal to itself, or one value repeatedly compared to another value yields different results. IComparer: '{string.Concat(comparer)}'.");
@@ -211,11 +216,11 @@ namespace System
             throw GetAddingDuplicateWithKeyArgumentException((object?)key);
         }
 
-        // internal static void ThrowKeyNotFoundException<T>(T key)
-        // {
-        //     // Generic key to move the boxing to the right hand side of throw
-        //     throw GetKeyNotFoundException((object?)key);
-        // }
+        internal static void ThrowKeyNotFoundException<T>(T key)
+        {
+            // Generic key to move the boxing to the right hand side of throw
+            throw GetKeyNotFoundException((object?)key);
+        }
 
         internal static void ThrowArgumentException(ExceptionResource resource)
         {
@@ -355,11 +360,6 @@ namespace System
             throw new OutOfMemoryException();
         }
 
-        // internal static void ThrowArgumentException_Argument_InvalidArrayType()
-        // {
-        //     throw new ArgumentException(SR.Argument_InvalidArrayType);
-        // }
-
         internal static void ThrowArgumentException_InvalidHandle(string? paramName)
         {
             throw new ArgumentException("Invalid handle.", paramName);
@@ -495,10 +495,10 @@ namespace System
         //     return new ArgumentException(SR.Format(SR.Arg_WrongType, value, targetType), nameof(value));
         // }
 
-        // private static KeyNotFoundException GetKeyNotFoundException(object? key)
-        // {
-        //     return new KeyNotFoundException(SR.Format(SR.Arg_KeyNotFoundWithKey, key));
-        // }
+        private static KeyNotFoundException GetKeyNotFoundException(object? key)
+        {
+            return new KeyNotFoundException($"The given key '{key}' was not present in the dictionary.");
+        }
 
         private static ArgumentOutOfRangeException GetArgumentOutOfRangeException(ExceptionArgument argument, ExceptionResource resource)
         {
@@ -818,6 +818,8 @@ namespace System
         {
             switch (resource)
             {
+                case ExceptionResource.ArgumentOutOfRange_Index:
+                    return "Index was out of range. Must be non-negative and less than the size of the collection.";
                 case ExceptionResource.ArgumentOutOfRange_IndexMustBeLessOrEqual:
                     return "Index was out of range. Must be non-negative and less than or equal to the size of the collection.";
                 case ExceptionResource.ArgumentOutOfRange_IndexMustBeLess:
@@ -1078,6 +1080,7 @@ namespace System
     //
     internal enum ExceptionResource
     {
+        ArgumentOutOfRange_Index,
         ArgumentOutOfRange_IndexMustBeLessOrEqual,
         ArgumentOutOfRange_IndexMustBeLess,
         ArgumentOutOfRange_IndexCount,

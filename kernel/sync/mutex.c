@@ -51,7 +51,7 @@ typedef enum mutex_state {
 #define STARVATION_THRESHOLD_US 1000
 
 static void mutex_lock_slow(mutex_t* mutex) {
-    int64_t wait_start_time;
+    int64_t wait_start_time = 0;
     bool starving = false;
     bool awoke = false;
     int iter = 0;
@@ -156,6 +156,8 @@ void mutex_lock(mutex_t* mutex) {
         return;
     }
 
+    TRACE("GOING TO SLOW LOCK");
+
     // Slow path (outlined so that the fast path can be inlined)
     mutex_lock_slow(mutex);
 }
@@ -174,6 +176,10 @@ bool mutex_try_lock(mutex_t* mutex) {
     }
 
     return true;
+}
+
+bool mutex_is_locked(mutex_t* mutex) {
+    return atomic_load_explicit(&mutex->state, memory_order_relaxed) & MUTEX_LOCKED;
 }
 
 static void mutex_unlock_slow(mutex_t* mutex, int32_t new) {

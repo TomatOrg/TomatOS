@@ -1,6 +1,8 @@
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 using TinyDotNet.Reflection;
 
 namespace System;
@@ -68,9 +70,13 @@ public class Type : MemberInfo
     {
     }
 
+    public Assembly Assembly => _assembly;
+
     public bool IsArray => _isArray;
     public bool IsByRef => _isByRef;
 
+    public bool IsInterface => (_attributes & 0x00000020) != 0;
+    
     public bool IsEnum => _baseType == typeof(Enum);
 
     public Type GetElementType()
@@ -164,6 +170,83 @@ public class Type : MemberInfo
         return false;
     }
 
+    public static TypeCode GetTypeCode(Type type)
+    {
+        return type.GetTypeCode();
+    }
+
+    public bool IsGenericType => _genericArguments != null;
+
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+    private extern Type InternalMakeGenericType(Type[] typeArguments);
+
+    public Type MakeGenericType(params Type[] typeArguments)
+    {
+        if (!IsGenericTypeDefinition)
+            throw new InvalidOperationException(this.ToString());
+        
+        if (typeArguments == null)
+            throw new ArgumentNullException();
+        
+        foreach (var arg in typeArguments)
+        {
+            if (arg == null)
+                throw new ArgumentNullException();
+
+            if (arg.IsPointer || arg == typeof(void) || arg.IsByRef)
+                throw new ArgumentException();
+        }
+
+        if (typeArguments.Length != _genericArguments.Length)
+            throw new ArgumentException();
+        
+        // TODO: bubble constraints checking from the internal function
+
+        return InternalMakeGenericType(typeArguments);
+    }
+
+    public bool IsAssignableFrom(Type c)
+    {
+        if (c == null)
+            return false;
+        
+        // Represents the same type or derived either directly
+        // or indirectly from the current instance.
+        var type = this;
+        while (type != null)
+        {
+            if (type == c)
+                return true;
+
+            type = type._baseType;
+        }
+
+        // The current instance is an interface that c implements
+        if (IsInterface && c._interfaceImpl != null)
+        {
+            foreach (var impl in c._interfaceImpl)
+            {
+                if (impl._interfaceType == this)
+                {
+                    return true;
+                }
+            }
+        }
+
+        // c represents a value type and the current instance represents Nullable<c>
+        if (c.IsValueType && _genericTypeDefinition == typeof(Nullable<>) && _genericArguments[0] == c)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool IsAssignableTo(Type other)
+    {
+        return other.IsAssignableFrom(this);
+    }
+    
     public override string ToString()
     {
         return FullName;

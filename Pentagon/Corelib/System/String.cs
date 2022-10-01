@@ -4,6 +4,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -14,15 +15,18 @@ namespace System;
 // instance and return the result as a new string.  As with arrays, character
 // positions (indices) are zero-based.
 [StructLayout(LayoutKind.Sequential)]
-public class String : IEnumerable<char>
+public partial class String : IEnumerable<char>, IComparable<string?>, IEquatable<string?>
 {
     
+    /// <summary>Maximum length allowed for a string.</summary>
+    internal const int MaxLength = int.MaxValue / sizeof(char);
+
     public static readonly string Empty = "";
 
-    private readonly int _length;
+    private readonly int _stringLength;
     private char _firstChar;
 
-    public int Length => _length;
+    public int Length => _stringLength;
 
     [IndexerName("Chars")]
     public char this[int index]
@@ -34,11 +38,16 @@ public class String : IEnumerable<char>
         }
     }
     
+    /// <summary>
+    /// Returns a reference to the first element of the String. If the string is null, an access will throw a NullReferenceException.
+    /// </summary>
+    public ref readonly char GetPinnableReference() => ref _firstChar;
+
     internal ref char GetRawStringData() => ref _firstChar;
 
     private String(int length)
     {
-        _length = length;
+        _stringLength = length;
     }
 
     internal static string FastAllocateString(int length)
@@ -48,7 +57,7 @@ public class String : IEnumerable<char>
     
     public String(char[] chars)
     {
-        _length = chars.Length;
+        _stringLength = chars.Length;
         
         var span = new Span<char>(ref GetRawStringData(), Length);
         chars.AsSpan().CopyTo(span);
@@ -56,98 +65,20 @@ public class String : IEnumerable<char>
 
     public String(char[] chars, int startIndex, int length)
     {
-        _length = length;
+        _stringLength = length;
 
         var span = new Span<char>(ref GetRawStringData(), Length);
         chars.AsSpan(startIndex, length).CopyTo(span);
     }
-
-    #region Concat
-
-    public static string Concat(object arg0)
-    {
-        return arg0?.ToString() ?? Empty;
-    }
-
-    public static string Concat(object arg0, object arg1)
-    {
-        return Concat(Concat(arg0), Concat(arg1));
-    }
-
-    public static string Concat(object arg0, object arg1, object arg2)
-    {
-        return Concat(Concat(arg0), Concat(arg1), Concat(arg2));
-    }
-
-    public static string Concat(string arg0, string arg1)
-    {
-        var str = new string(arg0.Length + arg1.Length);
-        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
-        arg0.AsSpan().CopyTo(span);
-        arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
-        return str;
-    }
-
-    public static string Concat(string arg0, string arg1, string arg2)
-    {
-        var str = new string(arg0.Length + arg1.Length + arg2.Length);
-        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
-        arg0.AsSpan().CopyTo(span);
-        arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
-        arg2.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length));
-        return str;
-    }
-
-    public static string Concat(string arg0, string arg1, string arg2, string arg3)
-    {
-        var str = new string(arg0.Length + arg1.Length + arg2.Length + arg3.Length);
-        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
-        arg0.AsSpan().CopyTo(span);
-        arg1.AsSpan().CopyTo(span.Slice(arg0.Length));
-        arg2.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length));
-        arg3.AsSpan().CopyTo(span.Slice(arg0.Length + arg1.Length + arg2.Length));
-        return str;
-    }
-
-    public static string Concat(params object[] values)
-    {
-        var strs = new string[values.Length];
-        for (var i = 0; i < values.Length; i++)
-        {
-            strs[i] = Concat(values[i]);
-        }
-        return Concat(strs);
-    }
     
-    public static string Concat(params string[] values)
+    public String(ReadOnlySpan<char> chars)
     {
-        if (values == null)
-            throw new ArgumentNullException(nameof(values));
-
-        // calculate the total length
-        var len = 0;
-        foreach (var val in values)
-        {
-            len += val.Length;
-        }
-
-        // allocate it 
-        var str = new string(len);
-        var span = new Span<char>(ref str.GetRawStringData(), str.Length);
+        _stringLength = chars.Length;
         
-        // copy it 
-        var off = 0;
-        foreach (var val in values)
-        {
-            val.AsSpan().CopyTo(span.Slice(off));
-            off += val.Length;
-        }
-
-        return str;
+        var span = new Span<char>(ref GetRawStringData(), Length);
+        chars.CopyTo(span);
     }
-    
-    #endregion
-    
+
     public CharEnumerator GetEnumerator()
     {
         return new CharEnumerator(this);
@@ -162,79 +93,113 @@ public class String : IEnumerable<char>
     {
         return new CharEnumerator(this);
     }
+    
+    public static string Create<TState>(int length, TState state, Buffers.Action.SpanAction<char, TState> action)
+    {
+        if (action == null)
+            throw new ArgumentNullException(nameof(action));
 
+        if (length <= 0)
+        {
+            if (length == 0)
+                return Empty;
+            throw new ArgumentOutOfRangeException(nameof(length));
+        }
+
+        string result = FastAllocateString(length);
+        action(new Span<char>(ref result.GetRawStringData(), length), state);
+        return result;
+    }
+    
+    /// <summary>Creates a new string by using the specified provider to control the formatting of the specified interpolated string.</summary>
+    /// <param name="provider">An object that supplies culture-specific formatting information.</param>
+    /// <param name="handler">The interpolated string.</param>
+    /// <returns>The string that results for formatting the interpolated string using the specified format provider.</returns>
+    public static string Create(IFormatProvider? provider, [InterpolatedStringHandlerArgument("provider")] ref DefaultInterpolatedStringHandler handler) =>
+        handler.ToStringAndClear();
+
+    /// <summary>Creates a new string by using the specified provider to control the formatting of the specified interpolated string.</summary>
+    /// <param name="provider">An object that supplies culture-specific formatting information.</param>
+    /// <param name="initialBuffer">The initial buffer that may be used as temporary space as part of the formatting operation. The contents of this buffer may be overwritten.</param>
+    /// <param name="handler">The interpolated string.</param>
+    /// <returns>The string that results for formatting the interpolated string using the specified format provider.</returns>
+    public static string Create(IFormatProvider? provider, Span<char> initialBuffer, [InterpolatedStringHandlerArgument("provider", "initialBuffer")] ref DefaultInterpolatedStringHandler handler) =>
+        handler.ToStringAndClear();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static implicit operator ReadOnlySpan<char>(string? value) =>
+        value != null ? new ReadOnlySpan<char>(ref value.GetRawStringData(), value.Length) : default;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryGetSpan(int startIndex, int count, out ReadOnlySpan<char> slice)
+    {
+        // See comment in Span<T>.Slice for how this works.
+        if ((ulong)(uint)startIndex + (ulong)(uint)count > (ulong)(uint)Length)
+        {
+            slice = default;
+            return false;
+        }
+        
+        slice = new ReadOnlySpan<char>(ref Unsafe.Add(ref _firstChar, (nint)(uint)startIndex /* force zero-extension */), count);
+        return true;
+    }
+
+    // This is only intended to be used by char.ToString.
+    // It is necessary to put the code in this class instead of Char, since _firstChar is a private member.
+    // Making _firstChar internal would be dangerous since it would make it much easier to break String's immutability.
+    internal static string CreateFromChar(char c)
+    {
+        string result = FastAllocateString(1);
+        result._firstChar = c;
+        return result;
+    }
+    
+    /// <summary>Copies the contents of this string into the destination span.</summary>
+    /// <param name="destination">The span into which to copy this string's contents.</param>
+    /// <exception cref="System.ArgumentException">The destination span is shorter than the source string.</exception>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void CopyTo(Span<char> destination)
+    {
+        if ((uint)Length <= (uint)destination.Length)
+        {
+            Buffer.Memmove(ref destination._pointer.Value, ref _firstChar, (uint)Length);
+        }
+        else
+        {
+            ThrowHelper.ThrowArgumentException_DestinationTooShort();
+        }
+    }
+    
+    /// <summary>Copies the contents of this string into the destination span.</summary>
+    /// <param name="destination">The span into which to copy this string's contents.</param>
+    /// <returns>true if the data was copied; false if the destination was too short to fit the contents of the string.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryCopyTo(Span<char> destination)
+    {
+        return this.AsSpan().TryCopyTo(destination);
+    }
+
+    // Returns the entire string as an array of characters.
+    public char[] ToCharArray()
+    {
+        return this.AsSpan().ToArray();
+    }
+    
+    // Returns a substring of this string as an array of characters.
+    //
+    public char[] ToCharArray(int startIndex, int length)
+    {
+        return this.AsSpan(startIndex, length).ToArray();
+    }
+    
     public override string ToString()
     {
         return this;
     }
-
-    public override int GetHashCode()
-    {
-        return base.GetHashCode();
-    }
     
-    public static bool IsNullOrEmpty(string value)
+    public static bool IsNullOrEmpty([NotNullWhen(false)] string? value)
     {
-        return value == null || value.Length == 0;
+        return value == null || 0 == value.Length;
     }
-
-
-    public static string Format(string format, object? arg0)
-    {
-        return format;
-    }
-
-    public static string Format(string format, object? arg0, object? arg1)
-    {
-        return format;
-    }
-
-    public static string Format(string format, object? arg0, object? arg1, object? arg2)
-    {
-        return format;
-    }
-
-    public static string Format(string format, params object?[] args)
-    {
-        return format;
-    }
-
-    #region Comparison
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool EqualsHelper(string strA, string strB)
-    {
-        Debug.Assert(strA != null);
-        Debug.Assert(strB != null);
-        Debug.Assert(strA.Length == strB.Length);
-
-        return SpanHelpers.SequenceEqual(
-            ref Unsafe.As<char, byte>(ref strA.GetRawStringData()),
-            ref Unsafe.As<char, byte>(ref strB.GetRawStringData()),
-            ((uint)strA.Length) * sizeof(char));
-    }
-    
-    // Determines whether two Strings match.
-    public static bool Equals(string? a, string? b)
-    {
-        if (object.ReferenceEquals(a, b))
-        {
-            return true;
-        }
-
-        if (a is null || b is null || a.Length != b.Length)
-        {
-            return false;
-        }
-
-        return EqualsHelper(a, b);
-    }
-    
-    public static bool operator ==(string? a, string? b) => string.Equals(a, b);
-
-    public static bool operator !=(string? a, string? b) => !string.Equals(a, b);
-
-
-    #endregion
     
 }

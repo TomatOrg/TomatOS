@@ -21,6 +21,7 @@ public class Assembly
     private MethodInfo[] _definedMethods;
     private FieldInfo[] _definedFields;
     private PropertyInfo[] _definedProperties;
+    private ParameterInfo[] _definedParameters;
     private byte[][] _definedTypeSpecs;
     private MemberReference[] _definedMemberRefs;
     private MethodSpec[] _definedMemberSpecs;

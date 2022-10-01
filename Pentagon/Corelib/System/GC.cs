@@ -34,6 +34,12 @@ public static class GC
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern void KeepAlive(object obj);
 
+    public static T[] AllocateUninitializedArray<T>(int len)
+    {
+        // TODO: we could in theory support that but for now its easier to not support it 
+        return new T[len];
+    }
+    
     public static void ReRegisterForFinalize(object obj)
     {
         obj.ReRegisterForFinalize();

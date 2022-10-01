@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -34,6 +36,11 @@ public class Array
         return EmptyArray<T>.Value;
     }
     
+    public object Clone()
+    {
+        return MemberwiseClone();
+    }
+
     #region Clear
 
     public static void Clear(Array array)
@@ -157,5 +164,111 @@ public class Array
     }
 
     #endregion
+
+    private class GenericArray<T> : Array, ICollection<T>, IList<T>, IEnumerable<T>
+    {
+        
+        private class GenericEnumerator : IEnumerator<T>
+        {
+
+            private T[] _array;
+            private int _index;
+
+            public GenericEnumerator(T[] array)
+            {
+                _array = array;
+                _index = -1;
+            }
+
+            public T Current
+            {
+                get
+                {
+                    if (_index < 0)
+                        throw new InvalidOperationException("Enumeration has not started");
+                    if (_index >= _array._length)
+                        throw new InvalidOperationException("Enumeration has finished");
+                    return _array[_index];
+                }
+            }
+
+            object IEnumerator.Current => Current;
+
+            public bool MoveNext()
+            {
+                _index++;
+                return (_index < _array._length);
+            }
+
+            public void Reset()
+            {
+                _index = -1;
+            }
+        
+            public void Dispose()
+            {
+            }
+
+        }
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            return new GenericEnumerator(Unsafe.As<T[]>(this));
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        public int Count => _length;
+        public bool IsReadOnly => false;
+        public void Add(T item)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Clear()
+        {
+            Array.Clear(this);
+        }
+
+        public bool Contains(T item)
+        {
+            return Array.IndexOf(Unsafe.As<T[]>(this), item) != -1;
+        }
+
+        public void CopyTo(T[] array, int arrayIndex)
+        {
+            Array.Copy(this, 0, array, arrayIndex, array.Length);
+        }
+
+        public bool Remove(T item)
+        {
+            throw new NotSupportedException();
+        }
+
+        public T this[int index]
+        {
+            get => Unsafe.As<T[]>(this)[index];
+            set => Unsafe.As<T[]>(this)[index] = value;
+        }
+
+        public int IndexOf(T item)
+        {
+            return Array.IndexOf(Unsafe.As<T[]>(this), item);
+        }
+
+        public void Insert(int index, T item)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void RemoveAt(int index)
+        {
+            throw new NotSupportedException();
+        }
+    }
     
+
 }

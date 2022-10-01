@@ -24,5 +24,13 @@ public static class RuntimeHelpers
                typeof(T) == typeof(float) ||
                typeof(T) == typeof(double);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining, MethodCodeType = MethodCodeType.Runtime)]
+    private static extern unsafe void* GetObjectPointer(object obj);
+    
+    public static unsafe int GetHashCode(object? o)
+    {
+        return HashCode.Combine((nint)GetObjectPointer(o));
+    }
     
 }
