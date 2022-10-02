@@ -33,12 +33,9 @@ public class Type : MemberInfo
     private MethodInfo _delegateSignature;
 
     private int _classSize;
-    private int _packingSize;
+    private short _packingSize;
 
     private unsafe int* _managedPointersOffsets;
-    private bool _isSetup;
-    private bool _isSetupFinished;
-    private bool _isFilled;
     private bool _isValueType;
     private MethodInfo _finalize;
     private int _managedSize;
@@ -46,11 +43,12 @@ public class Type : MemberInfo
     private int _stackSize;
     private int _stackAlignment;
     private int _stackType;
-    private MethodInfo _staticCtor;
+    private MethodInfo _typeInitializer;
 
+    private uint _fillingFlags;
+    
     private MethodInfo[] _virtualMethods;
     private unsafe void* _vtable;
-    private int _vtableSize;
 
     private InterfaceImpl[] _interfaceImpl;
     private MethodImpl[] _methodImpls;

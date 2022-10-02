@@ -45,7 +45,7 @@ qemu-system-x86_64 \
   -serial stdio \
   -machine q35 \
   --enable-kvm \
-  -cpu Nehalem,+invtsc,+tsc-deadline \
+  -cpu host,+invtsc,+tsc-deadline \
   -smp 4 \
   -m 2G \
   -s \

@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "thread/waitable.h"
 #include "runtime/dotnet/internal_calls.h"
+#include "mem/tlsf.h"
 
 #include <limine.h>
 
@@ -227,7 +228,7 @@ static void kernel_startup() {
     // load the kernel assembly
     System_Reflection_Assembly kernel_asm = NULL;
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
-    CHECK_AND_RETHROW(jit_type(kernel_asm->EntryPoint->DeclaringType));
+    CHECK_AND_RETHROW(jit_method(kernel_asm->EntryPoint));
 
     // call it
     TRACE("Starting kernel!");
