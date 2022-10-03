@@ -30,6 +30,9 @@ CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
+CFLAGS 		+= -D__SERIAL_TRACE__
+CFLAGS 		+= -D__GRAPHICS_TRACE__
+
 ifeq ($(DEBUG),1)
 	CFLAGS	+= -O0 -g
 	CFLAGS 	+= -fno-sanitize=alignment
