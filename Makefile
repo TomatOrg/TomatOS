@@ -1,12 +1,17 @@
 ########################################################################################################################
 # Build constants
 ########################################################################################################################
-
+USE_GCC		:= 0
+ifeq ($(USE_GCC), 1)
+CC 			:= gcc
+LD 			:= gcc
+else
 CC 			:= ccache clang
 LD			:= ld.lld
+endif
 
 # Build in debug or release mode
-DEBUG		:= 1
+DEBUG		:= 0
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
@@ -15,26 +20,35 @@ BUILD_DIR	:= $(OUT_DIR)/build
 #-----------------------------------------------------------------------------------------------------------------------
 # General configurations
 #-----------------------------------------------------------------------------------------------------------------------
-
-CFLAGS 		:= -target x86_64-pc-none-elf
+CFLAGS 		:=
+ifeq ($(USE_GCC), 0)
+CFLAGS 		+= -target x86_64-pc-none-elf
+endif
 CFLAGS		+= -Werror -std=gnu11
 CFLAGS 		+= -Wno-unused-function
 CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
+CFLAGS 		+= -D__SERIAL_TRACE__
+CFLAGS 		+= -D__GRAPHICS_TRACE__
+
 ifeq ($(DEBUG),1)
 	CFLAGS	+= -O0 -g
-	CFLAGS	+= -fsanitize=undefined
 	CFLAGS 	+= -fno-sanitize=alignment
 	CFLAGS 	+= -fstack-protector-all
+	ifeq ($(USE_GCC), 0)
+		CFLAGS	+= -fsanitize=undefined
+	endif
 else
-	CFLAGS	+= -O3 -g0 -flto
+	CFLAGS	+= -O3 -g
 	CFLAGS 	+= -DNDEBUG
+	ifeq ($(USE_GCC), 0)
+		CFLAGS		+= -flto
+	endif
 endif
 
-CFLAGS 		+= -mtune=skylake -march=skylake
-CFLAGS 		+= -mno-avx -mno-avx2
+CFLAGS 		+= -mno-avx -mno-avx2 -fno-pie -fno-pic -Wno-error=unused-but-set-variable
 CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mcmodel=kernel -mno-red-zone
 CFLAGS 		+= -nostdlib -nostdinc
@@ -46,7 +60,7 @@ CFLAGS 		+= -Ilib/tinydotnet/lib
 
 SRCS 		:= $(shell find kernel -name '*.c')
 
-LDFLAGS		+= -Tkernel/linker.ld
+LDFLAGS		+= -Tkernel/linker.ld -nostdlib -static -z max-page-size=0x1000
 
 # For the printf library
 CFLAGS		+= -DPRINTF_NTOA_BUFFER_SIZE=64

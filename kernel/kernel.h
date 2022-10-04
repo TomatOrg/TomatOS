@@ -16,6 +16,9 @@ extern volatile struct limine_smp_request g_limine_smp;
 extern volatile struct limine_memmap_request g_limine_memmap;
 extern volatile struct limine_rsdp_request g_limine_rsdp;
 extern volatile struct limine_kernel_address_request g_limine_kernel_address;
+extern volatile struct limine_framebuffer_request g_limine_framebuffer;
+
+extern struct limine_file g_default_font;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Normal kernel services

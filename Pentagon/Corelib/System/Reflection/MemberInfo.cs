@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace System.Reflection;
 
 [StructLayout(LayoutKind.Sequential)]
-public class MemberInfo
+public abstract class MemberInfo
 {
 
     internal Type _declaringType;
@@ -11,5 +11,9 @@ public class MemberInfo
     internal string _name;
 
     public string Name => _name;
+
+    internal MemberInfo()
+    {
+    }
 
 }

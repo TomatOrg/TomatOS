@@ -6,7 +6,7 @@ namespace Pentagon.DriverServices.Pci;
 /// <summary>
 /// MSI-X controller for a PCI device 
 /// </summary>
-public class Msix
+internal class Msix
 {
 
     // The msix capability 
@@ -22,10 +22,10 @@ public class Msix
     /// </summary>
     public int Count => _configuredIrqs;
 
-    internal Msix(PciDevice device, Memory<PciCapability> capability)
+    internal Msix(PciDevice device, Memory<byte> capability)
     {
         // get the cap
-        _capability = MemoryMarshal.Cast<PciCapability, PciCapability.Msix>(capability);
+        _capability = MemoryMarshal.Cast<byte, PciCapability.Msix>(capability);
         ref var cap = ref _capability.Span[0];
 
         // get the table
@@ -52,7 +52,7 @@ public class Msix
     /// Get the wanted irq 
     /// </summary>
     /// <param name="index"></param>
-    public Irq this[int index]
+    internal Irq this[int index]
     {
         get
         {
@@ -66,7 +66,7 @@ public class Msix
     /// Configure the table with the given number of irqs
     /// TODO: only support to configure once?
     /// </summary>
-    public void Configure(int count)
+    internal void Configure(int count)
     {
         // TODO: support for freeing allocated irqs 
         //       this is actually complex because the user might still 

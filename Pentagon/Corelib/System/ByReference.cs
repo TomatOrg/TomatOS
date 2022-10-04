@@ -8,21 +8,21 @@ namespace System;
 // ByReference<T> is meant to be used to represent "ref T" fields. It is working
 // around lack of first class support for byref fields in C# and IL. The JIT and
 // type loader has special handling for it that turns it into a thin wrapper around ref T.
-readonly unsafe ref struct ByReference<T>
+internal readonly unsafe ref struct ByReference<T>
 {
 
-    private readonly void* _value;
+    internal readonly void* _value;
+    
+    public ref T Value
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => ref Unsafe.AsRef<T>(_value);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ByReference(ref T value)
     {
         _value = Unsafe.AsPointer(ref value);
-    }
-
-    public ref T Value
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => ref Unsafe.AsRef<T>(_value);
     }
 
 }

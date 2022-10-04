@@ -103,18 +103,11 @@ public static class MemoryServices
 
         ~AllocatedMemoryHolder()
         {
-            Dispose();
+            FreeMemory(_ptr);
         }
         
         public void Dispose()
         {
-            if (_memory.IsEmpty)
-                return;
-
-            FreeMemory(_ptr);
-            GC.SuppressFinalize(this);
-            
-            _memory = Memory<byte>.Empty;
         }
         
     }

@@ -3,6 +3,7 @@
 
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -186,4 +187,64 @@ public class String : IEnumerable<char>, IEquatable<string>
     {
         return value == null || value.Length == 0;
     }
+
+
+    public static string Format(string format, object? arg0)
+    {
+        return format;
+    }
+
+    public static string Format(string format, object? arg0, object? arg1)
+    {
+        return format;
+    }
+
+    public static string Format(string format, object? arg0, object? arg1, object? arg2)
+    {
+        return format;
+    }
+
+    public static string Format(string format, params object?[] args)
+    {
+        return format;
+    }
+
+    #region Comparison
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool EqualsHelper(string strA, string strB)
+    {
+        Debug.Assert(strA != null);
+        Debug.Assert(strB != null);
+        Debug.Assert(strA.Length == strB.Length);
+
+        return SpanHelpers.SequenceEqual(
+            ref Unsafe.As<char, byte>(ref strA.GetRawStringData()),
+            ref Unsafe.As<char, byte>(ref strB.GetRawStringData()),
+            ((uint)strA.Length) * sizeof(char));
+    }
+    
+    // Determines whether two Strings match.
+    public static bool Equals(string? a, string? b)
+    {
+        if (object.ReferenceEquals(a, b))
+        {
+            return true;
+        }
+
+        if (a is null || b is null || a.Length != b.Length)
+        {
+            return false;
+        }
+
+        return EqualsHelper(a, b);
+    }
+    
+    public static bool operator ==(string? a, string? b) => string.Equals(a, b);
+
+    public static bool operator !=(string? a, string? b) => !string.Equals(a, b);
+
+
+    #endregion
+    
 }

@@ -53,21 +53,23 @@ namespace Pentagon.Drivers
             var cluster = offset / _fs.BlockSize;
             int index = (int)(offset % _fs.BlockSize);
 
-            if (cluster != _currentClusterIdx) // hell
-            {
+            //if (cluster != _currentClusterIdx) // hell
+            //{
                 _currentClusterIdx = _cluster;
                 for (int i = 0; i < cluster; i++) { _currentClusterIdx = await _fs.NextInClusterChain((uint)_currentClusterIdx); }
                 _currentCluster = await _fs.ReadCached(_fs.ClusterToLba((uint)_currentClusterIdx));
-            }
+            //}
 
             int bytesRead = 0;
 
             while (true)
             {
-                var remainingInFile = _size - offset - (long)bytesRead;
-                var remainingInBuf = buffer.Length - bytesRead;
-                int length = (int)Math.Min(remainingInBuf, Math.Min(remainingInFile, _fs.BlockSize));
-                if (length == 0) break;
+                //var remainingInFile = _size - offset - (long)bytesRead;
+                //var remainingInBuf = buffer.Length - bytesRead;
+                //int length = (int)Math.Min(remainingInBuf, Math.Min(remainingInFile, _fs.BlockSize));
+                int length = (int)Math.Min(_size - (long)bytesRead, 512);
+                
+                if (length <= 0) break;
                 for (int i = 0; i < length; i++)
                 {
                     buffer.Span[bytesRead + i] = _currentCluster.Span[index + i];
@@ -495,7 +497,8 @@ namespace Pentagon.Drivers
                             DirentStartCluster = startCluster,
                             End = clusidx * count + i,
                         };
-
+                        DriverServices.Log.LogString(ent.Name);
+                        DriverServices.Log.LogString("\n");
                         if (await callback(ent))
                         {
                             return;
@@ -504,6 +507,7 @@ namespace Pentagon.Drivers
                     }
                 }
                 curr = await NextInClusterChain(curr);
+                if (curr >= 0x0FFFFFF8) break;
             }
         }
 

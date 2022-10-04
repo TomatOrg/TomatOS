@@ -9,4 +9,8 @@ public class FieldInfo : MemberInfo
     private nuint _memoryOffset;
     private ushort _attributes;
 
+    internal FieldInfo()
+    {
+    }
+
 }

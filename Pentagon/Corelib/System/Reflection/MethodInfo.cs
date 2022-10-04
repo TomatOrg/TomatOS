@@ -15,4 +15,8 @@ public class MethodInfo : MethodBase
     private unsafe void* _mirProto;
     private MethodInfo _nextGenericInstance;
 
+    internal MethodInfo()
+    {
+    }
+    
 }

@@ -51,7 +51,7 @@ typedef enum mutex_state {
 #define STARVATION_THRESHOLD_US 1000
 
 static void mutex_lock_slow(mutex_t* mutex) {
-    int64_t wait_start_time;
+    int64_t wait_start_time = 0;
     bool starving = false;
     bool awoke = false;
     int iter = 0;

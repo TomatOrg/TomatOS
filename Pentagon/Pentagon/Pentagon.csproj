@@ -8,6 +8,7 @@
         <NoConfig>true</NoConfig>
         <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
         <IlcSystemModule>Corelib</IlcSystemModule>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <ItemGroup>

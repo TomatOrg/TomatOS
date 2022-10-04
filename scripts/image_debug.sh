@@ -30,6 +30,7 @@ sudo cp -rv \
   test/limine.cfg \
   Pentagon/Corelib/bin/Release/net6.0/Corelib.dll \
   Pentagon/Pentagon/bin/Release/net6.0/Pentagon.dll \
+  artifacts/fonts/ubuntu-regular.sdfnt \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it
@@ -40,8 +41,6 @@ rm -rf out/build/loopback_dev out/build/test_image
 
 qemu-system-x86_64 \
   -drive if=virtio,file=out/build/test.hdd \
-  -display none \
-  -trace "virtio_notify_irqfd" \
   -monitor telnet:localhost:1235,server,nowait \
   -serial stdio \
   -machine q35 \

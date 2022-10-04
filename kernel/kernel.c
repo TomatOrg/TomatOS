@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "thread/waitable.h"
 #include "runtime/dotnet/internal_calls.h"
+#include "debug/term.h"
 
 #include <limine.h>
 
@@ -48,6 +49,7 @@ volatile struct limine_smp_request g_limine_smp = { .id = LIMINE_SMP_REQUEST };
 volatile struct limine_memmap_request g_limine_memmap = { .id = LIMINE_MEMMAP_REQUEST };
 volatile struct limine_rsdp_request g_limine_rsdp = { .id = LIMINE_RSDP_REQUEST };
 volatile struct limine_kernel_address_request g_limine_kernel_address = { .id = LIMINE_KERNEL_ADDRESS_REQUEST };
+volatile struct limine_framebuffer_request g_limine_framebuffer = { .id = LIMINE_FRAMEBUFFER_REQUEST };
 
 __attribute__((section(".limine_reqs"), used))
 static void* m_limine_reqs[] = {
@@ -58,6 +60,7 @@ static void* m_limine_reqs[] = {
     (void*)&g_limine_memmap,
     (void*)&g_limine_rsdp,
     (void*)&g_limine_kernel_address,
+    (void*)&g_limine_framebuffer,
     NULL,
 };
 
@@ -177,6 +180,11 @@ static struct limine_file m_corelib_file;
  */
 static struct limine_file m_kernel_file;
 
+/**
+ * The default font (do we really want this here?)
+ */
+struct limine_file g_default_font;
+
 // TODO: driver files
 
 /**
@@ -222,6 +230,8 @@ static void kernel_startup() {
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
     CHECK_AND_RETHROW(jit_type(kernel_asm->EntryPoint->DeclaringType));
 
+    term_disable();
+    
     // call it
     TRACE("Starting kernel!");
     method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
@@ -333,12 +343,19 @@ void _start(void) {
             m_corelib_file = *file;
         } else if (strcmp(file->path, "/boot/Pentagon.dll") == 0) {
             m_kernel_file = *file;
+        } else if (strcmp(file->path, "/boot/ubuntu-regular.sdfnt") == 0) {
+            // TODO: find by extension
+            g_default_font = *file;
         } else {
             // TODO: if in /drivers/ folder then load it
             // TODO: load a driver manifest for load order
         }
         TRACE("\t%s", file->path);
     }
+
+    CHECK(m_corelib_file.size != 0);
+    CHECK(m_kernel_file.size != 0);
+    CHECK(g_default_font.size != 0);
 
     TRACE("Corelib: %S", m_corelib_file.size);
     TRACE("Kernel: %S", m_kernel_file.size);

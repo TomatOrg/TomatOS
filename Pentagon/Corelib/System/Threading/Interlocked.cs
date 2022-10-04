@@ -69,13 +69,13 @@ public static class Interlocked
     public static extern int Decrement(ref int location);
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int Decrement(ref long location);
+    public static extern long Decrement(ref long location);
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int Decrement(ref uint location);
+    public static extern uint Decrement(ref uint location);
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int Decrement(ref ulong location);
+    public static extern ulong Decrement(ref ulong location);
 
     #endregion
     
@@ -111,13 +111,13 @@ public static class Interlocked
     public static extern int Increment(ref int location);
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int Increment(ref long location);
+    public static extern long Increment(ref long location);
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int Increment(ref uint location);
+    public static extern uint Increment(ref uint location);
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int Increment(ref ulong location);
+    public static extern ulong Increment(ref ulong location);
 
     #endregion
 
@@ -143,7 +143,7 @@ public static class Interlocked
     #region Read
     
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    public static extern int Read(ref long location);
+    public static extern long Read(ref long location);
     
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern ulong Read(ref ulong location);

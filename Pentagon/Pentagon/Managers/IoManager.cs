@@ -59,8 +59,8 @@ namespace Pentagon.Managers
 
     public class IoManager
     {
-        private static List<BlockInfo> BlockDevices = new();
-        private static List<IFileSystem> FSes = new();
+        private static List<BlockInfo> BlockDevices = new(16);
+        private static List<IFileSystem> FSes = new(16);
 
         public static async Task AddBlock(IBlock block)
         {

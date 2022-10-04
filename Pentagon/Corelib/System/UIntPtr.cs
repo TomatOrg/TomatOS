@@ -5,65 +5,94 @@ using System.Runtime.CompilerServices;
 
 namespace System;
 
-#pragma warning disable SA1121 // explicitly using type aliases instead of built-in types
+using nuint_t = System.UInt64;
 
 public readonly struct UIntPtr
 {
+    public static readonly UIntPtr Zero;
     
-    public static readonly UIntPtr Zero = new(0);
-    
-    public static int Size => Unsafe.SizeOf<nuint>();
-    
-    public static nuint MaxValue => (nuint)((1UL << Unsafe.SizeOf<nuint>() * 8) - 1);
-    public static nuint MinValue => 0;
-    
-#pragma warning disable 169
-    private readonly nuint _value;
-#pragma warning restore 169
-    
-    public UIntPtr(uint value)
+    public static int Size => sizeof(nuint_t);
+
+    public static UIntPtr MaxValue => new(nuint_t.MaxValue);
+
+    public static UIntPtr MinValue => new(nuint_t.MinValue);
+
+    private readonly unsafe void* _value;
+
+    public unsafe UIntPtr(uint value)
     {
-        _value = value;
+        _value = (void*)value;
     }
     
-    public UIntPtr(ulong value)
+    public unsafe UIntPtr(ulong value)
     {
-        _value = (nuint)value;
+        _value = (void*)value;
     }
     
     public unsafe UIntPtr(void* value)
     {
-        _value = (nuint)value;
+        _value = value;
     }
-
-    public override bool Equals(object obj)
+    
+    public override unsafe bool Equals(object obj)
     {
-        if (obj is UIntPtr value)
+        if (obj is UIntPtr ptr)
         {
-            return _value == value._value;
+            return _value == ptr._value;
         }
         return false;
     }
-
-    public override int GetHashCode()
+    
+    
+    public override unsafe int GetHashCode()
     {
-        ulong value = _value;
-        return value.GetHashCode();
+        var l = (ulong)_value;
+        return unchecked((int)l) ^ (int)(l >> 32);
+    }
+    
+    public unsafe void* ToPointer() => _value;
+
+    public unsafe uint ToUInt32()
+    {
+        return /*checked*/((uint)_value);
     }
 
-    // public uint ToUInt32()
-    // {
-    //     return checked((uint)_value);
-    // }
+    public unsafe ulong ToUInt64() => (ulong)_value;
 
-    public ulong ToUInt64()
-    {
-        return _value;
-    }
-
-    public unsafe void* ToPointer()
-    {
-        return (void*)_value;   
-    }
-
+    // public static explicit operator UIntPtr(uint value) =>
+    //     new(value);
+    //
+    // public static explicit operator UIntPtr(ulong value) =>
+    //     new(value);
+    //
+    // public static unsafe explicit operator UIntPtr(void* value) =>
+    //     new(value);
+    //
+    // public static unsafe explicit operator void*(UIntPtr value) =>
+    //     (void*)(nuint)value;
+    //
+    // public static explicit operator uint(UIntPtr value) =>
+    //     /*checked*/((uint)(nuint)value);
+    //
+    // public static explicit operator ulong(UIntPtr value) =>
+    //     (nuint)value;
+    //
+    // public static bool operator ==(UIntPtr value1, UIntPtr value2) =>
+    //     (nuint)value1 == (nuint)value2;
+    //
+    // public static bool operator !=(UIntPtr value1, UIntPtr value2) =>
+    //     (nuint)value1 != (nuint)value2;
+    //
+    // public static UIntPtr Add(UIntPtr pointer, int offset) =>
+    //     pointer + offset;
+    //
+    // public static UIntPtr operator +(UIntPtr pointer, int offset) =>
+    //     (nuint)pointer + (nuint)offset;
+    //
+    // public static UIntPtr Subtract(UIntPtr pointer, int offset) =>
+    //     pointer - offset;
+    //
+    // public static UIntPtr operator -(UIntPtr pointer, int offset) =>
+    //     (nuint)pointer - (nuint)offset;
+    
 }

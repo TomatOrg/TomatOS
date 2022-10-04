@@ -25,8 +25,8 @@ public static class Pci
     /// </summary>
     internal static void Scan(Acpi.Acpi acpi)
     {
-        var mcfg = acpi.FindTable(Acpi.Acpi.Mcfg.Signature);
-        var allocs = mcfg.AsSpan<Acpi.Acpi.Mcfg.McfgAllocation>(44, 1);
+        var mcfg = acpi.FindTable(Acpi.Mcfg.Signature);
+        var allocs = new Acpi.Mcfg(mcfg).Allocs.Span;
 
         // TODO: this ought to be the StartBus and EndBus values from allocs
         // but if the number of buses is near 256, it doesn't work on my (StaticSaga)'s machine

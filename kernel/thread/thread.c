@@ -54,6 +54,7 @@
 
 #include <stdatomic.h>
 #include "arch/intrin.h"
+#include "dotnet/jit/jit.h"
 
 
 //
@@ -454,6 +455,9 @@ void release_thread(thread_t* thread) {
         ASSERT(thread->status == THREAD_STATUS_DEAD);
 
         thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
+
+        // free the thread locals of this thread as we don't need them anymore
+        jit_free_thread_locals();
 
         // add to the list
         thread_list_push(free_threads, thread);
