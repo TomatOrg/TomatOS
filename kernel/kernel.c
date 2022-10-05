@@ -348,15 +348,12 @@ void _start(void) {
             // TODO: if in /drivers/ folder then load it
             // TODO: load a driver manifest for load order
         }
-        TRACE("\t%s", file->path);
+        TRACE("\t%s - %S", file->path, file->size);
     }
 
     CHECK(m_corelib_file.size != 0);
     CHECK(m_kernel_file.size != 0);
     CHECK(g_default_font.size != 0);
-
-    TRACE("Corelib: %S", m_corelib_file.size);
-    TRACE("Kernel: %S", m_kernel_file.size);
 
     TRACE("Kernel init done");
 
