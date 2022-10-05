@@ -7,6 +7,3 @@
 [submodule "lib/tinydotnet"]
 	path = lib/tinydotnet
 	url = git@github.com:Itay2805/tinydotnet.git
-[submodule "lib/buddy_alloc"]
-	path = lib/buddy_alloc
-	url = git@github.com:spaskalev/buddy_alloc.git

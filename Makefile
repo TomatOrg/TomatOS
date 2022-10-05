@@ -25,9 +25,9 @@ CFLAGS 		+= -Wno-psabi
 
 ifeq ($(DEBUG),1)
 	CFLAGS	+= -O0 -g
-#	CFLAGS	+= -fsanitize=undefined
-#	CFLAGS 	+= -fno-sanitize=alignment
-#	CFLAGS 	+= -fstack-protector-all
+	CFLAGS	+= -fsanitize=undefined
+	CFLAGS 	+= -fno-sanitize=alignment
+	CFLAGS 	+= -fstack-protector-all
 else
 	CFLAGS	+= -O3 -g -flto
 	CFLAGS 	+= -DNDEBUG
@@ -107,6 +107,11 @@ $(BIN_DIR)/pentagon.elf: $(OBJS) | Makefile
 	@echo LD $@
 	@mkdir -p $(@D)
 	@$(LD) $(LDFLAGS) -o $@ $^
+
+$(BUILD_DIR)/kernel/mem/buddy_alloc.c.o: kernel/mem/buddy_alloc.c
+	@echo CC $@
+	@mkdir -p $(@D)
+	@$(CC) $(CFLAGS) -mgeneral-regs-only -MMD -c $< -o $@
 
 # For zyndis we tell it we are posix just so it will be happy
 $(BUILD_DIR)/lib/zydis/%.c.o: lib/zydis/%.c

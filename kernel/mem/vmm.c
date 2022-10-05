@@ -102,6 +102,8 @@ err_t init_vmm() {
                 perms = MAP_WRITE;
             }
 
+            // TODO: for framebuffer map as write combining
+
             if (name != NULL) {
                 TRACE("\t%p-%p (%08p-%08p) [r%c-]: %s",
                       entry->base, entry->base + entry->length,
