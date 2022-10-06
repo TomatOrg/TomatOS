@@ -60,6 +60,11 @@ INTERRUPT static void* allocate_from_level(int level) {
     int block_at_level;
     list_entry_t* block = NULL;
 
+    // -1 means that we wanted to allocate too much memory
+    if (level == -1) {
+        return NULL;
+    }
+
     ASSERT(level < ARRAY_LEN(m_buddy_levels));
 
     // search from the level a block to allocate, and go

@@ -156,8 +156,6 @@ void mutex_lock(mutex_t* mutex) {
         return;
     }
 
-    TRACE("GOING TO SLOW LOCK");
-
     // Slow path (outlined so that the fast path can be inlined)
     mutex_lock_slow(mutex);
 }

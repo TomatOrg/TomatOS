@@ -24,7 +24,7 @@ CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
 ifeq ($(DEBUG),1)
-	CFLAGS	+= -Og -g
+	CFLAGS	+= -O0 -g
 	CFLAGS	+= -fsanitize=undefined
 	CFLAGS 	+= -fno-sanitize=alignment
 	CFLAGS 	+= -fstack-protector-all

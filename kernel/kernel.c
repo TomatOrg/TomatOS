@@ -51,6 +51,9 @@ volatile struct limine_rsdp_request g_limine_rsdp = { .id = LIMINE_RSDP_REQUEST 
 volatile struct limine_kernel_address_request g_limine_kernel_address = { .id = LIMINE_KERNEL_ADDRESS_REQUEST };
 volatile struct limine_framebuffer_request g_limine_framebuffer = { .id = LIMINE_FRAMEBUFFER_REQUEST };
 
+struct limine_framebuffer* g_framebuffers = NULL;
+int g_framebuffers_count = 0;
+
 __attribute__((section(".limine_reqs"), used))
 static void* m_limine_reqs[] = {
     (void*)&g_limine_bootloader_info,
@@ -207,8 +210,27 @@ static void kernel_startup() {
         __asm__ ("pause");
     }
 
-    // reclaim bootloader memory
+    // copy the framebuffer information
+    if (g_limine_framebuffer.response != NULL) {
+        g_framebuffers_count = (int)g_limine_framebuffer.response->framebuffer_count;
+        if (g_framebuffers_count > 0) {
+            g_framebuffers = palloc(g_framebuffers_count);
+            for (int i = 0; i < g_framebuffers_count; i++) {
+                g_framebuffers[i] = *g_limine_framebuffer.response->framebuffers[i];
+            }
+        }
+    }
+
+    // reclaim bootloader memory and make sure all the boot information is zeroed
     CHECK_AND_RETHROW(palloc_reclaim());
+    g_limine_bootloader_info.response = NULL;
+    g_limine_kernel_file.response = NULL;
+    g_limine_module.response = NULL;
+    g_limine_smp.response = NULL;
+    g_limine_memmap.response = NULL;
+    g_limine_rsdp.response = NULL;
+    g_limine_kernel_address.response = NULL;
+    g_limine_framebuffer.response = NULL;
 
     // uncomment if you want to debug some stuff and
     // make sure that the kernel passes self-tests
@@ -228,13 +250,19 @@ static void kernel_startup() {
     // load the kernel assembly
     System_Reflection_Assembly kernel_asm = NULL;
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
-    CHECK_AND_RETHROW(jit_method(kernel_asm->EntryPoint));
+
+    // get the method and wait until its done jitting
+    waitable_t* done;
+    CHECK_AND_RETHROW(jit_method(kernel_asm->EntryPoint, &done));
+    CHECK(waitable_wait(done, true) == WAITABLE_SUCCESS);
 
     // call it
     TRACE("Starting kernel!");
     method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
     method_result_t result = entry_point();
-    CHECK(result.exception == NULL, "Got exception: \"%U\" (of type `%U`)", result.exception->Message, OBJECT_TYPE(result.exception)->Name);
+    CHECK(result.exception == NULL,
+          "Got exception: \"%U\" (of type `%U`)",
+          result.exception->Message, OBJECT_TYPE(result.exception)->Name);
     TRACE("Kernel output: %d", result.value);
 
 cleanup:
