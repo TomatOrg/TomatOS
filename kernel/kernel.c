@@ -131,9 +131,10 @@ static void per_cpu_start(struct limine_smp_info* info) {
     enable_cpu_features();
     init_gdt();
     init_idt();
+    init_tss((void*)info->extra_argument);
+
     init_vmm_per_cpu();
     CHECK_AND_RETHROW(init_cpu_locals());
-    CHECK_AND_RETHROW(init_tss());
     CHECK_AND_RETHROW(init_apic());
 
     // make sure this is valid
@@ -230,9 +231,6 @@ static void kernel_startup() {
     CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
     CHECK_AND_RETHROW(jit_type(kernel_asm->EntryPoint->DeclaringType));
 
-    // disable the term since the C# stuff will do it now
-    term_disable();
-
     // call it
     TRACE("Starting kernel!");
     method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
@@ -244,6 +242,8 @@ cleanup:
     ASSERT(!IS_ERROR(err));
     TRACE("Kernel initialization finished!");
 }
+
+uint8_t bsp_tss[TSS_ALLOC_SIZE];
 
 void _start(void) {
     err_t err = NO_ERROR;
@@ -285,7 +285,7 @@ void _start(void) {
     CHECK_AND_RETHROW(init_vmm());
     CHECK_AND_RETHROW(init_palloc());
     CHECK_AND_RETHROW(init_cpu_locals());
-    CHECK_AND_RETHROW(init_tss());
+    init_tss(bsp_tss);
     vmm_switch_allocator();
     CHECK_AND_RETHROW(init_malloc());
 
@@ -311,6 +311,8 @@ void _start(void) {
 
     // now actually do smp startup
     TRACE("SMP Startup");
+    uint64_t tss_memory = (uint64_t)palloc(TSS_ALLOC_SIZE * g_limine_smp.response->cpu_count);
+
     for (int i = 0; i < g_limine_smp.response->cpu_count; i++) {
 
         // right now we assume that the apic id is always less than the cpu count
@@ -321,6 +323,8 @@ void _start(void) {
             CHECK(g_limine_smp.response->bsp_lapic_id == get_apic_id());
             continue;
         }
+
+        g_limine_smp.response->cpus[i]->extra_argument = tss_memory + i * TSS_ALLOC_SIZE;
 
         // go to it
         g_limine_smp.response->cpus[i]->goto_address = per_cpu_start;

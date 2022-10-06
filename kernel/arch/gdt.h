@@ -2,6 +2,8 @@
 
 #include "util/except.h"
 
+#define TSS_ALLOC_SIZE (104 + SIZE_8KB * 4)
+
 void init_gdt();
 
-err_t init_tss();
+void init_tss(void* tss_memory);
