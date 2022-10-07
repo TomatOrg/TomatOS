@@ -1,23 +1,7 @@
 #pragma once
 
+#include "acpi.h"
 #include <util/defs.h>
-
-typedef struct acpi_common_header {
-    uint32_t signature;
-    uint32_t length;
-} PACKED acpi_common_header_t;
-
-typedef struct acpi_descriptor_header {
-    uint32_t signature;
-    uint32_t length;
-    uint8_t revision;
-    uint8_t checksum;
-    uint8_t oem_id[6];
-    uint64_t oem_table_id;
-    uint32_t oem_revision;
-    uint32_t creator_id;
-    uint32_t creator_revision;
-} PACKED acpi_descriptor_header_t;
 
 #define ACPI_1_0_RSDP_SIGNATURE  SIGNATURE_64('R', 'S', 'D', ' ', 'P', 'T', 'R', ' ')
 
@@ -32,8 +16,8 @@ typedef struct acpi_1_0_rsdp {
 #define ACPI_1_0_RSDT_SIGNATURE  SIGNATURE_32('R', 'S', 'D', 'T')
 #define ACPI_1_0_RSDT_REVISION  0x01
 
-#define EFI_ACPI_1_0_FADT_SIGNATURE  SIGNATURE_32('F', 'A', 'C', 'P')
-#define EFI_ACPI_1_0_FADT_REVISION  0x01
+#define ACPI_1_0_FADT_SIGNATURE  SIGNATURE_32('F', 'A', 'C', 'P')
+#define ACPI_1_0_FADT_REVISION  0x01
 
 typedef struct acpi_1_0_fadt {
     acpi_descriptor_header_t header;
