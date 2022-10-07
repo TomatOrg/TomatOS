@@ -84,14 +84,11 @@ public class VirtioBlock : VirtioPciDevice, IBlock
         {
             // get
             var head = _queueInfo.Used.Ring.Span[_queueInfo.LastSeenUsed % _queueInfo.Size].Id;
+            var completion = _queueInfo.Completions[head];
 
-            // process
-            var t = new Thread(_queueInfo.Completions[head].SetResult);
-            t.Start();
-
-            // free
-            // NOTE: this also increases LastSeenUsed
             _queueInfo.FreeChain(head);
+            
+            completion.SetResult();
         }
     }
 

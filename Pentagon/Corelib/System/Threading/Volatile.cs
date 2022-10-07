@@ -10,6 +10,10 @@ namespace System.Threading
 
         public static void Write(ref short location, short value) => location = value;
 
+        public static ushort Read(ref ushort location) => location;
+
+        public static void Write(ref ushort location, ushort value) => location = value;
+
         public static int Read(ref int location) => location;
 
         public static void Write(ref int location, int value) => location = value;

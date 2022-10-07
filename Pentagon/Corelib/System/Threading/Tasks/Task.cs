@@ -97,6 +97,15 @@ namespace System.Threading.Tasks
             }
         }
 
+        internal void SpinUntilCompleted()
+        {
+            // Spin wait until the completion is finalized by another thread.
+            while (!IsCompleted)
+            {
+                // TODO: no busyloop
+            }
+        }
+
         internal Task()
         {
             m_stateFlags = (int)TaskStateFlags.WaitingForActivation | (int)InternalTaskOptions.PromiseTask;
