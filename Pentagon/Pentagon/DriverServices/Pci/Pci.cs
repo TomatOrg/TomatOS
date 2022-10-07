@@ -134,6 +134,7 @@ public struct PciConfigHeader
     
     public enum CommandBits : ushort
     {
-        INTxDisable = (ushort)(1u << 10)
+        INTxDisable = (ushort)(1u << 10),
+        BusMaster = (ushort)(1u << 2)
     }
 }

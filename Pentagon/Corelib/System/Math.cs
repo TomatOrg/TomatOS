@@ -206,10 +206,9 @@ public static class Math
     {
         return val1 < val2 ? val1 : val2;
     }
-
     public static long Min(long val1, long val2)
     {
-        return (val1 <= val2) ? val1 : val2;
+        return val1 < val2 ? val1 : val2;
     }
     
     public static nint Min(nint val1, nint val2)

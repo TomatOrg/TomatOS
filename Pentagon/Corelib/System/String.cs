@@ -14,7 +14,7 @@ namespace System;
 // instance and return the result as a new string.  As with arrays, character
 // positions (indices) are zero-based.
 [StructLayout(LayoutKind.Sequential)]
-public class String : IEnumerable<char>
+public class String : IEnumerable<char>, IEquatable<string>
 {
     
     public static readonly string Empty = "";
@@ -33,7 +33,17 @@ public class String : IEnumerable<char>
             return Unsafe.Add(ref _firstChar, index);
         }
     }
-    
+
+    public bool Equals(string other)
+    {
+        if (other._length != _length) return false;
+        for (int i = 0; i < _length; i++)
+        {
+            if (this[i] != other[i]) return false;
+        }
+        return true;
+    }
+
     internal ref char GetRawStringData() => ref _firstChar;
 
     private String(int length)

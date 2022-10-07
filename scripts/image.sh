@@ -28,9 +28,9 @@ sudo cp -rv limine/limine.sys out/build/test_image/boot/
 sudo cp -rv \
   out/bin/pentagon.elf \
   test/limine.cfg \
+  artifacts/fonts/ubuntu-regular.sdfnt \
   Pentagon/Corelib/bin/Release/net6.0/Corelib.dll \
   Pentagon/Pentagon/bin/Release/net6.0/Pentagon.dll \
-  artifacts/fonts/ubuntu-regular.sdfnt \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it
@@ -41,10 +41,9 @@ rm -rf out/build/loopback_dev out/build/test_image
 
 qemu-system-x86_64 \
   -drive if=virtio,file=out/build/test.hdd \
-  -monitor telnet:localhost:1235,server,nowait \
-  -serial stdio \
+  -serial mon:stdio \
   -machine q35 \
-  --enable-kvm \
+  -accel whpx \
   -cpu Nehalem,+invtsc,+tsc-deadline \
   -smp 4 \
   -m 2G \

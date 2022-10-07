@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 
 namespace System.Diagnostics
 {
-    internal class Debug
+    public class Debug
     {
         public static void Assert(bool b, string s)
         {

@@ -9,7 +9,7 @@
 #include <irq/irq.h>
 #include <arch/intrin.h>
 
-// Uncomment this if you need to debug MamMemory-related stuff
+// Uncomment this if you need to debug MapMemory-related stuff
 #define MAPMEMORY_TRACE
 
 typedef struct System_Memory {

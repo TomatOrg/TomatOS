@@ -55,6 +55,11 @@ public class Typeface
         Default = new Typeface(data);
     }
     
+    public static void Load(Memory<byte> data)
+    {
+        Default = new Typeface(data);
+    }
+    
     internal TypefaceAtlas Atlas { get; }
     internal TypefaceMetrics Metrics { get; }
     internal Memory<TypefaceGlyph> Glyphs { get; }
