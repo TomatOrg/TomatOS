@@ -21,6 +21,14 @@ STATIC_ASSERT(sizeof(msr_efer_t) == sizeof(uint64_t));
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define MSR_IA32_PAT  0x00000277
+typedef enum msr_pat_type {
+    PAT_TYPE_UNCACHEABLE = 0,
+    PAT_TYPE_WRITE_COMBINING = 1,
+    PAT_TYPE_WRITE_THROUGH = 4,
+    PAT_TYPE_WRITE_PROTECTED = 5,
+    PAT_TYPE_WRITE_BACK = 6,
+    PAT_TYPE_UNCACHED = 7,
+} msr_pat_type_t;
 
 typedef union msr_pat {
     struct {

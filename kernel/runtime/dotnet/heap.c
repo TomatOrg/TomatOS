@@ -236,7 +236,7 @@ System_Object heap_alloc(size_t size, int color) {
 
                         // setup the page table entry
                         PAGE_TABLE_PML2[pml2i + i] = (page_entry_t){
-                            .huge_page = 1,
+                            .huge_page_or_pat = 1,
                             .writeable = 1,
                             .present = 1,
                             .frame = DIRECT_TO_PHYS(page) >> 12

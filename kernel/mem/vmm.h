@@ -8,11 +8,11 @@ typedef struct page_entry {
     uint64_t present : 1;
     uint64_t writeable : 1;
     uint64_t user_accessible : 1;
-    uint64_t write_through : 1;
-    uint64_t no_cache : 1;
+    uint64_t pwt : 1;
+    uint64_t pcd : 1;
     uint64_t accessed : 1;
     uint64_t dirty : 1;
-    uint64_t huge_page : 1;
+    uint64_t huge_page_or_pat : 1;
     uint64_t global : 1;
     uint64_t available_low : 3;
     uint64_t frame : 40;
@@ -20,6 +20,18 @@ typedef struct page_entry {
     uint64_t no_execute : 1;
 } PACKED page_entry_t;
 STATIC_ASSERT(sizeof(page_entry_t) == sizeof(uint64_t));
+
+
+typedef enum caching_mode {
+    CACHE_WRITE_BACK = 0,
+    CACHE_WRITE_THROUGH,
+    CACHE_UNCACHED,
+    CACHE_UNCACHEABLE,
+    CACHE_WRITE_BACK_,
+    CACHE_WRITE_THROUGH_,
+    CACHE_UNCACHED_,
+    CACHE_WRITE_COMBINING,
+} caching_mode_t;
 
 typedef signed long long pml_index_t;
 
@@ -92,7 +104,12 @@ typedef enum map_perm {
      * While mapping the physical memory remove it from the direct
      * memory map.
      */
-    MAP_UNMAP_DIRECT = (1 << 2)
+    MAP_UNMAP_DIRECT = (1 << 2),
+
+    /*
+     * Map the page as write-combining.
+     */
+    MAP_WC = (1 << 3),
 } map_perm_t;
 
 /**

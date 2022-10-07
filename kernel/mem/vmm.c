@@ -94,12 +94,16 @@ err_t init_vmm() {
             map_perm_t perms = 0;
             if (
                 type == LIMINE_MEMMAP_USABLE ||
-                type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE ||
-                type == LIMINE_MEMMAP_FRAMEBUFFER
+                type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE
             ) {
                 // these pages we are going to map as rw, the rest we are going to map
                 // as read only
                 perms = MAP_WRITE;
+            }
+            
+            if (type == LIMINE_MEMMAP_FRAMEBUFFER) {
+                // Map the framebuffer as write-combining, to maximize burst transactions
+                perms = MAP_WRITE | MAP_WC;   
             }
 
             if (name != NULL) {
@@ -190,6 +194,18 @@ void init_vmm_per_cpu() {
     efer.SCE = 0;
     __writemsr(MSR_IA32_EFER, efer.packed);
 
+    // set the PAT so we can use write-combinining 
+    msr_pat_t pat = { .packed = 0 };
+    pat.pa0 = PAT_TYPE_WRITE_BACK;
+    pat.pa1 = PAT_TYPE_WRITE_THROUGH;
+    pat.pa2 = PAT_TYPE_UNCACHED;
+    pat.pa3 = PAT_TYPE_UNCACHEABLE;
+    pat.pa4 = PAT_TYPE_WRITE_BACK;
+    pat.pa5 = PAT_TYPE_WRITE_THROUGH;
+    pat.pa6 = PAT_TYPE_UNCACHED;
+    pat.pa7 = PAT_TYPE_WRITE_COMBINING; // <--- here is our change, PAT7 = WC
+    __writemsr(MSR_IA32_PAT, pat.packed);
+
     // set the phys table for the current CPU
     __writecr3(m_pml4_pa);
 }
@@ -274,6 +290,7 @@ static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms)
     CHECK(((uintptr_t)va % 4096) == 0);
     CHECK(((uintptr_t)pa % 4096) == 0);
 
+    uint32_t cachingmode = (perms & MAP_WC) ? CACHE_WRITE_BACK : CACHE_WRITE_COMBINING;
     for (uintptr_t cva = (uintptr_t)va; cva < (uintptr_t)va + page_count * PAGE_SIZE; cva += PAGE_SIZE, pa += PAGE_SIZE) {
         // calculate the indexes of each of these
         size_t pml4i = (cva >> 39) & 0x1FFull;
@@ -292,6 +309,9 @@ static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms)
             .frame = pa >> 12,
             .writeable = (perms & MAP_WRITE) ? 1 : 0,
             .no_execute = (perms & MAP_EXEC) ? 0 : 1,
+            .huge_page_or_pat = (cachingmode >> 2) & 1,
+            .pcd              = (cachingmode >> 1) & 1,
+            .pwt              = (cachingmode >> 0) & 1
         };
 
         // invalidate the new mapped address
