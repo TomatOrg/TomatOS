@@ -5,9 +5,6 @@ namespace Pentagon.Gui;
 
 public abstract class GuiEvent
 {
-
-    public abstract int EventHandlerId { get; }
-
 }
 
 /// <summary>

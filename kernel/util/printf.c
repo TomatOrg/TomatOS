@@ -934,7 +934,12 @@ static NO_SANITIZE int _vsnprintf(out_fct_type out, char* buffer, const size_t m
             }
 
             while ((*p != L'\0') && (!(flags & FLAGS_PRECISION) || precision--)) {
-                out((char)*(p++), buffer, idx++, maxlen);
+              System_Char cp = *p++; // TODO: this assumes 1 UTF16 char = 1 codepoint
+              if (cp < 0x80) out((char)cp, buffer, idx++, maxlen);
+              else if (cp < 0x800) {
+                out((char)((cp >> 6) | 0xC0), buffer, idx++, maxlen);
+                out((char)((cp & 0x3F) | 0x80), buffer, idx++, maxlen);
+              } 
             }
 
             if (flags & FLAGS_LEFT) {
