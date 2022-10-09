@@ -3,7 +3,8 @@ namespace System;
 public class InvalidOperationException : SystemException
 {
 
-    internal const string EnumFailedVersion = "Collection was modified; enumeration operation may not execute.";
+    internal const string CollectionCorrupted = "A prior operation on this collection was interrupted by an exception. Collection's state is no longer trusted.";
+    internal const string ReadOnly = "Instance is read-only.";
     
     public InvalidOperationException()
         : base("Operation is not valid due to the current state of the object.")

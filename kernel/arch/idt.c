@@ -343,9 +343,9 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     char buffer[256] = { 0 };
     debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
     ERROR("Code: %s", buffer);
-    if (vmm_is_mapped(ctx->rip)) {
-        debug_disasm_at((void*)ctx->rip, 1);
-    }
+//    if (vmm_is_mapped(ctx->rip)) {
+//        debug_disasm_at((void*)ctx->rip, 1);
+//    }
 
     ERROR("");
 

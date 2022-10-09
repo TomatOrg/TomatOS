@@ -12,6 +12,7 @@ namespace System;
 /// ReadOnlySpan represents a contiguous region of arbitrary memory. Unlike arrays, it can point to either managed
 /// or native memory, or to memory allocated on the stack. It is type- and memory-safe.
 /// </summary>
+[StructLayout(LayoutKind.Sequential)]
 public readonly ref struct ReadOnlySpan<T>
 {
     /// <summary>A byref or a native ptr.</summary>
@@ -303,18 +304,18 @@ public readonly ref struct ReadOnlySpan<T>
         left._length == right._length &&
         Unsafe.AreSame<T>(ref left._pointer.Value, ref right._pointer.Value);
 
-    // /// <summary>
-    // /// For <see cref="ReadOnlySpan{Char}"/>, returns a new instance of string that represents the characters pointed to by the span.
-    // /// Otherwise, returns a <see cref="string"/> with the name of the type and the number of elements.
-    // /// </summary>
-    // public override string ToString()
-    // {
-    //     if (typeof(T) == typeof(char))
-    //     {
-    //         return new string(new ReadOnlySpan<char>(ref Unsafe.As<T, char>(ref _pointer.Value), _length));
-    //     }
-    //     return $"System.ReadOnlySpan<{typeof(T).Name}>[{_length}]";
-    // }
+    /// <summary>
+    /// For <see cref="ReadOnlySpan{Char}"/>, returns a new instance of string that represents the characters pointed to by the span.
+    /// Otherwise, returns a <see cref="string"/> with the name of the type and the number of elements.
+    /// </summary>
+    public override string ToString()
+    {
+        if (typeof(T) == typeof(char))
+        {
+            return new string(new ReadOnlySpan<char>(ref Unsafe.As<T, char>(ref _pointer.Value), _length));
+        }
+        return $"System.ReadOnlySpan<{typeof(T).Name}>[{_length}]";
+    }
     
     /// <summary>
     /// Forms a slice out of the given read-only span, beginning at 'start'.

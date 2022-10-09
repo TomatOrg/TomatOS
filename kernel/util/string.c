@@ -27,7 +27,16 @@ void* memset(void* dest, int val, size_t n) {
 void* memmove(void* dest, const void* src, size_t len) {
     char *d = dest;
     const char *s = src;
-    if (d < s) {
+
+    // nothing to do for length of zero
+    if (len == 0) {
+        return dest;
+    }
+
+    // we can call normal memcpy only if we are not overlapping or the destination
+    // is below the source
+    bool overlaps = (d <= s && d + len > s) || (s <= d && s + len > d);
+    if (d < s || !overlaps) {
         memcpy(dest, src, len);
     } else {
         const char* lasts = s + (len - 1);

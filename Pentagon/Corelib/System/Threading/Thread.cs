@@ -10,6 +10,10 @@ public delegate void ThreadStart();
 public sealed class Thread
 {
 
+    // itay: @StaticSaga choose a value for OptimalMaxSpinWaitsPerSpinIteration 
+    // StaticSaga: 1000
+    public static int OptimalMaxSpinWaitsPerSpinIteration => 1000;
+    
     public static extern Thread CurrentThread
     {
         [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
@@ -106,6 +110,9 @@ public sealed class Thread
             X86Base.Pause();
         }
     }
+
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
+    public static extern int GetCurrentProcessorId();
 
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     public static extern bool Yield();

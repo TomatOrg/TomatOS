@@ -214,4 +214,25 @@ public static unsafe class Unsafe
         return (nint)AsPointer(ref target) - (nint)AsPointer(ref origin);
     }
     
+    /// <summary>
+    /// Returns a by-ref to type <typeparamref name="T"/> that is a null reference.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ref T NullRef<T>()
+    {
+        return ref AsRef<T>(null);
+    }
+    
+    /// <summary>
+    /// Returns if a given by-ref to type <typeparamref name="T"/> is a null reference.
+    /// </summary>
+    /// <remarks>
+    /// This check is conceptually similar to "(void*)(&amp;source) == nullptr".
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsNullRef<T>(ref T source)
+    {
+        return AsPointer(ref source) == null;
+    }
+    
 }

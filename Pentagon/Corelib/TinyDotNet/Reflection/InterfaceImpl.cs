@@ -8,7 +8,7 @@ namespace TinyDotNet.Reflection;
 internal class InterfaceImpl
 {
 
-    private Type _interfaceType;
-    private int _vtableOffset;
+    internal Type _interfaceType;
+    internal int _vtableOffset;
 
 }

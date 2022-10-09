@@ -47,7 +47,9 @@ internal class PlainFramebuffer : IFramebuffer
             var bytesPerLine = 4 * rectangle.Width;
 
             for (
-                var srcY = 0; srcY < rectangle.Height; srcY++,
+                var srcY = 0; 
+                srcY < rectangle.Height; 
+                srcY++,
                 src = src.Slice(bytesPerLine), 
                 dst = dst.Slice(Width)
             )

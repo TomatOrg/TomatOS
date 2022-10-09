@@ -53,9 +53,12 @@ namespace System
 
         public virtual int GetHashCode()
         {
-            return 0;
+            return RuntimeHelpers.GetHashCode(this);
         }
 
+        [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Native)]
+        protected extern object MemberwiseClone();
+        
         public static bool ReferenceEquals(object objA, object objB)
         {
             return objA == objB;

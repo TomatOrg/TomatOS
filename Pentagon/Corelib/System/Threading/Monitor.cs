@@ -41,6 +41,10 @@ public static class Monitor
         }
     }
 
+    
+    [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
+    public static extern bool IsEntered(object obj);
+
     public static void Pulse(object obj)
     {
         if (obj == null)

@@ -55,6 +55,7 @@
 #include <stdatomic.h>
 #include "arch/intrin.h"
 #include "dotnet/jit/jit.h"
+#include "arch/gdt.h"
 
 
 //
@@ -422,7 +423,7 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
 
     // finally setup a proper floating point context (according to sys-v abi)
     thread->save_state.fx_save_state.fcw = BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5 | BIT8 | BIT9;
-    thread->save_state.fx_save_state.mxcsr = BIT7 | BIT8 | BIT9 | BIT10 | BIT11 | BIT12;
+    thread->save_state.fx_save_state.mxcsr = 0b1111110000000;
 
     // set the state as waiting
     cas_thread_state(thread, THREAD_STATUS_DEAD, THREAD_STATUS_WAITING);

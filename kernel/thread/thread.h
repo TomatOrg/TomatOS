@@ -60,14 +60,11 @@ typedef enum thread_status {
 typedef struct thread_fx_save_state {
     uint16_t fcw;
     uint16_t fsw;
-    uint16_t ftw;
+    uint8_t ftw;
+    uint8_t _reserved0;
     uint16_t opcode;
-    uint32_t eip;
-    uint16_t cs;
-    uint16_t _reserved1;
-    uint32_t dataoffset;
-    uint16_t ds;
-    uint8_t _reserved2[2];
+    uint64_t fip;
+    uint64_t fdp;
     uint32_t mxcsr;
     uint32_t mxcsr_mask;
     uint8_t st0mm0[10];
@@ -102,7 +99,8 @@ typedef struct thread_fx_save_state {
     uint8_t xmm13[16];
     uint8_t xmm14[16];
     uint8_t xmm15[16];
-    uint8_t _reserved11[6 * 16];
+    uint8_t _reserved11[3 * 16];
+    uint8_t available[3 * 16];
 } PACKED thread_fx_save_state_t;
 STATIC_ASSERT(sizeof(thread_fx_save_state_t) == 512);
 

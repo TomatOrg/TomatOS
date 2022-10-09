@@ -213,6 +213,18 @@ public readonly ref struct Span<T>
             get => ref _span[_index];
         }
     }
+    
+    /// <summary>
+    /// Returns a reference to the 0th element of the Span. If the Span is empty, returns null reference.
+    /// It can be used for pinning and is required to support the use of span within a fixed statement.
+    /// </summary>
+    internal ref T GetPinnableReference()
+    {
+        // Ensure that the native code has just one forward branch that is predicted-not-taken.
+        ref T ret = ref Unsafe.NullRef<T>();
+        if (_length != 0) ret = ref _pointer.Value;
+        return ref ret;
+    }
 
     /// <summary>
     /// Clears the contents of this span.
@@ -352,6 +364,19 @@ public readonly ref struct Span<T>
         var destination = new T[_length];
         CopyTo(destination);
         return destination;
+    }
+
+    /// <summary>
+    /// For <see cref="Span{Char}"/>, returns a new instance of string that represents the characters pointed to by the span.
+    /// Otherwise, returns a <see cref="string"/> with the name of the type and the number of elements.
+    /// </summary>
+    public override string ToString()
+    {
+        if (typeof(T) == typeof(char))
+        {
+            return new string(new ReadOnlySpan<char>(ref Unsafe.As<T, char>(ref _pointer.Value), _length));
+        }
+        return $"System.Span<{typeof(T).Name}>[{_length}]";
     }
 
 }

@@ -172,12 +172,12 @@ static method_result_t Pentagon_AllocateIrq(int count, int type, void* addr) {
 
 static method_result_t Pentagon_GetNextFramebuffer(int* index, uint64_t* addr, int* width, int* height, int* pitch) {
     while (true) {
-        if (*index >= g_limine_framebuffer.response->framebuffer_count) {
+        if (*index >= g_framebuffers_count) {
             return (method_result_t){ .exception = NULL, .value = false };
         }
 
         // get it and increment
-        struct limine_framebuffer* framebuffer = g_limine_framebuffer.response->framebuffers[*index];
+        struct limine_framebuffer* framebuffer = &g_framebuffers[*index];
         (*index)++;
 
         // check it is valid for us

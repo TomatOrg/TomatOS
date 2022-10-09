@@ -14,9 +14,15 @@ typedef struct page_entry {
     uint64_t dirty : 1;
     uint64_t huge_page_or_pat : 1;
     uint64_t global : 1;
-    uint64_t available_low : 3;
+    uint64_t _available2 : 3;
     uint64_t frame : 40;
-    uint64_t available : 11;
+
+    // -- available : 11 --
+    // see the phys.c for more info
+    uint64_t buddy_level : 4;
+    uint64_t buddy_alloc : 1;
+    uint64_t _available1 : 6;
+
     uint64_t no_execute : 1;
 } PACKED page_entry_t;
 STATIC_ASSERT(sizeof(page_entry_t) == sizeof(uint64_t));
