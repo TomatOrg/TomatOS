@@ -247,7 +247,7 @@ static uintptr_t vmm_alloc_page() {
     return new_phys;
 }
 
-static bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
+bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
     if (!pml[index].present) {
         uintptr_t frame = vmm_alloc_page();
         if (frame == INVALID_PHYS_ADDR) {
@@ -309,7 +309,7 @@ cleanup:
     return err;
 }
 
-static err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
+err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
     irq_spinlock_lock(&m_vmm_spinlock);

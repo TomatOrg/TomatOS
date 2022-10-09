@@ -129,7 +129,7 @@ static inline INTRIN_ATTR void _fxrstor64(void* p) {
     __builtin_ia32_fxrstor64(p);
 }
 
-#define _rdtsc() __rdtsc()
+#define _rdtsc() __builtin_ia32_rdtsc()
 
 static inline __attribute__((always_inline, artificial)) void _mm_lfence(void) {
     __builtin_ia32_lfence();

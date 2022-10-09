@@ -15,14 +15,18 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // General purpose definitions
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
+#ifdef __clang__
 #define ALIGN_UP(x, align) __builtin_align_up(x, align)
 #define ALIGN_DOWN(x, align) __builtin_align_down(x, align)
-
+#else
+#define ALIGN_UP(x, align)   ((align) + ((((uintptr_t)(x)) - 1) & ~((align) - 1)))      
+#define ALIGN_DOWN(x, align) (          ((((uintptr_t)(x))    ) & ~((align) - 1)))
+#endif
 #define SIGN_EXTEND(x, size) \
     ({ \
         struct { signed long long value : size; } s; \
         s.value = x; \
+        s.value; \
     })
 
 #define MIN(a, b) \

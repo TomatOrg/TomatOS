@@ -2,6 +2,7 @@
 #include "thread/waitable.h"
 #include "runtime/dotnet/internal_calls.h"
 #include "mem/tlsf.h"
+#include "debug/term.h"
 
 #include <limine.h>
 
