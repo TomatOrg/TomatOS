@@ -57,8 +57,6 @@ public class App
     }
 
     int shift = 0, altgr = 0;
-
-
     private void EventHandler(GuiEvent e)
     {
         if (e is KeyEvent k)
@@ -75,6 +73,10 @@ public class App
             char[] chars = new char[1];
             chars[0] = (char)c;
             Log.LogString(new string(chars));
+        }
+        else if (e is RelMouseEvent me)
+        {
+            if (me.leftPressed) Log.LogString("Click!");
         }
     }
     
