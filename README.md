@@ -35,3 +35,9 @@ We are using our custom dotnet runtime called [TinyDotNet](https://github.com/It
     any way to get a reference to it 
 - Each assembly has one global instance, for GUI apps the window serveris going to simply notify you that you should 
   open a new window/application instance.
+
+# Licenses
+- The Native Kernel is published under GPLv2
+- The Managed Kernel is published under LGPLv3
+- The Corelib is published under MIT
+- The .NET Runtime is published under MIT  
