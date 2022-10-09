@@ -264,6 +264,7 @@ public class LocalGuiServer : GuiServer
 
         // blit the backing to the framebuffer
         _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
+        _framebuffer.Flush();
     }
 
 }
