@@ -27,9 +27,7 @@ public class LocalGuiServer : GuiServer
         _height = framebuffer.Height;
      
         // allocate the framebuffer
-        var size = framebuffer.Width * framebuffer.Height * 4;
-        var pageCount = KernelUtils.DivideUp(size, MemoryServices.PageSize);
-        var memory = MemoryServices.AllocatePages(pageCount).Memory;
+        var memory = new byte[framebuffer.Width * framebuffer.Height * 4].AsMemory();
         
         // set the backing 
         _framebuffer.Backing = memory;
