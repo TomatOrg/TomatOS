@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Numerics;
 using Pentagon.Drivers;
 using Pentagon.Drivers.Graphics.Plain;
 using Pentagon.DriverServices;
@@ -51,13 +54,13 @@ public class Kernel
         
         // load the default font 
         Typeface.Load();
-
+        
         // Create a plain graphics device (from a framebuffer) and 
         IGraphicsDevice dev = new PlainGraphicsDevice();
         var output = dev.Outputs[0];
         var framebuffer = dev.CreateFramebuffer(output.Width, output.Height);
         output.SetFramebuffer(framebuffer, new System.Drawing.Rectangle(0, 0, output.Width, output.Height));
-
+        
         // create the app and a local renderer to render the app
         var renderer = new LocalGuiServer(framebuffer);
         

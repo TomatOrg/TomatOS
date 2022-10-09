@@ -6,7 +6,7 @@ CC 			:= ccache clang-13
 LD			:= ld.lld
 
 # Build in debug or release mode
-DEBUG		:= 1
+DEBUG		:= 0
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin

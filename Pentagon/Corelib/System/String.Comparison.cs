@@ -766,34 +766,34 @@ namespace System
         // or are otherwise mitigated
         internal unsafe int GetNonRandomizedHashCode()
         {
-            ref char src = ref _firstChar;
-
-            Debug.Assert(Unsafe.Add(ref src, this.Length) == '\0', "src[this.Length] == '\\0'");
-            Debug.Assert(((int)src) % 4 == 0, "Managed string should start at 4 bytes boundary");
-
-            uint hash1 = (5381 << 16) + 5381;
-            uint hash2 = hash1;
-
-            ref uint ptr = ref Unsafe.As<char, uint>(ref src);
-            int length = this.Length;
-
-            while (length > 2)
+            fixed (char* src = &_firstChar)
             {
-                length -= 4;
-                // Where length is 4n-1 (e.g. 3,7,11,15,19) this additionally consumes the null terminator
-                hash1 = (BitOperations.RotateLeft(hash1, 5) + hash1) ^ ptr;
-                hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ Unsafe.Add(ref ptr, 1);
+                Debug.Assert(src[this.Length] == '\0', "src[this.Length] == '\\0'");
+                Debug.Assert(((int)src) % 4 == 0, "Managed string should start at 4 bytes boundary");
 
-                ptr = ref Unsafe.Add(ref ptr, 2);
+                uint hash1 = (5381 << 16) + 5381;
+                uint hash2 = hash1;
+
+                uint* ptr = (uint*)src;
+                int length = this.Length;
+
+                while (length > 2)
+                {
+                    length -= 4;
+                    // Where length is 4n-1 (e.g. 3,7,11,15,19) this additionally consumes the null terminator
+                    hash1 = (BitOperations.RotateLeft(hash1, 5) + hash1) ^ ptr[0];
+                    hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ ptr[1];
+                    ptr += 2;
+                }
+
+                if (length > 0)
+                {
+                    // Where length is 4n-3 (e.g. 1,5,9,13,17) this additionally consumes the null terminator
+                    hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ ptr[0];
+                }
+                
+                return (int)(hash1 + (hash2 * 1566083941));
             }
-
-            if (length > 0)
-            {
-                // Where length is 4n-3 (e.g. 1,5,9,13,17) this additionally consumes the null terminator
-                hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ ptr;
-            }
-
-            return (int)(hash1 + (hash2 * 1566083941));
         }
 
         internal unsafe int GetNonRandomizedHashCodeOrdinalIgnoreCase()
@@ -801,44 +801,46 @@ namespace System
             uint hash1 = (5381 << 16) + 5381;
             uint hash2 = hash1;
 
-            ref char src = ref _firstChar;
-            Debug.Assert(Unsafe.Add(ref src, this.Length) == '\0', "src[this.Length] == '\\0'");
-            Debug.Assert(((int) src) % 4 == 0, "Managed string should start at 4 bytes boundary");
-
-            ref uint ptr = ref Unsafe.As<char, uint>(ref src);
-            int length = this.Length;
-
-            // We "normalize to lowercase" every char by ORing with 0x0020. This casts
-            // a very wide net because it will change, e.g., '^' to '~'. But that should
-            // be ok because we expect this to be very rare in practice.
-            const uint NormalizeToLowercase = 0x0020_0020u; // valid both for big-endian and for little-endian
-
-            while (length > 2)
+            fixed (char* src = &_firstChar)
             {
-                uint p0 = ptr;
-                uint p1 = Unsafe.Add(ref ptr, 1);
-                if (!Utf16Utility.AllCharsInUInt32AreAscii(p0 | p1))
+                Debug.Assert(src[this.Length] == '\0', "src[this.Length] == '\\0'");
+                Debug.Assert(((int) src) % 4 == 0, "Managed string should start at 4 bytes boundary");
+
+                uint* ptr = (uint*) src;
+                int length = this.Length;
+
+                // We "normalize to lowercase" every char by ORing with 0x0020. This casts
+                // a very wide net because it will change, e.g., '^' to '~'. But that should
+                // be ok because we expect this to be very rare in practice.
+                const uint NormalizeToLowercase = 0x0020_0020u; // valid both for big-endian and for little-endian
+
+                while (length > 2)
                 {
-                    goto NotAscii;
+                    uint p0 = ptr[0];
+                    uint p1 = ptr[1];
+                    if (!Utf16Utility.AllCharsInUInt32AreAscii(p0 | p1))
+                    {
+                        goto NotAscii;
+                    }
+
+                    length -= 4;
+                    // Where length is 4n-1 (e.g. 3,7,11,15,19) this additionally consumes the null terminator
+                    hash1 = (BitOperations.RotateLeft(hash1, 5) + hash1) ^ (p0 | NormalizeToLowercase);
+                    hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (p1 | NormalizeToLowercase);
+                    ptr += 2;
                 }
 
-                length -= 4;
-                // Where length is 4n-1 (e.g. 3,7,11,15,19) this additionally consumes the null terminator
-                hash1 = (BitOperations.RotateLeft(hash1, 5) + hash1) ^ (p0 | NormalizeToLowercase);
-                hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (p1 | NormalizeToLowercase);
-                ptr = ref Unsafe.Add(ref ptr, 2);
-            }
-
-            if (length > 0)
-            {
-                uint p0 = ptr;
-                if (!Utf16Utility.AllCharsInUInt32AreAscii(p0))
+                if (length > 0)
                 {
-                    goto NotAscii;
-                }
+                    uint p0 = ptr[0];
+                    if (!Utf16Utility.AllCharsInUInt32AreAscii(p0))
+                    {
+                        goto NotAscii;
+                    }
 
-                // Where length is 4n-3 (e.g. 1,5,9,13,17) this additionally consumes the null terminator
-                hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (p0 | NormalizeToLowercase);
+                    // Where length is 4n-3 (e.g. 1,5,9,13,17) this additionally consumes the null terminator
+                    hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (p0 | NormalizeToLowercase);
+                }
             }
 
             return (int)(hash1 + (hash2 * 1566083941));
@@ -851,9 +853,8 @@ namespace System
                 int length = str.Length;
                 char[]? borrowedArr = null;
                 // Important: leave an additional space for '\0'
-                // Span<char> scratch = (uint)length < 64 ?
-                //     stackalloc char[64] : (borrowedArr = ArrayPool<char>.Shared.Rent(length + 1));
-                Span<char> scratch = borrowedArr = ArrayPool<char>.Shared.Rent(length + 1);
+                Span<char> scratch = (uint)length < 64 ?
+                    stackalloc char[64] : (borrowedArr = ArrayPool<char>.Shared.Rent(length + 1));
 
                 int charsWritten = System.Globalization.Ordinal.ToUpperOrdinal(str, scratch);
                 Debug.Assert(charsWritten == length);
@@ -864,21 +865,23 @@ namespace System
                 uint hash2 = hash1;
 
                 // Duplicate the main loop, can be removed once JIT gets "Loop Unswitching" optimization
-                ref uint ptr = ref Unsafe.As<char, uint>(ref scratch[0]);
-                while (length > 2)
+                fixed (char* src = scratch)
                 {
-                    length -= 4;
-                    hash1 = (BitOperations.RotateLeft(hash1, 5) + hash1) ^ (ptr | NormalizeToLowercase);
-                    ptr = ref Unsafe.Add(ref ptr, 1);
-                    hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (ptr | NormalizeToLowercase);
-                    ptr = ref Unsafe.Add(ref ptr, 1);
+                    uint* ptr = (uint*)src;
+                    while (length > 2)
+                    {
+                        length -= 4;
+                        hash1 = (BitOperations.RotateLeft(hash1, 5) + hash1) ^ (ptr[0] | NormalizeToLowercase);
+                        hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (ptr[1] | NormalizeToLowercase);
+                        ptr += 2;
+                    }
+
+                    if (length > 0)
+                    {
+                        hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (ptr[0] | NormalizeToLowercase);
+                    }
                 }
 
-                if (length > 0)
-                {
-                    hash2 = (BitOperations.RotateLeft(hash2, 5) + hash2) ^ (ptr | NormalizeToLowercase);
-                }
-                
                 if (borrowedArr != null)
                 {
                     ArrayPool<char>.Shared.Return(borrowedArr);
