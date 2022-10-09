@@ -89,7 +89,7 @@ public class Kernel
         output.SetFramebuffer(framebuffer, new System.Drawing.Rectangle(0, 0, output.Width, output.Height));
         
         // create the app and a local renderer to render the app
-        var renderer = new LocalGuiServer(framebuffer, PS2.Keyboard);
+        var renderer = new LocalGuiServer(framebuffer, PS2.Keyboard, PS2.Mouse);
         
         // run the app
         var app = new App(MainModel);

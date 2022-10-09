@@ -18,40 +18,98 @@ public class LocalGuiServer : GuiServer
 
     private IFramebuffer _framebuffer;
     private IKeyboard _keyboard;
+    private IRelMouse _mouse;
 
     private AutoResetEvent _reset = new(false);
     private GuiEvent _event = null;
 
     private Memory<uint> _memory;
+    private Memory<uint> _memoryUnderMouse;
     private int _width, _height;
+
+    private int _mouseX, _mouseY;
+    private int _oldMouseX, _oldMouseY;
     private Dictionary<int, Font> _fonts = new();
 
-    public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard)
+    public LocalGuiServer(IFramebuffer framebuffer, IKeyboard keyboard, IRelMouse mouse)
     {
         _framebuffer = framebuffer;
         _keyboard = keyboard;
+        _mouse = mouse;
         _width = framebuffer.Width;
         _height = framebuffer.Height;
-     
+        
         // allocate the framebuffer
         var memory = new byte[framebuffer.Width * framebuffer.Height * 4].AsMemory();
+        var memoryUnderMouse = new byte[8 * 8 * 4].AsMemory();
         
         // set the backing 
         _framebuffer.Backing = memory;
         
         // keep it as a uint array for blitter
         _memory = MemoryMarshal.Cast<byte, uint>(memory);
+        _memoryUnderMouse = MemoryMarshal.Cast<byte, uint>(memoryUnderMouse);
+
+        _oldMouseX = _mouseX = _width / 2;
+        _oldMouseY = _mouseY = _height / 2;
+
+        for (int i = 0; i < 8; i++)
+        {
+            var span = _memory.Span.Slice((_mouseY + i) * _framebuffer.Width + _mouseX, 16);
+            for (int j = 0; j < 8; j++) span[j] ^= 0xFFFFFFF;
+        }
 
         _keyboard.RegisterCallback(KeyboardCallback);
+        _mouse.RegisterCallback(MouseCallback);
+    }
+    
+
+
+    int Bound(int val, int start, int end) => Math.Max(start, Math.Min(val, end));
+
+    void MouseCallback(RelMouseEvent e)
+    {
+        _mouseX += e.deltaX;
+        _mouseY += e.deltaY;
+
+        if (_oldMouseX != _mouseX || _oldMouseY != _mouseY)
+        {
+            int oldStartX = Bound(_oldMouseX - 4, 0, _width - 1), oldStartY = Bound(_oldMouseY - 4, 0, _height - 1);
+            int oldEndX = Bound(_oldMouseX + 4, 0, _width - 1), oldEndY = Bound(_oldMouseY + 4, 0, _height - 1);
+            for (int i = 0; i < oldEndY - oldStartY; i++)
+            {
+                var under = _memoryUnderMouse.Span.Slice(8 * i, oldEndX - oldStartX);
+                var fb = _memory.Span.Slice((oldStartY + i) * _width + oldStartX);
+                under.CopyTo(fb);
+            }
+            int startX = Bound(_mouseX - 4, 0, _width - 1), startY = Bound(_mouseY - 4, 0, _height - 1);
+            int endX = Bound(_mouseX + 4, 0, _width - 1), endY = Bound(_mouseY + 4, 0, _height - 1);
+            for (int i = 0; i < endY - startY; i++)
+            {
+                var under = _memoryUnderMouse.Span.Slice(8 * i);
+                var fb = _memory.Span.Slice((startY + i) * _width + startX, endX - startX);
+                fb.CopyTo(under);
+                fb.Fill(0xFFFFFFFF);
+            }
+            // blit the backing to the framebuffer
+            int sx = Math.Min(oldStartX, startX), sy = Math.Min(oldStartY, startY);
+            int ex = Math.Max(oldEndX, endX), ey = Math.Max(oldEndY, endY);
+            _framebuffer.Blit(sy * _width + sx, new Rectangle(sx, sy, ex - sx, ey - sy));
+            _oldMouseX = _mouseX;
+            _oldMouseY = _mouseY;
+        }
+        _framebuffer.Flush();
+
+        _event = e;
+        _reset.Set();
     }
     
     void KeyboardCallback(KeyEvent e)
     {
-        {
-            _event = e;
-            _reset.Set();
-        }
+        _event = e;
+        _reset.Set();
     }
+    
     // TODO: add support for compiling expressions, it will
     //       make the code much faster :)
     private long Eval(Expr e)
@@ -194,12 +252,18 @@ public class LocalGuiServer : GuiServer
                     throw new InvalidOperationException("Invalid gui command type");
             }
         }
-        
+
+        int startX = Bound(_mouseX - 4, 0, _width - 1), startY = Bound(_mouseY - 4, 0, _height - 1);
+        int endX = Bound(_mouseX + 4, 0, _width - 1), endY = Bound(_mouseY + 4, 0, _height - 1);
+        for (int i = 0; i < endY - startY; i++)
+        {
+            var under = _memoryUnderMouse.Span.Slice(8 * i);
+            var fb = _memory.Span.Slice((startY + i) * _width + startX, endX - startX);
+            fb.CopyTo(under);
+        }
+
         // blit the backing to the framebuffer
         _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
-        
-        // flush the framebuffer to the output 
-        _framebuffer.Flush();
     }
 
 }

@@ -310,10 +310,11 @@ internal class PS2Keyboard : IKeyboard
 }
 
 
-// TODO: put specifically keyboard related code here
-internal class PS2Mouse
+// TODO: put specifically mouse related code here
+internal class PS2Mouse : IRelMouse
 {
     Irq _irq;
+    Action<RelMouseEvent> _callback;
 
     internal PS2Mouse()
     {
@@ -321,6 +322,11 @@ internal class PS2Mouse
         var irqThread = new Thread(IrqWait);
         irqThread.Start();
     }
+    public void RegisterCallback(Action<RelMouseEvent> cb)
+    {
+        _callback = cb;
+    }
+
     private void IrqWait()
     {
         int cycle = 0;
@@ -346,10 +352,10 @@ internal class PS2Mouse
                     if ((statusPkt & (1 << 4)) != 0) xPkt = (short)((ushort)xPkt | 0xFF00);
                     if ((statusPkt & (1 << 5)) != 0) yPkt = (short)((ushort)yPkt | 0xFF00);
 
-                    if ((statusPkt & 1) != 0)
-                    {
-                        Log.LogString("Left press\n");
-                    }
+                    bool left = ((statusPkt & 1) != 0);
+                    bool right = ((statusPkt & 2) != 0);
+                    _callback(new RelMouseEvent(-xPkt, yPkt, left, right));
+
                     break;
             }
         }
