@@ -292,7 +292,7 @@ static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms)
     CHECK(((uintptr_t)va % 4096) == 0);
     CHECK(((uintptr_t)pa % 4096) == 0);
 
-    uint32_t cachingmode = (perms & MAP_WC) ? CACHE_WRITE_BACK : CACHE_WRITE_COMBINING;
+    uint32_t cachingmode = (perms & MAP_WC) ? CACHE_WRITE_COMBINING : CACHE_WRITE_BACK;
     for (uintptr_t cva = (uintptr_t)va; cva < (uintptr_t)va + page_count * PAGE_SIZE; cva += PAGE_SIZE, pa += PAGE_SIZE) {
         // calculate the indexes of each of these
         size_t pml4i = (cva >> 39) & 0x1FFull;
