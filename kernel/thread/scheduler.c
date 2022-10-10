@@ -1210,7 +1210,8 @@ INTERRUPT static void schedule(interrupt_context_t* ctx) {
 //----------------------------------------------------------------------------------------------------------------------
 
 static void enter_scheduler() {
-    ASSERT(__readcr8() == PRIORITY_NORMAL);
+    // NOTE: PRIORITY_NORMAL is accepted, but also PRIORITY_SCHEDULER_WAIT
+    ASSERT(__readcr8() <= PRIORITY_NORMAL);
 }
 
 INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
