@@ -99,24 +99,14 @@ void init_gdt() {
  */
 static spinlock_t m_tss_lock = INIT_SPINLOCK();
 
-err_t init_tss() {
-    err_t err = NO_ERROR;
-
+void init_tss(void* tss_memory) {
     // we need to allocate this since it has to continue being alive
-    tss64_t* tss = palloc(sizeof(tss64_t));
-    CHECK_ERROR(tss != NULL, ERROR_OUT_OF_MEMORY);
-
-    uintptr_t ist1 = (uintptr_t)palloc(SIZE_8KB);
-    CHECK_ERROR(ist1 != 0, ERROR_OUT_OF_MEMORY);
-
-    uintptr_t ist2 = (uintptr_t)palloc(SIZE_8KB);
-    CHECK_ERROR(ist2 != 0, ERROR_OUT_OF_MEMORY);
-
-    uintptr_t ist3 = (uintptr_t)palloc(SIZE_8KB);
-    CHECK_ERROR(ist3 != 0, ERROR_OUT_OF_MEMORY);
-
-    uintptr_t ist4 = (uintptr_t)palloc(SIZE_8KB);
-    CHECK_ERROR(ist4 != 0, ERROR_OUT_OF_MEMORY);
+    void* curr = tss_memory;
+    tss64_t* tss =              curr; curr += sizeof(tss64_t);
+    uintptr_t ist1 = (uintptr_t)curr; curr += SIZE_8KB;
+    uintptr_t ist2 = (uintptr_t)curr; curr += SIZE_8KB;
+    uintptr_t ist3 = (uintptr_t)curr; curr += SIZE_8KB;
+    uintptr_t ist4 = (uintptr_t)curr; curr += SIZE_8KB;
 
     // set the ists
     tss->ist1 = ist1 + SIZE_8KB - 16;
@@ -139,7 +129,4 @@ err_t init_tss() {
     asm volatile ("ltr %%ax" : : "a"(GDT_TSS) : "memory");
 
     spinlock_unlock(&m_tss_lock);
-
-cleanup:
-    return err;
 }
