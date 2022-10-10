@@ -53,17 +53,39 @@ public class LocalGuiServer : GuiServer
         _oldMouseX = _mouseX = _width / 2;
         _oldMouseY = _mouseY = _height / 2;
 
-        for (int i = 0; i < 8; i++)
-        {
-            var span = _memory.Span.Slice((_mouseY + i) * _framebuffer.Width + _mouseX, 16);
-            for (int j = 0; j < 8; j++) span[j] ^= 0xFFFFFFF;
-        }
+        BlitMouse();
+        _framebuffer.Flush();
 
         _keyboard.RegisterCallback(KeyboardCallback);
         _mouse.RegisterCallback(MouseCallback);
     }
     
-
+    void BlitMouse()
+    {
+        int oldStartX = Bound(_oldMouseX - 4, 0, _width - 1), oldStartY = Bound(_oldMouseY - 4, 0, _height - 1);
+        int oldEndX = Bound(_oldMouseX + 4, 0, _width - 1), oldEndY = Bound(_oldMouseY + 4, 0, _height - 1);
+        for (int i = 0; i < oldEndY - oldStartY; i++)
+        {
+            var under = _memoryUnderMouse.Span.Slice(8 * i, oldEndX - oldStartX);
+            var fb = _memory.Span.Slice((oldStartY + i) * _width + oldStartX);
+            under.CopyTo(fb);
+        }
+        int startX = Bound(_mouseX - 4, 0, _width - 1), startY = Bound(_mouseY - 4, 0, _height - 1);
+        int endX = Bound(_mouseX + 4, 0, _width - 1), endY = Bound(_mouseY + 4, 0, _height - 1);
+        for (int i = 0; i < endY - startY; i++)
+        {
+            var under = _memoryUnderMouse.Span.Slice(8 * i);
+            var fb = _memory.Span.Slice((startY + i) * _width + startX, endX - startX);
+            fb.CopyTo(under);
+            fb.Fill(0xFFFFFFFF);
+        }
+        // blit the backing to the framebuffer
+        int sx = Math.Min(oldStartX, startX), sy = Math.Min(oldStartY, startY);
+        int ex = Math.Max(oldEndX, endX), ey = Math.Max(oldEndY, endY);
+        _framebuffer.Blit(sy * _width + sx, new Rectangle(sx, sy, ex - sx, ey - sy));
+        _oldMouseX = _mouseX;
+        _oldMouseY = _mouseY;
+    }
 
     int Bound(int val, int start, int end) => Math.Max(start, Math.Min(val, end));
 
@@ -74,31 +96,9 @@ public class LocalGuiServer : GuiServer
 
         if (_oldMouseX != _mouseX || _oldMouseY != _mouseY)
         {
-            int oldStartX = Bound(_oldMouseX - 4, 0, _width - 1), oldStartY = Bound(_oldMouseY - 4, 0, _height - 1);
-            int oldEndX = Bound(_oldMouseX + 4, 0, _width - 1), oldEndY = Bound(_oldMouseY + 4, 0, _height - 1);
-            for (int i = 0; i < oldEndY - oldStartY; i++)
-            {
-                var under = _memoryUnderMouse.Span.Slice(8 * i, oldEndX - oldStartX);
-                var fb = _memory.Span.Slice((oldStartY + i) * _width + oldStartX);
-                under.CopyTo(fb);
-            }
-            int startX = Bound(_mouseX - 4, 0, _width - 1), startY = Bound(_mouseY - 4, 0, _height - 1);
-            int endX = Bound(_mouseX + 4, 0, _width - 1), endY = Bound(_mouseY + 4, 0, _height - 1);
-            for (int i = 0; i < endY - startY; i++)
-            {
-                var under = _memoryUnderMouse.Span.Slice(8 * i);
-                var fb = _memory.Span.Slice((startY + i) * _width + startX, endX - startX);
-                fb.CopyTo(under);
-                fb.Fill(0xFFFFFFFF);
-            }
-            // blit the backing to the framebuffer
-            int sx = Math.Min(oldStartX, startX), sy = Math.Min(oldStartY, startY);
-            int ex = Math.Max(oldEndX, endX), ey = Math.Max(oldEndY, endY);
-            _framebuffer.Blit(sy * _width + sx, new Rectangle(sx, sy, ex - sx, ey - sy));
-            _oldMouseX = _mouseX;
-            _oldMouseY = _mouseY;
+            BlitMouse();
+            _framebuffer.Flush();
         }
-        _framebuffer.Flush();
 
         _event = e;
         _reset.Set();
@@ -264,6 +264,7 @@ public class LocalGuiServer : GuiServer
 
         // blit the backing to the framebuffer
         _framebuffer.Blit(0, new Rectangle(0, 0, _width, _height));
+        BlitMouse();
         _framebuffer.Flush();
     }
 
