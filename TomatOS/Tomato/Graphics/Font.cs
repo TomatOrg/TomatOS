@@ -39,7 +39,7 @@ public class Font
     // the calculated glyphs
     public Glyph[] Glyphs { get; }
 
-    public int AtalaWidth => Typeface.Atlas.Width;
+    public int AtlasWidth => Typeface.Atlas.Width;
     public Memory<uint> Pixels => Typeface.Pixels;
 
     public Font(Typeface typeface, int size)
@@ -73,7 +73,7 @@ public class Font
                 (int)(glyph.AtlasBound.Left),
                 (int)(glyph.AtlasBound.Top),
                 (int)(glyph.AtlasBound.Right),
-                (int)glyph.AtlasBound.Bottom
+                (int)(glyph.AtlasBound.Bottom)
             );
             Glyphs[i] = new Glyph((int)(glyph.Advance * size), planeBounds, atlasBounds);
         }

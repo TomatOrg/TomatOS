@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
-using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Drawing;
 using System.Runtime.CompilerServices;
@@ -44,25 +43,63 @@ public class Kernel
         return codepoint;
     }
 
-    private static Widget MainModel()
-    {
-        return new Stack(new Widget[]
+    static int cellX, cellY;
+    static int shift = 0, altgr = 0;
+    static int lastCharacterSize = 0;
+    static Font font;
+    static Memory<uint> _memory;
+    static FontBlitter fontBlitter;
+    static IFramebuffer framebuffer;
+    static List<List<char>> textBuffer = new();
+
+    static void KeyboardHandler(KeyEvent k) {
+        if (!k.Released && (k.Code == KeyCode.LeftShift || k.Code == KeyCode.RightShift)) { shift = 1; return; }
+        if (k.Released && (k.Code == KeyCode.LeftShift || k.Code == KeyCode.RightShift)) { shift = 0; return; }
+
+        if (!k.Released && (k.Code == KeyCode.RightAlt)) { altgr = 1; return; }
+        if (k.Released && (k.Code == KeyCode.RightAlt)) { altgr = 0; return; }
+
+        if (k.Released) return;
+
+        if (k.Code == KeyCode.Enter)
         {
-            // Background
-            new Gui.Widgets.Rectangle(0xff242424),
+            cellX = 0;
+            cellY += font.Size;
+            textBuffer.Add(new List<char>());
+        }
+        else if (k.Code == KeyCode.Backspace)
+        {
+            var line = textBuffer[textBuffer.Count - 1];
+            var ch = line[line.Count - 1];
+            line.RemoveAt(line.Count - 1);
+            var size = font.Glyphs[ch - font.First].Advance;
+            cellX -= size;
             
-            // Contents
-            new Padding(
-                all: 32,
-                child: new Column(new Widget[]
-                    {
-                        // A bit title
-                        new Text("Hello World!", fontSize: 32),
-                    }
-                )
-            )
-        });
-    }
+            var fbSlice = _memory.Slice(cellX + (cellY - font.Size) * framebuffer.Width);
+            for (int i = 0; i < font.Size; i++) fbSlice.Slice(i * framebuffer.Width, size).Span.Fill(0);
+
+            BlitFlush(cellX, cellY - font.Size, size, font.Size);
+        }
+        else
+        {
+            var c = Kernel.GetCodepoint(k.Code, shift > 0, altgr > 0);
+            textBuffer[textBuffer.Count - 1].Add((char)c);
+
+            char[] chars = new char[1];
+            chars[0] = (char)c;
+            var size = font.Glyphs[c - font.First].Advance;
+
+            fontBlitter.DrawString(new string(chars), cellX, cellY);
+            BlitFlush(cellX, cellY - font.Size, size, font.Size);
+
+            cellX += size;
+        }
+
+        void BlitFlush(int x, int y, int w, int h) {
+            framebuffer.Blit(x + y * framebuffer.Width, new System.Drawing.Rectangle(x, y, w, h));
+            framebuffer.Flush();
+        }
+    } 
 
     public static int Main()
     {
@@ -85,15 +122,24 @@ public class Kernel
         // Create a plain graphics device (from a framebuffer) and 
         IGraphicsDevice dev = new PlainGraphicsDevice();
         var output = dev.Outputs[0];
-        var framebuffer = dev.CreateFramebuffer(output.Width, output.Height);
+        framebuffer = dev.CreateFramebuffer(output.Width, output.Height);
         output.SetFramebuffer(framebuffer, new System.Drawing.Rectangle(0, 0, output.Width, output.Height));
         
-        // create the app and a local renderer to render the app
-        var renderer = new LocalGuiServer(framebuffer, PS2.Keyboard, PS2.Mouse);
+        // allocate the framebuffer
+        var m = new byte[framebuffer.Width * framebuffer.Height * 4].AsMemory();
+        _memory = MemoryMarshal.Cast<byte, uint>(m);
+        framebuffer.Backing = m;
+
+        var size = 12;
         
-        // run the app
-        var app = new App(MainModel);
-        app.Run(renderer);
+        font = new Font(Typeface.Default, size);
+        fontBlitter = new FontBlitter(font, _memory, framebuffer.Width, framebuffer.Height, 0xFFFFFFFF);
+        textBuffer.Add(new List<char>());
+
+        cellX = 0;
+        cellY = font.Size;
+        
+        PS2.Keyboard.RegisterCallback(KeyboardHandler);
 
         return 0;
     }

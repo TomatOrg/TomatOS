@@ -75,8 +75,8 @@ public struct FontBlitter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void DrawChar(Span<uint> pixels, Span<uint> memory, in Glyph glyph, int x, int y, uint color)
     {
-        var fullAtlassWidth = _font.AtalaWidth;
-        
+        var fullAtlasWidth = _font.AtlasWidth;
+
         var planeHeight = glyph.PlaneBounds.Height;
         var planeWidth = glyph.PlaneBounds.Width;
         var planeX = x + glyph.PlaneBounds.X;
@@ -97,7 +97,7 @@ public struct FontBlitter
                 var atlasSampledX = (int)(atlasX + fax);
                 var atlasSampledY = (int)(atlasY + fay);
 
-                var pix = pixels[atlasSampledX + atlasSampledY * fullAtlassWidth];
+                var pix = pixels[atlasSampledX + atlasSampledY * fullAtlasWidth];
 
                 var px = (int)(planeX + xx);
                 var py = (int)(planeY + yy);
@@ -112,7 +112,6 @@ public struct FontBlitter
         var pixels = _font.Pixels.Span;
         var memory = _memory.Span;
         var color = _color;
-        cursorY -= _font.Size;
         
         foreach (var c in text)
         {
