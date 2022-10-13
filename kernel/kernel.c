@@ -291,7 +291,7 @@ void _start(void) {
     // Quickly setup everything so we can
     // start debugging already
     trace_init();
-    TRACE("Hello from pentagon!");
+    TRACE("Hello from TomatOS!");
     if (g_limine_bootloader_info.response != NULL) {
         TRACE("\tBootloader: %s (%s)",
               g_limine_bootloader_info.response->name,
@@ -377,7 +377,7 @@ void _start(void) {
         struct limine_file* file = g_limine_module.response->modules[i];
         if (strcmp(file->path, "/boot/Corelib.dll") == 0) {
             m_corelib_file = *file;
-        } else if (strcmp(file->path, "/boot/Pentagon.dll") == 0) {
+        } else if (strcmp(file->path, "/boot/Tomato.dll") == 0) {
             m_kernel_file = *file;
         } else if (strcmp(file->path, "/boot/kbd.dat") == 0) {
             m_kbdlayout_file_ptr = DIRECT_TO_PHYS(file->address);

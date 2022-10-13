@@ -35,11 +35,11 @@ CFLAGS 		+= -D__GRAPHICS_TRACE__
 
 ifeq ($(DEBUG),1)
 	CFLAGS	+= -O0 -g
-	CFLAGS 	+= -fno-sanitize=alignment
 	CFLAGS 	+= -fstack-protector-all
-	ifeq ($(USE_GCC), 0)
-		CFLAGS	+= -fsanitize=undefined
-	endif
+#	CFLAGS 	+= -fno-sanitize=alignment
+#	ifeq ($(USE_GCC), 0)
+#		CFLAGS	+= -fsanitize=undefined
+#	endif
 else
 	CFLAGS	+= -O3 -g
 	CFLAGS 	+= -DNDEBUG
@@ -110,14 +110,14 @@ CFLAGS 		+= -DMIR_PARALLEL_GEN
 # Targets
 ########################################################################################################################
 
-all: $(BIN_DIR)/pentagon.elf
+all: $(BIN_DIR)/tomatos.elf
 
 OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
 DEPS := $(OBJS:%.o=%.d)
 BINS ?=
 -include $(DEPS)
 
-$(BIN_DIR)/pentagon.elf: $(OBJS) | Makefile
+$(BIN_DIR)/tomatos.elf: $(OBJS) | Makefile
 	@echo LD $@
 	@mkdir -p $(@D)
 	@$(LD) $(LDFLAGS) -o $@ $^

@@ -972,7 +972,7 @@ static NO_SANITIZE int _vsnprintf(out_fct_type out, char* buffer, const size_t m
 
       case 'P': {
           uintptr_t value = ((uintptr_t)va_arg(va, void*));
-          #ifdef PENTAGON_HOSTED
+          #ifdef TOMATOS_HOSTED
           symbol_t* symbol = NULL;
           #else
           symbol_t* symbol = debug_lookup_symbol(value);

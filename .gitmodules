@@ -6,4 +6,4 @@
 	url = git@github.com:zyantific/zydis.git
 [submodule "lib/tinydotnet"]
 	path = lib/tinydotnet
-	url = git@github.com:Itay2805/tinydotnet.git
+	url = git@github.com:TomatOrg/tinydotnet.git

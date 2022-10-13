@@ -166,6 +166,37 @@ void NO_SANITIZE __ubsan_handle_type_mismatch_v1(type_mismatch_data_t* data, siz
 // TODO: Alignment assumption
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+typedef struct alignment_assumption_data {
+    source_location_t loc;
+    source_location_t assumption_loc;
+    const type_descriptor_t* type;
+} alignment_assumption_data_t;
+
+void NO_SANITIZE __ubsan_handle_alignment_assumption(alignment_assumption_data_t* data, size_t pointer, size_t alignment, size_t offset) {
+    size_t real_pointer = pointer - offset;
+    size_t lsb = 0;
+    size_t actual_alignment = 1ul << lsb;
+
+    size_t mask = alignment - 1;
+    size_t mis_alignment_offset = real_pointer & mask;
+
+    printf("[!] ubsan: ");
+    if (offset == 0) {
+        printf("assumption of %d byte alignment for pointer of type %s failed",
+               alignment, data->type->name);
+    } else {
+        printf("assumption of %d byte alignment (with offset of %d byte) for pointer of type %s failed",
+               alignment, offset, data->type->name);
+    }
+    print_source_location(data->loc);
+
+    printf("[!] ubsan: alignment assumption was specified");
+    print_source_location(data->loc);
+
+    WARN("ubsan: %saddress is %d aligned, misalignment offset is %d bytes",
+         offset ? "offset " : "", actual_alignment, mis_alignment_offset);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Overflow
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

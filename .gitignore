@@ -3,7 +3,7 @@ cmake-build-debug
 bin
 obj
 out
-Pentagon/.vs/
+TomatOS/.vs/
 .cache
 compile_commands.json
 test/*.dat

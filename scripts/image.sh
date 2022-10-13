@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 
-if [ ! -f test/kbd.dat ]
-then
-  wget https://gitlab.com/nakst/essence/-/raw/master/res/Keyboard%20Layouts/us.dat -O test/kbd.dat
-fi
-
 # Create the disk, single partition which is the ESP
 rm -f out/build/test.hdd
 dd if=/dev/zero bs=1M count=0 seek=64 of=out/build/test.hdd
@@ -31,12 +26,12 @@ sudo cp -rv limine/limine.sys out/build/test_image/boot/
 
 # Copy the kernel contents
 sudo cp -rv \
-  out/bin/pentagon.elf \
-  test/limine.cfg \
-  test/kbd.dat \
-  Pentagon/Corelib/bin/Release/net6.0/Corelib.dll \
-  Pentagon/Pentagon/bin/Release/net6.0/Pentagon.dll \
-  artifacts/fonts/ubuntu-regular.sdfnt \
+  out/bin/tomatos.elf \
+  artifacts/limine.cfg \
+  lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll \
+  TomatOS/Tomato/bin/Release/net6.0/Tomato.dll \
+  artifacts/kbd.dat \
+  artifacts/ubuntu-regular.sdfnt \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it

@@ -1,4 +1,4 @@
-# Pentagon
+# TomatOS
 
 An experiment for writing a kernel with C# drivers and usermode, with a fully featured dotnet runtime running on 
 baremetal with the main goal of using Type safety for memory safety.
@@ -11,7 +11,7 @@ available for apps to use.
 
 ### Kernel itself
 - Memory subsystem
-  - Buddy-bitmap-tree based physical memory allocator
+  - Freelist based physical memory allocator
   - TLSF based kernel heap
   - Single address space management
 - Threading subsystem
@@ -22,7 +22,7 @@ available for apps to use.
     - Timer subsystem
 
 ### Dotnet Runtime
-We are using our custom dotnet runtime called [TinyDotNet](https://github.com/Itay2805/tinydotnet), for progress on it see its README
+We are using our custom dotnet runtime called [TinyDotNet](https://github.com/TomatOrg/tinydotnet), for progress on it see its README
 
 ## OS Design
 

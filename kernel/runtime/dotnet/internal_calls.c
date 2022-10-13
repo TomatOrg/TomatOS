@@ -18,32 +18,32 @@ typedef struct System_Memory {
     uint32_t Length;
 } System_Memory;
 
-static System_Exception Pentagon_HAL_MemoryServices_UpdateMemory(System_Memory* mem, System_Object holder, uint64_t ptr, uint32_t length) {
+static System_Exception Tomato_HAL_MemoryServices_UpdateMemory(System_Memory* mem, System_Object holder, uint64_t ptr, uint32_t length) {
     gc_update_ref(&mem->Object, holder);
     mem->Ptr = ptr;
     mem->Length = length;
     return NULL;
 }
 
-static method_result_t Pentagon_HAL_MemoryServices_AllocateMemory(uint64_t size) {
+static method_result_t Tomato_HAL_MemoryServices_AllocateMemory(uint64_t size) {
     return (method_result_t){ .exception = NULL, .value = (uintptr_t)palloc(size) };
 }
 
-static System_Exception Pentagon_HAL_MemoryServices_FreeMemory(uint64_t ptr) {
+static System_Exception Tomato_HAL_MemoryServices_FreeMemory(uint64_t ptr) {
     pfree((void *) ptr);
     return NULL;
 }
 
-static method_result_t Pentagon_HAL_MemoryServices_MapMemory(uint64_t phys, uint64_t pages) {
+static method_result_t Tomato_HAL_MemoryServices_MapMemory(uint64_t phys, uint64_t pages) {
 #ifdef MAPMEMORY_TRACE
-    printf("Pentagon.DriverServices.MemoryServices::MapMemory(0x%p, %d)\n", phys, pages);
+    printf("Tomato.DriverServices.MemoryServices::MapMemory(0x%p, %d)\n", phys, pages);
 #endif
     vmm_map(phys, PHYS_TO_DIRECT(phys), pages, MAP_WRITE);
     return (method_result_t){ .exception = NULL, .value = (uintptr_t)PHYS_TO_DIRECT(phys) };
 }
 
 static void jit_MemoryServices_GetSpanPtr(MIR_context_t ctx) {
-    const char* fname = "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetSpanPtr([Corelib-v1]System.Span`1<uint8>&)";
+    const char* fname = "uint64 [Tomato-v1]Tomato.DriverServices.MemoryServices::GetSpanPtr([Corelib-v1]System.Span`1<uint8>&)";
     MIR_type_t res[] = {
         MIR_T_P,
         MIR_T_P
@@ -58,7 +58,7 @@ static void jit_MemoryServices_GetSpanPtr(MIR_context_t ctx) {
     MIR_new_export(ctx, fname);
 }
 
-static err_t pentagon_gen(MIR_context_t ctx, System_Reflection_MethodInfo method) {
+static err_t tomatos_gen(MIR_context_t ctx, System_Reflection_MethodInfo method) {
     err_t err = NO_ERROR;
 
     if (method->GenericMethodDefinition != NULL) {
@@ -79,9 +79,9 @@ cleanup:
     return err;
 }
 
-static bool pentagon_can_gen(System_Reflection_MethodInfo method) {
+static bool tomatos_can_gen(System_Reflection_MethodInfo method) {
     System_Type type = method->DeclaringType;
-    if (string_equals_cstr(type->Namespace, "Pentagon.DriverServices")) {
+    if (string_equals_cstr(type->Namespace, "Tomato.DriverServices")) {
         if (string_equals_cstr(type->Name, "MemoryServices")) {
             if (method->GenericMethodDefinition != NULL) {
                 method = method->GenericMethodDefinition;
@@ -93,25 +93,25 @@ static bool pentagon_can_gen(System_Reflection_MethodInfo method) {
 }
 
 static jit_generic_extern_hook_t m_jit_extern_hook = {
-    .can_gen = pentagon_can_gen,
-    .gen = pentagon_gen,
+    .can_gen = tomatos_can_gen,
+    .gen = tomatos_gen,
 };
 
-static System_Exception Pentagon_DriverServices_Log_LogHex(uint64_t val) {
+static System_Exception Tomato_DriverServices_Log_LogHex(uint64_t val) {
     printf("%02x", val);
     return NULL;
 }
 
-static System_Exception Pentagon_DriverServices_Log_LogString(System_String val) {
+static System_Exception Tomato_DriverServices_Log_LogString(System_String val) {
     printf("%U", val);
     return NULL;
 }
 
-static method_result_t Pentagon_DriverServices_Acpi_GetRsdt() {
+static method_result_t Tomato_DriverServices_Acpi_GetRsdt() {
     return (method_result_t){ .exception = NULL, .value = DIRECT_TO_PHYS(m_rsdt) };
 }
 
-static method_result_t Pentagon_GetMappedPhysicalAddress(System_Memory memory) {
+static method_result_t Tomato_GetMappedPhysicalAddress(System_Memory memory) {
     return (method_result_t){ .exception = NULL, .value = DIRECT_TO_PHYS(memory.Ptr) };
 }
 
@@ -153,7 +153,7 @@ irq_ops_t m_ioapic_irq_ops = {
     .unmask = ioapic_irq_unmask
 };
 
-static method_result_t Pentagon_AllocateIrq(int count, int type, void* addr) {
+static method_result_t Tomato_AllocateIrq(int count, int type, void* addr) {
     uint8_t interrupt = 0;
     irq_ops_t ops = {};
     switch (type) {
@@ -170,7 +170,7 @@ static method_result_t Pentagon_AllocateIrq(int count, int type, void* addr) {
     return (method_result_t){ .exception = NULL, .value = interrupt };
 }
 
-static method_result_t Pentagon_GetNextFramebuffer(int* index, uint64_t* addr, int* width, int* height, int* pitch) {
+static method_result_t Tomato_GetNextFramebuffer(int* index, uint64_t* addr, int* width, int* height, int* pitch) {
     while (true) {
         if (*index >= g_framebuffers_count) {
             return (method_result_t){ .exception = NULL, .value = false };
@@ -201,28 +201,28 @@ static method_result_t Pentagon_GetNextFramebuffer(int* index, uint64_t* addr, i
     }
 }
 
-static System_Exception Pentagon_GetDefaultFont(uint64_t* addr, int* size) {
+static System_Exception Tomato_GetDefaultFont(uint64_t* addr, int* size) {
     *addr = DIRECT_TO_PHYS(g_default_font.address);
     *size = (int)g_default_font.size;
     return NULL;
 }
 
-static System_Exception Pentagon_IrqWait(uint64_t irq) {
+static System_Exception Tomato_IrqWait(uint64_t irq) {
     irq_wait(irq);
     return NULL;
 }
 
 
-static method_result_t Pentagon_DriverServices_IoPorts_In8(uint16_t port) {
+static method_result_t Tomato_DriverServices_IoPorts_In8(uint16_t port) {
     return (method_result_t){ .exception = NULL, .value = __inbyte(port) };
 }
 
-static System_Exception Pentagon_DriverServices_IoPorts_Out8(uint16_t port, uint8_t value) {
+static System_Exception Tomato_DriverServices_IoPorts_Out8(uint16_t port, uint8_t value) {
     __outbyte(port, value);
     return NULL;
 }
 
-static System_Exception Pentagon_GetKbdLayout(uint64_t* addr, size_t* size) {
+static System_Exception Tomato_GetKbdLayout(uint64_t* addr, size_t* size) {
     extern uintptr_t m_kbdlayout_file_ptr;
     extern size_t m_kbdlayout_file_size;
     *addr = (uint64_t)m_kbdlayout_file_ptr;
@@ -233,38 +233,57 @@ static System_Exception Pentagon_GetKbdLayout(uint64_t* addr, size_t* size) {
 err_t init_kernel_internal_calls() {
     err_t err = NO_ERROR;
 
-    jit_add_extern_whitelist("Pentagon.dll");
+    jit_add_extern_whitelist("Tomato.dll");
     jit_add_generic_extern_hook( &m_jit_extern_hook);
 
     MIR_context_t ctx = jit_get_mir_context();
 
     // TODO: rename the functions so they will match nicely
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::UpdateMemory([Corelib-v1]System.Memory`1<uint8>&,object,uint64,int32)", Pentagon_HAL_MemoryServices_UpdateMemory);
-    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::AllocateMemory(uint64)", Pentagon_HAL_MemoryServices_AllocateMemory);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.MemoryServices::FreeMemory(uint64)", Pentagon_HAL_MemoryServices_FreeMemory);
-    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::MapMemory(uint64,uint64)", Pentagon_HAL_MemoryServices_MapMemory);
-    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.MemoryServices::GetMappedPhysicalAddress([Corelib-v1]System.Memory`1<uint8>)", Pentagon_GetMappedPhysicalAddress);
+    MIR_load_external(ctx,
+                      "[Tomato-v1]Tomato.DriverServices.MemoryServices::UpdateMemory([Corelib-v1]System.Memory`1<uint8>&,object,uint64,int32)",
+                      Tomato_HAL_MemoryServices_UpdateMemory);
+    MIR_load_external(ctx, "uint64 [Tomato-v1]Tomato.DriverServices.MemoryServices::AllocateMemory(uint64)",
+                      Tomato_HAL_MemoryServices_AllocateMemory);
+    MIR_load_external(ctx, "[Tomato-v1]Tomato.DriverServices.MemoryServices::FreeMemory(uint64)",
+                      Tomato_HAL_MemoryServices_FreeMemory);
+    MIR_load_external(ctx, "uint64 [Tomato-v1]Tomato.DriverServices.MemoryServices::MapMemory(uint64,uint64)",
+                      Tomato_HAL_MemoryServices_MapMemory);
+    MIR_load_external(ctx,
+                      "uint64 [Tomato-v1]Tomato.DriverServices.MemoryServices::GetMappedPhysicalAddress([Corelib-v1]System.Memory`1<uint8>)",
+                      Tomato_GetMappedPhysicalAddress);
 
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Log::LogHex(uint64)", Pentagon_DriverServices_Log_LogHex);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Log::LogString(string)", Pentagon_DriverServices_Log_LogString);
+    MIR_load_external(ctx, "[Tomato-v1]Tomato.DriverServices.Log::LogHex(uint64)", Tomato_DriverServices_Log_LogHex);
+    MIR_load_external(ctx, "[Tomato-v1]Tomato.DriverServices.Log::LogString(string)",
+                      Tomato_DriverServices_Log_LogString);
 
-    MIR_load_external(ctx, "int32 [Pentagon-v1]Pentagon.DriverServices.Irq::AllocateIrq(int32,[Pentagon-v1]Pentagon.DriverServices.Irq+IrqMaskType,uint64)", Pentagon_AllocateIrq);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.Irq::IrqWait(int32)", Pentagon_IrqWait);
+    MIR_load_external(ctx,
+                      "int32 [Tomato-v1]Tomato.DriverServices.Irq::AllocateIrq(int32,[Tomato-v1]Tomato.DriverServices.Irq+IrqMaskType,uint64)",
+                      Tomato_AllocateIrq);
+    MIR_load_external(ctx, "[Tomato-v1]Tomato.DriverServices.Irq::IrqWait(int32)", Tomato_IrqWait);
 
-    MIR_load_external(ctx, "uint64 [Pentagon-v1]Pentagon.DriverServices.Acpi.Acpi::GetRsdt()", Pentagon_DriverServices_Acpi_GetRsdt);
-    
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.KernelUtils::GetKbdLayout([Corelib-v1]System.UInt64&,[Corelib-v1]System.UInt64&)", Pentagon_GetKbdLayout);
+    MIR_load_external(ctx, "uint64 [Tomato-v1]Tomato.DriverServices.Acpi.Acpi::GetRsdt()",
+                      Tomato_DriverServices_Acpi_GetRsdt);
 
-    MIR_load_external(ctx, "uint8 [Pentagon-v1]Pentagon.DriverServices.IoPorts::In8(uint16)", Pentagon_DriverServices_IoPorts_In8);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.IoPorts::Out8(uint16,uint8)", Pentagon_DriverServices_IoPorts_Out8);
+    MIR_load_external(ctx,
+                      "[Tomato-v1]Tomato.DriverServices.KernelUtils::GetKbdLayout([Corelib-v1]System.UInt64&,[Corelib-v1]System.UInt64&)",
+                      Tomato_GetKbdLayout);
 
-    MIR_load_external(ctx, "bool [Pentagon-v1]Pentagon.DriverServices.KernelUtils::GetNextFramebuffer([Corelib-v1]System.Int32&,[Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&)", Pentagon_GetNextFramebuffer);
-    MIR_load_external(ctx, "[Pentagon-v1]Pentagon.DriverServices.KernelUtils::GetDefaultFont([Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&)", Pentagon_GetDefaultFont);
+    MIR_load_external(ctx, "uint8 [Tomato-v1]Tomato.DriverServices.IoPorts::In8(uint16)",
+                      Tomato_DriverServices_IoPorts_In8);
+    MIR_load_external(ctx, "[Tomato-v1]Tomato.DriverServices.IoPorts::Out8(uint16,uint8)",
+                      Tomato_DriverServices_IoPorts_Out8);
 
-    MIR_module_t pentagon = MIR_new_module(ctx, "pentagon");
+    MIR_load_external(ctx,
+                      "bool [Tomato-v1]Tomato.DriverServices.KernelUtils::GetNextFramebuffer([Corelib-v1]System.Int32&,[Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&)",
+                      Tomato_GetNextFramebuffer);
+    MIR_load_external(ctx,
+                      "[Tomato-v1]Tomato.DriverServices.KernelUtils::GetDefaultFont([Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&)",
+                      Tomato_GetDefaultFont);
+
+    MIR_module_t tomato = MIR_new_module(ctx, "tomato");
     jit_MemoryServices_GetSpanPtr(ctx);
     MIR_finish_module(ctx);
-    MIR_load_module(ctx, pentagon);
+    MIR_load_module(ctx, tomato);
 
 
 cleanup:

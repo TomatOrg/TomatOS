@@ -1,4 +1,3 @@
-#include "stack.h"
 #include "assert.h"
 #include "thread/cpu_local.h"
 
