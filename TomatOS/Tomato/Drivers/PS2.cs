@@ -14,7 +14,7 @@ namespace Tomato.Drivers;
 // TODO: put specifically keyboard related code here
 internal class PS2Keyboard : IKeyboard
 {
-    Action<KeyEvent> _callback;
+    Action<KeyEvent> _callback = null;
     Irq _irq;
 
     public void RegisterCallback(Action<KeyEvent> cb) => _callback = cb;
@@ -290,6 +290,8 @@ internal class PS2Keyboard : IKeyboard
         {
             _irq.Wait();
             var inputByte = PS2.KeyboardReceive();
+            if (_callback is null) continue;
+
             var mask = (byte)(~0x80 & 0xFF);
             if (inputByte == 0xE0)
             {
@@ -314,7 +316,7 @@ internal class PS2Keyboard : IKeyboard
 internal class PS2Mouse : IRelMouse
 {
     Irq _irq;
-    Action<RelMouseEvent> _callback;
+    Action<RelMouseEvent> _callback = null;
 
     internal PS2Mouse()
     {
@@ -336,6 +338,8 @@ internal class PS2Mouse : IRelMouse
         {
             _irq.Wait();
             var data = PS2.MouseReceive();
+            if (_callback is null) continue;
+            
             switch (cycle)
             {
                 case 0:

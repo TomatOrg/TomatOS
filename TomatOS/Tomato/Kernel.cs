@@ -82,6 +82,7 @@ public class Kernel
         }
         else
         {
+            if (((int)k.Code) > (Kernel.kbdLayout.Length - 0x1000)) return;
             var c = Kernel.GetCodepoint(k.Code, shift > 0, altgr > 0);
             textBuffer[textBuffer.Count - 1].Add((char)c);
 
@@ -130,7 +131,7 @@ public class Kernel
         _memory = MemoryMarshal.Cast<byte, uint>(m);
         framebuffer.Backing = m;
 
-        var size = 12;
+        var size = 16;
         
         font = new Font(Typeface.Default, size);
         fontBlitter = new FontBlitter(font, _memory, framebuffer.Width, framebuffer.Height, 0xFFFFFFFF);
