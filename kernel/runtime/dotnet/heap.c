@@ -8,6 +8,7 @@
 #include <util/string.h>
 #include <util/defs.h>
 #include <mem/mem.h>
+#include <debug/asan.h>
 
 #include <kernel.h>
 
@@ -360,6 +361,7 @@ System_Object heap_alloc(size_t size, int color) {
 exit:
     // set the color of the allocation
     if (allocated != NULL) {
+        ASAN_UNPOISON_MEMORY_REGION(allocated, size);
         memset(allocated, 0, size);
         allocated->color = color;
     }

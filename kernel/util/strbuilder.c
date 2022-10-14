@@ -12,10 +12,8 @@ void strbuilder_free(strbuilder_t* builder) {
 
 void strbuilder_utf16(strbuilder_t* builder, const __CHAR16_TYPE__* str, size_t length) {
     // TODO: actually do UTF16
-    size_t start = arrlenu(builder->buf);
-    arraddn(builder->buf, length);
     for (size_t i = 0; i < length; i++) {
-        (builder->buf)[start+i] = str[i];
+        arrpush(builder->buf, str[i]);
     }
 }
 

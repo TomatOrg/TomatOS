@@ -4,7 +4,13 @@
 #include <stdbool.h>
 #include <limits.h>
 
-void* memcpy(void* restrict dest, const void* restrict src, size_t n) {
+#ifdef KASAN
+#define WRAP_IF_NEEDED(x) __##x
+#else
+#define WRAP_IF_NEEDED(x) x
+#endif
+
+void* WRAP_IF_NEEDED(memcpy)(void* restrict dest, const void* restrict src, size_t n) {
     void* start = dest;
     __asm__ volatile (
             "rep movsb"
@@ -14,7 +20,7 @@ void* memcpy(void* restrict dest, const void* restrict src, size_t n) {
     return start;
 }
 
-void* memset(void* dest, int val, size_t n) {
+void* WRAP_IF_NEEDED(memset)(void* dest, int val, size_t n) {
     void* start = dest;
     __asm__ volatile (
             "rep stosb"
@@ -24,7 +30,7 @@ void* memset(void* dest, int val, size_t n) {
     return start;
 }
 
-void* memmove(void* dest, const void* src, size_t len) {
+void* WRAP_IF_NEEDED(memmove)(void* dest, const void* src, size_t len) {
     char *d = dest;
     const char *s = src;
 
@@ -37,7 +43,7 @@ void* memmove(void* dest, const void* src, size_t len) {
     // is below the source
     bool overlaps = (d <= s && d + len > s) || (s <= d && s + len > d);
     if (d < s || !overlaps) {
-        memcpy(dest, src, len);
+        WRAP_IF_NEEDED(memcpy)(dest, src, len);
     } else {
         const char* lasts = s + (len - 1);
         char* lastd = d + (len - 1);

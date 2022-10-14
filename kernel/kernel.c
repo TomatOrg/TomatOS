@@ -16,6 +16,7 @@
 #include <thread/thread.h>
 
 #include <debug/debug.h>
+#include <debug/asan.h>
 
 #include <util/except.h>
 #include <util/string.h>
@@ -318,6 +319,9 @@ void _start(void) {
     CHECK_AND_RETHROW(init_cpu_locals());
     init_tss(bsp_tss);
     vmm_switch_allocator();
+#ifdef KASAN
+    CHECK_AND_RETHROW(init_kasan());
+#endif
     CHECK_AND_RETHROW(init_malloc());
 
     // load symbols for nicer debugging

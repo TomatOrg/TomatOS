@@ -6,7 +6,7 @@
 #include <sync/irq_spinlock.h>
 #include <util/string.h>
 
-static tlsf_t m_tlsf;
+static tlsf_t* m_tlsf;
 
 static irq_spinlock_t m_tlsf_lock = INIT_IRQ_SPINLOCK();
 
@@ -22,7 +22,7 @@ err_t init_malloc() {
     CHECK(m_tlsf != NULL);
 
     // Add the pool itself
-    pool_t pool = tlsf_add_pool(m_tlsf, (void*)KERNEL_HEAP_START, KERNEL_HEAP_SIZE);
+    tlsf_pool_t* pool = tlsf_add_pool(m_tlsf, (void*)KERNEL_HEAP_START, KERNEL_HEAP_SIZE);
     CHECK(pool != NULL);
 
 cleanup:
@@ -40,6 +40,9 @@ void check_malloc() {
 void* malloc(size_t size) {
     irq_spinlock_lock(&m_tlsf_lock);
     void* ptr = tlsf_memalign(m_tlsf, 16, size);
+#ifndef DNDEBUG
+    tlsf_track_allocation(ptr, __builtin_return_address(0));
+#endif    
     irq_spinlock_unlock(&m_tlsf_lock);
     if (ptr != NULL) {
         memset(ptr, 0, size);
@@ -54,6 +57,9 @@ void* malloc_aligned(size_t size, size_t alignment) {
 
     irq_spinlock_lock(&m_tlsf_lock);
     void* ptr = tlsf_memalign(m_tlsf, alignment, size);
+#ifndef DNDEBUG
+    tlsf_track_allocation(ptr, __builtin_return_address(0));
+#endif    
     irq_spinlock_unlock(&m_tlsf_lock);
     if (ptr != NULL) {
         memset(ptr, 0, size);
@@ -64,6 +70,9 @@ void* malloc_aligned(size_t size, size_t alignment) {
 void* realloc(void* ptr, size_t size) {
     irq_spinlock_lock(&m_tlsf_lock);
     ptr = tlsf_realloc(m_tlsf, ptr, size);
+#ifndef DNDEBUG
+    tlsf_track_allocation(ptr, __builtin_return_address(0));
+#endif    
     irq_spinlock_unlock(&m_tlsf_lock);
     return ptr;
 }

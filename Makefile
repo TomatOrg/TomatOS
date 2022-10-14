@@ -2,6 +2,8 @@
 # Build constants
 ########################################################################################################################
 USE_GCC		:= 0
+USE_KASAN	:= 0
+
 ifeq ($(USE_GCC), 1)
 CC 			:= gcc
 LD 			:= gcc
@@ -46,6 +48,9 @@ else
 	ifeq ($(USE_GCC), 0)
 		CFLAGS		+= -flto
 	endif
+endif
+ifeq ($(USE_KASAN),1)
+	CFLAGS  += -DKASAN -fsanitize=kernel-address -fasan-shadow-offset=0xdfffe00000000000
 endif
 
 CFLAGS 		+= -mno-avx -mno-avx2 -fno-pie -fno-pic -Wno-error=unused-but-set-variable
