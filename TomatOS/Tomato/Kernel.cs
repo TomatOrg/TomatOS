@@ -70,6 +70,16 @@ public class Kernel
         else if (k.Code == KeyCode.Backspace)
         {
             var line = textBuffer[textBuffer.Count - 1];
+            if (line.Count == 0)
+            {
+                if (textBuffer.Count == 1) return;
+                textBuffer.RemoveAt(textBuffer.Count - 1);
+                line = textBuffer[textBuffer.Count - 1];
+                cellY -= font.Size;
+                cellX = 0;
+                foreach (var c in line) cellX += font.Glyphs[c - font.First].Advance;
+                return;
+            }
             var ch = line[line.Count - 1];
             line.RemoveAt(line.Count - 1);
             var size = font.Glyphs[ch - font.First].Advance;
