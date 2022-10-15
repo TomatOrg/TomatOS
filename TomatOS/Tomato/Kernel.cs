@@ -45,7 +45,6 @@ public class Kernel
 
     static int cellX, cellY;
     static int shift = 0, altgr = 0;
-    static int lastCharacterSize = 0;
     static Font font;
     static Memory<uint> _memory;
     static FontBlitter fontBlitter;
@@ -92,8 +91,10 @@ public class Kernel
         }
         else
         {
-            if (((int)k.Code) > (Kernel.kbdLayout.Length - 0x1000)) return;
+            if (((int)k.Code) > 0x200) return;
             var c = Kernel.GetCodepoint(k.Code, shift > 0, altgr > 0);
+            if (c < font.First || c >= (font.First + font.Glyphs.Length)) return;
+            
             textBuffer[textBuffer.Count - 1].Add((char)c);
 
             char[] chars = new char[1];
