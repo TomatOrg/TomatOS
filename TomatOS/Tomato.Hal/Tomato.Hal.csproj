@@ -17,10 +17,4 @@
         </Reference>
     </ItemGroup>
 
-    <ItemGroup>
-      <Folder Include="Drivers\Graphics\Plain" />
-      <Folder Include="Graphics" />
-      <Folder Include="Interfaces" />
-    </ItemGroup>
-
 </Project>

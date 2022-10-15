@@ -22,8 +22,7 @@ typedef struct acpi_descriptor_header {
 /**
  * Pointer to the RSDT, for use in C#
  */
-extern struct acpi_descriptor_header* m_rsdt;
-
+extern void* g_rsdp;
 
 /**
  * Fetches all the tables that we need from ACPI for the kernel itself

@@ -2,6 +2,12 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tomato", "Tomato\Tomato.csproj", "{48EE57C7-EDB1-49F3-94A2-425A44EA480F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tomato.Hal", "Tomato.Hal\Tomato.Hal.csproj", "{5A459D25-7BF2-46B5-A285-5EB979724D33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tomato.Graphics", "Tomato.Graphics\Tomato.Graphics.csproj", "{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Drivers", "Drivers", "{49D1584A-36A5-40A8-BCA6-BB005BBA2A30}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +18,15 @@ Global
 		{48EE57C7-EDB1-49F3-94A2-425A44EA480F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{48EE57C7-EDB1-49F3-94A2-425A44EA480F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{48EE57C7-EDB1-49F3-94A2-425A44EA480F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5A459D25-7BF2-46B5-A285-5EB979724D33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5A459D25-7BF2-46B5-A285-5EB979724D33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5A459D25-7BF2-46B5-A285-5EB979724D33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5A459D25-7BF2-46B5-A285-5EB979724D33}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
 	EndGlobalSection
 EndGlobal

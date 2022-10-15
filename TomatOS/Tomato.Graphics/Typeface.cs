@@ -1,7 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Tomato.DriverServices;
 
 namespace Tomato.Graphics;
 
@@ -46,15 +45,6 @@ public struct TypefaceGlyph
 public class Typeface
 {
 
-    public static Typeface Default { get; private set; }
-
-    public static void Load()
-    {
-        KernelUtils.GetDefaultFont(out var addr, out var size);
-        var data = MemoryServices.Map(addr, size);
-        Default = new Typeface(data);
-    }
-    
     internal TypefaceAtlas Atlas { get; }
     internal TypefaceMetrics Metrics { get; }
     internal Memory<TypefaceGlyph> Glyphs { get; }

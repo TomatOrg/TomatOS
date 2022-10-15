@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Tomato.Interfaces;
+namespace Tomato.Hal.Interfaces;
 
 /// <summary>
 /// Represents a generic File System node, can be either file or directory
@@ -21,11 +21,20 @@ public interface INode
     /// </summary>
     public long PhysicalSize { get; }
     
-    // public DateTime CreateTime { get; }
-    //
-    // public DateTime LastAccessTime { get; }
-    //
-    // public DateTime ModificationTime { get; }
+    /// <summary>
+    /// The time the file was created
+    /// </summary>
+    public DateTime CreateTime { get; }
+    
+    /// <summary>
+    /// The time when the file was last accessed
+    /// </summary>
+    public DateTime LastAccessTime { get; }
+    
+    /// <summary>
+    /// The time when the file contents were last modified
+    /// </summary>
+    public DateTime ModificationTime { get; }
 
     /// <summary>
     /// The name of the file.
@@ -115,7 +124,6 @@ public interface IFile : INode
     /// <returns>The amount actually read from the file</returns>
     public Task<int> Read(long offset, Memory<byte> buffer, CancellationToken token = default);
 
-    // TODO: Use ReadOnlySpan instead when we implement one 
     /// <summary>
     /// Writes data to a file 
     /// </summary>
@@ -123,7 +131,7 @@ public interface IFile : INode
     /// <param name="buffer">Span to the output of the data, write size is the Span size</param>
     /// <param name="token"></param>
     /// <returns></returns>
-    public Task<int> Write(long offset, Memory<byte> buffer, CancellationToken token = default);
+    public Task<int> Write(long offset, ReadOnlyMemory<byte> buffer, CancellationToken token = default);
 
 }
 

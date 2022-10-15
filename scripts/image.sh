@@ -29,9 +29,7 @@ sudo cp -rv \
   out/bin/tomatos.elf \
   artifacts/limine.cfg \
   lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll \
-  TomatOS/Tomato/bin/Release/net6.0/Tomato.dll \
-  artifacts/kbd.dat \
-  artifacts/ubuntu-regular.sdfnt \
+  TomatOS/Tomato.Hal/bin/Release/net6.0/Tomato.Hal.dll \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it

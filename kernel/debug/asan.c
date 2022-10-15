@@ -1,6 +1,6 @@
 // taken from https://github.com/cahirwpz/mimiker
 
-#ifdef KASAN
+#ifdef __KASAN__
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>

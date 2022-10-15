@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <limits.h>
 
-#ifdef KASAN
+#ifdef __KASAN__
 #define WRAP_IF_NEEDED(x) __##x
 #else
 #define WRAP_IF_NEEDED(x) x

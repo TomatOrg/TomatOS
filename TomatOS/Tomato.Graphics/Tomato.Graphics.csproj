@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
         <UseAppHost>false</UseAppHost>
         <TargetFramework>net6.0</TargetFramework>
         <NoStdLib>true</NoStdLib>
@@ -15,12 +14,6 @@
         <Reference Include="Corelib">
             <HintPath>../../lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll</HintPath>
         </Reference>
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="Drivers\Graphics\Plain" />
-      <Folder Include="Graphics" />
-      <Folder Include="Interfaces" />
     </ItemGroup>
 
 </Project>

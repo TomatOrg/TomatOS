@@ -1,21 +1,59 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
-namespace Tomato.DriverServices;
+namespace Tomato.Hal;
 
-public static class MemoryServices
+public class MemoryServices
 {
+    
+    #region AlignDown
+
+    public static ulong AlignDown(ulong value, ulong alignment)
+    {
+        return value - (value & (alignment - 1));
+    }
+    
+    #endregion
+
+    #region AlignUp
+
+    public static ulong AlignUp(ulong value, ulong alignment)
+    {
+        return (value + (alignment - 1)) & ~(alignment - 1);
+    }
+    
+    #endregion
+
+    #region DivideUp
+
+    public static ulong DivideUp(ulong value, ulong alignment)
+    {
+        return (value + (alignment - 1)) / alignment;
+    }
+    
+    public static int DivideUp(int value, int alignment)
+    {
+        return (value + (alignment - 1)) / alignment;
+    }
+
+    #endregion
 
     /// <summary>
     /// The base of the kernel's direct map
     /// </summary>
     private const ulong DirectMapBase = 0xffff800000000000ul;
-    
+
     /// <summary>
     /// The size of a page
     /// </summary>
     public static readonly int PageSize = 4096;
+
+    /// <summary>
+    /// The max allocation size for physical memory
+    /// </summary>
+    public static readonly int MaxPhysicalAllocationSize = 1024 * 1024 * 2;
 
     /// <summary>
     /// Get the physical address of memory allocated by AllocatePages, if it was returned
@@ -27,7 +65,7 @@ public static class MemoryServices
     {
         // note: we don't need to have this as checked because the object can only be
         //       created by a safe function
-        return ((AllocatedMemoryHolder)range)._ptr - 0xffff800000000000ul;
+        return ((AllocatedMemoryHolder)range)._ptr - DirectMapBase;
     }
 
     /// <summary>
@@ -40,24 +78,27 @@ public static class MemoryServices
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
     internal static extern ulong GetMappedPhysicalAddress(Memory<byte> range);
 
+    
     /// <summary>
     /// Allocate pages, which are aligned to the allocation size rounded to the next power of two,
-    /// so it is at least page aligned
+    /// and are at least page size big.
+    ///
+    /// Note that the max allocation size for physical memory is limited and defined 
     /// </summary>
-    public static IMemoryOwner<byte> AllocatePages(int pages)
+    public static IMemoryOwner<byte> AllocatePhysicalMemory(int size)
     {
         // make sure we have a good amount of pages
-        if (pages < 0)
-            throw new ArgumentOutOfRangeException(nameof(pages));
+        if (size <= 0)
+            throw new ArgumentOutOfRangeException(nameof(size));
 
         // create the owner and allocate it 
         var holder = new AllocatedMemoryHolder();
-        holder._ptr = AllocateMemory((ulong)pages * (ulong)PageSize);
+        holder._ptr = AllocateMemory((ulong)size);
         if (holder._ptr == 0)
             throw new OutOfMemoryException();
 
         // update the memory reference in the holder
-        UpdateMemory(ref holder._memory, holder, holder._ptr, pages * PageSize);
+        UpdateMemory(ref holder._memory, holder, holder._ptr, size);
         
         // return the holder
         return holder;
@@ -76,8 +117,8 @@ public static class MemoryServices
             throw new ArgumentOutOfRangeException(nameof(size));
         
         // TODO: chcked
-        var rangeStart = KernelUtils.AlignDown(ptr, (ulong)PageSize);
-        var rangeEnd = KernelUtils.AlignUp(ptr + (ulong)size, (ulong)PageSize);
+        var rangeStart = AlignDown(ptr, (ulong)PageSize);
+        var rangeEnd = AlignUp(ptr + (ulong)size, (ulong)PageSize);
 
         var offset = ptr - rangeStart;
         var pageCount = (rangeEnd - rangeStart) / (ulong)PageSize;
@@ -90,6 +131,12 @@ public static class MemoryServices
         return memory;
     }
 
+    internal static Memory<T> Map<T>(ulong ptr, int count = 1)
+        where T : unmanaged
+    {
+        return MemoryMarshal.Cast<byte, T>(Map(ptr, Unsafe.SizeOf<T>() * count));
+    }
+    
     /// <summary>
     /// Holds a reference to memory which is allocated
     /// </summary>
@@ -111,7 +158,7 @@ public static class MemoryServices
         }
         
     }
-
+    
     #region Native Functions
 
     /// <summary>

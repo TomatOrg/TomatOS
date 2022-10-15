@@ -1,19 +1,25 @@
 ########################################################################################################################
 # Build constants
 ########################################################################################################################
+
+# Should GCC be used instead of clang
+# needed for some debug utilities
 USE_GCC		:= 0
+
+# Should UBSAN be enabled
+USE_UBSAN	:= 0
+
+# Should KASAN be enabled
 USE_KASAN	:= 0
+
+# Should we enable the profiler
 USE_PROF	:= 0
+
+# Should we compile with no-optimizations
 DEBUG		:= 0
 
-ifeq ($(USE_GCC), 1)
-CC 			:= gcc
-LD 			:= gcc
-else
-CC 			:= ccache clang
-LD			:= ld.lld
-endif
-
+# Build in debug or release mode
+DEBUG		:= 1
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
@@ -22,10 +28,23 @@ BUILD_DIR	:= $(OUT_DIR)/build
 #-----------------------------------------------------------------------------------------------------------------------
 # General configurations
 #-----------------------------------------------------------------------------------------------------------------------
+
+# Choose a compiler
+ifeq ($(USE_GCC), 1)
+CC 			:= gcc
+LD 			:= gcc
+else
+CC 			:= ccache clang
+LD			:= ld.lld
+endif
+
 CFLAGS 		:=
+
+# For clang we need a target
 ifeq ($(USE_GCC), 0)
 CFLAGS 		+= -target x86_64-pc-none-elf
 endif
+
 CFLAGS		+= -Werror -std=gnu11
 CFLAGS 		+= -Wno-unused-function
 CFLAGS 		+= -Wno-unused-label
@@ -36,30 +55,50 @@ CFLAGS 		+= -D__SERIAL_TRACE__
 CFLAGS 		+= -D__GRAPHICS_TRACE__
 
 ifeq ($(DEBUG),1)
+	# No optimizations at all and full debug info
 	CFLAGS	+= -O0 -g3
+
+	# Enable a full stack protector for debugging
 	CFLAGS 	+= -fstack-protector-all
-#	CFLAGS 	+= -fno-sanitize=alignment
-#	ifeq ($(USE_GCC), 0)
-#		CFLAGS	+= -fsanitize=undefined
-#	endif
+
+	# Mark that we are in debug
+	CFLAGS 	+= -D__DEBUG__
 else
+	# full optimizations, but still emit debug info
 	CFLAGS	+= -O3 -g
+
+	# set no debugging, mostly used for the libraries we use
 	CFLAGS 	+= -DNDEBUG
+
+	# TODO: why only on clang we use lto?
 	ifeq ($(USE_GCC), 0)
 		CFLAGS		+= -flto
 	endif
 endif
+
+# if we want to use kasan
 ifeq ($(USE_KASAN),1)
-	CFLAGS  += -DKASAN -fsanitize=kernel-address -fasan-shadow-offset=0xdfffe00000000000
+ifeq ($(USE_GCC),0)
+	# it inlines the checks so we can't disable them for the start of the kernel
+	$(error "GCC is required to build with KASAN")
 endif
-# NOTE: requires GCC!
-# clang doesn't support exclude-file-list
-ifeq ($(USE_PROF),1)
-	CFLAGS	+= -DPROF -finstrument-functions \
-	-finstrument-functions-exclude-file-list=kernel/ \
-	-finstrument-functions-exclude-file-list=lib/tinydotnet/lib/
+	CFLAGS  += -D__KASAN__
+	CFLAGS  += -fsanitize=kernel-address
+	CFLAGS  += -fasan-shadow-offset=0xdfffe00000000000
 endif
 
+ifeq ($(USE_PROF),1)
+ifeq ($(USE_GCC),0)
+	# clang doesn't support exclude-file-list
+	$(error "GCC is required to build with profiler")
+endif
+	CFLAGS	+= -D__PROF__
+	CFLAGS 	+= -finstrument-functions
+	CFLAGS 	+= -finstrument-functions-exclude-file-list=kernel/
+	CFLAGS 	+= -finstrument-functions-exclude-file-list=lib/tinydotnet/lib/
+endif
+
+# Set the cflags
 CFLAGS 		+= -mno-avx -mno-avx2 -fno-pie -fno-pic -Wno-error=unused-but-set-variable
 CFLAGS		+= -ffreestanding -static -fshort-wchar
 CFLAGS		+= -mcmodel=kernel -mno-red-zone
@@ -70,8 +109,11 @@ CFLAGS 		+= -isystem lib/libc
 CFLAGS 		+= -fms-extensions -Wno-microsoft-anon-tag
 CFLAGS 		+= -Ilib/tinydotnet/lib
 
+# Include all the sources
+# TODO: for reproducible build we should sort this
 SRCS 		:= $(shell find kernel -name '*.c')
 
+# Set the linker flags
 LDFLAGS		+= -Tkernel/linker.ld -nostdlib -static -z max-page-size=0x1000 
 
 # For the printf library
@@ -90,7 +132,6 @@ CFLAGS 		+= -Ilib/tinydotnet/src
 #-----------------------------------------------------------------------------------------------------------------------
 
 CFLAGS		+= -Ilib/tinydotnet/lib/utf8-utf16-converter/converter/include
-
 SRCS		+= lib/tinydotnet/lib/utf8-utf16-converter/converter/src/converter.c
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -143,11 +184,13 @@ $(BUILD_DIR)/lib/zydis/%.c.o: lib/zydis/%.c
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) -D__posix -Ilib/zydis/src -MMD -c $< -o $@
 
+# MIR has compilation warnings so we will just not have Wall
 $(BUILD_DIR)/lib/tinydotnet/lib/mir/%.c.o: lib/tinydotnet/lib/mir/%.c
 	@echo CC $@
 	@mkdir -p $(@D)
 	@$(CC) $(CFLAGS) -MMD -c $< -o $@
 
+# For our main code we will have Wall
 $(BUILD_DIR)/%.c.o: %.c
 	@echo CC $@
 	@mkdir -p $(@D)

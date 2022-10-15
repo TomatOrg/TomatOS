@@ -1170,7 +1170,7 @@ void *tlsf_realloc(tlsf_t *tlsf, void *ptr, size_t size)
 			if (p != NULL) {
 				const size_t minsize = tlsf_min(cursize, size);
 				// this needs to be an uninstrumented memcpy, so it doesn't trigger poisoning
-#ifdef KASAN
+#ifdef __KASAN__
 				void* __memcpy(void* restrict dest, const void* restrict src, size_t n);
 				__memcpy(p, ptr, minsize);
 #else

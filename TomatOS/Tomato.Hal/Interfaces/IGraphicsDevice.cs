@@ -1,7 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 
-namespace Tomato.Interfaces;
+namespace Tomato.Hal.Interfaces;
 
 /// <summary>
 /// Represents a single output for the device, basically a monitor 
@@ -75,7 +76,12 @@ public interface IGraphicsDevice
     /// <summary>
     /// The graphics outputs this device has 
     /// </summary>
-    public IGraphicsOutput[] Outputs { get; }
+    public IEnumerable<IGraphicsOutput> Outputs { get; }
+
+    /// <summary>
+    /// How many outputs are supported by this device
+    /// </summary>
+    public int OutputsCount { get; }
 
     /// <summary>
     /// Creates a GPU resource to store data on 

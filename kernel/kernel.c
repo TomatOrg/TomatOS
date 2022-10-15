@@ -178,23 +178,9 @@ cleanup:
 }
 
 /**
- * The corelib file
+ * Load all the assemblies
  */
-static struct limine_file m_corelib_file;
-
-/**
- * The kernel file
- */
-static struct limine_file m_kernel_file;
-
-/**
- * The keyboard layout file. Currently, the code hardcodes en-US.
- */
-uintptr_t m_kbdlayout_file_ptr;
-size_t m_kbdlayout_file_size;
-struct limine_file g_default_font;
-
-// TODO: driver files
+static struct limine_file* m_assemblies = NULL;
 
 /**
  * Can be used to run self testing, not called by default
@@ -250,35 +236,59 @@ static void kernel_startup() {
     CHECK_AND_RETHROW(init_jit());
     CHECK_AND_RETHROW(init_kernel_internal_calls());
 
-    // load the corelib
-    profiler_start();
-    CHECK_AND_RETHROW(loader_load_corelib(m_corelib_file.address, m_corelib_file.size));
-    profiler_stop();
+    TRACE("Loading all assemblies");
+    for (int i = 0; i < arrlen(m_assemblies); i++) {
+        struct limine_file* file = &m_assemblies[i];
+        TRACE("Loading `%s`", file->path);
 
-    // load the kernel assembly
-    System_Reflection_Assembly kernel_asm = NULL;
-    CHECK_AND_RETHROW(loader_load_assembly(m_kernel_file.address, m_kernel_file.size, &kernel_asm));
+        if (i == 0) {
+            // load the corelib
+            CHECK_AND_RETHROW(loader_load_corelib(file->address, file->size));
+        } else {
+            // load it as a normal assembly
+            System_Reflection_Assembly assembly = NULL;
+            if (IS_ERROR(loader_load_assembly(file->address, file->size, &assembly))) {
+                WARN("Failed to load assembly, ignoring...", file->path);
+                continue;
+            }
 
-    // get the method and wait until its done jitting
-    waitable_t* done;
-    CHECK_AND_RETHROW(jit_method(kernel_asm->EntryPoint, &done));
-    CHECK(waitable_wait(done, true) == WAITABLE_SUCCESS);
+            // if we have an entry point then run it
+            if (assembly->EntryPoint != NULL) {
+                TRACE("\tRunning entry point");
 
-    // call it
-    TRACE("Starting kernel!");
-    method_result_t(*entry_point)() = kernel_asm->EntryPoint->MirFunc->addr;
-    method_result_t result = entry_point();
-    CHECK(result.exception == NULL,
-          "Got exception: \"%U\" (of type `%U`)",
-          result.exception->Message, OBJECT_TYPE(result.exception)->Name);
-    TRACE("Kernel output: %d", result.value);
+                // jit it
+                CHECK_AND_RETHROW(jit_method(assembly->EntryPoint));
+
+                // run it
+                method_result_t(*entry_point)() = assembly->EntryPoint->MirFunc->addr;
+                method_result_t result = entry_point();
+                if (result.exception != NULL) {
+                    WARN("Got exception: \"%U\" (of type `%U`), ignoring",
+                         result.exception->Message, OBJECT_TYPE(result.exception)->Name);
+                } else {
+                    if (assembly->EntryPoint->ReturnType != NULL) {
+                        TRACE("\tReturned: %d", result.value);
+                    }
+                }
+            }
+        }
+    }
 
 cleanup:
     ASSERT(!IS_ERROR(err));
     TRACE("Kernel initialization finished!");
 }
 
-uint8_t bsp_tss[TSS_ALLOC_SIZE];
+/**
+ * The TSS used for the BSP
+ */
+static uint8_t m_bsp_tss[TSS_ALLOC_SIZE];
+
+bool str_ends_with(const char* str, const char* endswith) {
+    size_t len = strlen(str), endswith_len = strlen(endswith);
+    if (len < endswith_len) return false;
+    return memcmp(str + len - endswith_len, endswith, endswith_len) == 0;
+}
 
 void _start(void) {
     err_t err = NO_ERROR;
@@ -320,9 +330,9 @@ void _start(void) {
     CHECK_AND_RETHROW(init_vmm());
     CHECK_AND_RETHROW(init_palloc());
     CHECK_AND_RETHROW(init_cpu_locals());
-    init_tss(bsp_tss);
+    init_tss(m_bsp_tss);
     vmm_switch_allocator();
-#ifdef KASAN
+#ifdef __KASAN__
     CHECK_AND_RETHROW(init_kasan());
 #endif
     CHECK_AND_RETHROW(init_malloc());
@@ -382,26 +392,21 @@ void _start(void) {
     TRACE("Boot modules:");
     for (int i = 0; i < g_limine_module.response->module_count; i++) {
         struct limine_file* file = g_limine_module.response->modules[i];
-        if (strcmp(file->path, "/boot/Corelib.dll") == 0) {
-            m_corelib_file = *file;
-        } else if (strcmp(file->path, "/boot/Tomato.dll") == 0) {
-            m_kernel_file = *file;
-        } else if (strcmp(file->path, "/boot/kbd.dat") == 0) {
-            m_kbdlayout_file_ptr = DIRECT_TO_PHYS(file->address);
-            m_kbdlayout_file_size = file->size;
-        } else if (strcmp(file->path, "/boot/ubuntu-regular.sdfnt") == 0) {
-            // TODO: find by extension
-            g_default_font = *file;
+
+        // If it ends with dll, then load it as a dll
+        if (str_ends_with(file->path, ".dll")) {
+            arrpush(m_assemblies, *file);
+            size_t len = strlen(file->path);
+            arrlast(m_assemblies).path = malloc(len + 1);
+            CHECK(arrlast(m_assemblies).path != NULL);
+            memcpy(arrlast(m_assemblies).path, file->path, len);
         } else {
-            // TODO: if in /drivers/ folder then load it
-            // TODO: load a driver manifest for load order
+            // TODO: save as a module that the kernel can search for?
+            //       maybe queue it as a tar for initramfs?
         }
+
         TRACE("\t%s - %S", file->path, file->size);
     }
-
-    CHECK(m_corelib_file.size != 0);
-    CHECK(m_kernel_file.size != 0);
-    CHECK(g_default_font.size != 0);
 
     TRACE("Kernel init done");
 

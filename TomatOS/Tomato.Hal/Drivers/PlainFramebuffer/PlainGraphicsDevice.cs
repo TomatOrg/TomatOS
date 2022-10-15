@@ -1,11 +1,7 @@
-using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using Tomato.DriverServices;
-using Tomato.Interfaces;
+using Tomato.Hal.Interfaces;
 
-namespace Tomato.Drivers.Graphics.Plain;
+namespace Tomato.Hal.Drivers.PlainFramebuffer;
 
 internal class PlainGraphicsDevice : IGraphicsDevice
 {
@@ -15,25 +11,24 @@ internal class PlainGraphicsDevice : IGraphicsDevice
     /// <summary>
     /// Don't give the user our list
     /// </summary>
-    public IGraphicsOutput[] Outputs
+    public IEnumerable<IGraphicsOutput> Outputs
     {
         get
         {
-            var outputs = new IGraphicsOutput[_outputs.Length];
             for (var i = 0; i < _outputs.Length; i++)
             {
-                var output = _outputs[i];
-                outputs[i] = output;
+                yield return _outputs[i];
             }
-            return outputs;
         }
     }
-    
+
+    public int OutputsCount => _outputs.Length;
+
     internal PlainGraphicsDevice()
     {
         var index = 0;
         var outputs = new List<PlainGraphicsOutput>();
-        while (KernelUtils.GetNextFramebuffer(ref index, out var addr, out var width, out var height, out var pitch))
+        while (Hal.GetNextFramebuffer(ref index, out var addr, out var width, out var height, out var pitch))
         {
             var buffer = MemoryServices.Map(addr, pitch * height);
             outputs.Add(new PlainGraphicsOutput(width, height, pitch, buffer));

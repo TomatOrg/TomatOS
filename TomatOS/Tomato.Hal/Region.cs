@@ -2,7 +2,28 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace Tomato.DriverServices;
+namespace Tomato.Hal;
+
+public class Field<T> 
+    where T : unmanaged
+{
+
+    // keep reference to the region
+    private Region _region;
+    private readonly ulong _fieldPtr;
+
+    public ref T Value => ref MemoryServices.UnsafePtrToRef<T>(_fieldPtr);
+    
+    internal Field(Region region, int offset)
+    {
+        _region = region;
+        
+        // slice the span to get into the correct offset and then get the raw ptr
+        var span = region.Span.Slice(offset, Unsafe.SizeOf<T>());
+        _fieldPtr = MemoryServices.GetSpanPtr(ref span);
+    }
+
+}
 
 public class Region
 {

@@ -1,8 +1,8 @@
 using System;
 using System.Drawing;
-using Tomato.Interfaces;
+using Tomato.Hal.Interfaces;
 
-namespace Tomato.Drivers.Graphics.Plain;
+namespace Tomato.Hal.Drivers.PlainFramebuffer;
 
 internal class PlainGraphicsOutput : IGraphicsOutput
 {
