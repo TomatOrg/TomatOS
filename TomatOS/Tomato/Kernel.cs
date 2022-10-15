@@ -107,7 +107,7 @@ public class Kernel
             cellX += size;
         }
 
-        void BlitFlush(int x, int y, int w, int h) {
+        void BlitFlush() {
             framebuffer.Blit(0, new System.Drawing.Rectangle(0, 0, framebuffer.Width, framebuffer.Height));
             framebuffer.Flush();
         }
