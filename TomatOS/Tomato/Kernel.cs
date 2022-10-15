@@ -81,13 +81,13 @@ public class Kernel
             }
             var ch = line[line.Count - 1];
             line.RemoveAt(line.Count - 1);
-            var size = font.Glyphs[ch - font.First].Advance;
-            cellX -= size;
+            var g = font.Glyphs[ch - font.First];
+            cellX -= g.Advance; // reverse advance
             
-            var fbSlice = _memory.Slice(cellX + (cellY - font.Size) * framebuffer.Width);
-            for (int i = 0; i < font.Size; i++) fbSlice.Slice(i * framebuffer.Width, size).Span.Fill(0);
+            var fbSlice = _memory.Slice(cellX + g.PlaneBounds.X + (cellY + g.PlaneBounds.Y) * framebuffer.Width);
+            for (int i = 0; i < g.PlaneBounds.Height; i++) fbSlice.Slice(i * framebuffer.Width, g.PlaneBounds.Width).Span.Fill(0);
 
-            BlitFlush(cellX, cellY - font.Size, size, font.Size);
+            BlitFlush();
         }
         else
         {
@@ -102,13 +102,13 @@ public class Kernel
             var size = font.Glyphs[c - font.First].Advance;
 
             fontBlitter.DrawString(new string(chars), cellX, cellY);
-            BlitFlush(cellX, cellY - font.Size, size, font.Size);
+            BlitFlush();
 
             cellX += size;
         }
 
         void BlitFlush(int x, int y, int w, int h) {
-            framebuffer.Blit(x + y * framebuffer.Width, new System.Drawing.Rectangle(x, y, w, h));
+            framebuffer.Blit(0, new System.Drawing.Rectangle(0, 0, framebuffer.Width, framebuffer.Height));
             framebuffer.Flush();
         }
     } 
