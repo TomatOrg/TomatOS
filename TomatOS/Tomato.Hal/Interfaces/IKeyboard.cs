@@ -7,12 +7,12 @@ namespace Tomato.Hal.Interfaces;
 /// </summary>
 public struct KeyEvent
 {
-    public KeyCode ScanCode { get; }
+    public KeyCode Code { get; }
     public bool Released { get; }
     
     public KeyEvent(KeyCode c, bool r)
     {
-        ScanCode = c;
+        Code = c;
         Released = r;
     }
 }

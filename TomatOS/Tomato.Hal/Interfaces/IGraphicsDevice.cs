@@ -76,7 +76,7 @@ public interface IGraphicsDevice
     /// <summary>
     /// The graphics outputs this device has 
     /// </summary>
-    public IEnumerable<IGraphicsOutput> Outputs { get; }
+    public IGraphicsOutput[] Outputs { get; }
 
     /// <summary>
     /// How many outputs are supported by this device

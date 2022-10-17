@@ -244,6 +244,31 @@ static void kernel_startup() {
         if (i == 0) {
             // load the corelib
             CHECK_AND_RETHROW(loader_load_corelib(file->address, file->size));
+
+            // we are now going to initialize a managed thread for this thread, so stuff like the ThreadPool
+            // will work properly even with this initialization thread
+            System_Type threadType = assembly_get_type_by_name(g_corelib, "Thread", "System.Threading");
+            CHECK(threadType != NULL);
+
+            // jit the thread type, since we are going to create an instance of it
+            waitable_t* w = NULL;
+            CHECK_AND_RETHROW(jit_type(threadType, &w));
+            waitable_wait(w, true);
+            release_waitable(w);
+
+            // get a reference to the current thread to put in the managed part, we are going
+            // to pass our reference to this class essentially
+            void* thread = GC_NEW(threadType);
+
+            // set the thread handle field
+            System_Reflection_FieldInfo threadHandle = type_get_field_cstr(threadType, "_threadHandle");
+            CHECK(!field_is_static(threadHandle));
+            *((thread_t**)(thread + threadHandle->MemoryOffset)) = put_thread(get_current_thread());
+
+            // TODO: set the thread name?
+
+            // now attach it
+            get_current_thread()->tcb->managed_thread = thread;
         } else {
             // load it as a normal assembly
             System_Reflection_Assembly assembly = NULL;

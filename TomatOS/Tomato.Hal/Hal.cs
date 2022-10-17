@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Tomato.Hal.Acpi;
 using Tomato.Hal.Drivers.PlainFramebuffer;
 using Tomato.Hal.Managers;
@@ -35,6 +36,15 @@ public static class Hal
         {
             DisplayManager.RegisterGraphicsDevice(plainGraphicsDevice);
         }
+
+        ThreadPool.QueueUserWorkItem(state =>
+        {
+            Debug.Print("Hello from the thread pool!");
+        });
+        
+        Debug.Print("Main thread does some work, then sleeps.");
+        Thread.Sleep(1000);
+        Debug.Print("We are done now");
     }
 
     #endregion

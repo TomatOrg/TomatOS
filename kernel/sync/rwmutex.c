@@ -36,8 +36,15 @@
 
 #define RWMUTEX_MAX_READERS (1 << 30)
 
+// unlike fetch add, this does add fetch
+#define atomic_add(ptr, value) \
+    ({ \
+        int32_t __value = value; \
+        atomic_fetch_add(ptr, __value) + __value; \
+    })
+
 void rwmutex_rlock(rwmutex_t* rw) {
-    if (atomic_fetch_add(&rw->reader_count, 1) < 0) {
+    if (atomic_add(&rw->reader_count, 1) < 0) {
         // A writer is pending, wait for it.
         semaphore_acquire(&rw->reader_sem, false);
     }
@@ -48,14 +55,14 @@ static void rwlock_unlock_slow(rwmutex_t* rw, int32_t r) {
     ASSERT(r + 1 != 0 && r + 1 != -RWMUTEX_MAX_READERS);
 
     // A writer is pending.
-    if (atomic_fetch_add(&rw->reader_wait, -1) == 0) {
+    if (atomic_add(&rw->reader_wait, -1) == 0) {
         // The last reader unblocks the writer.
         semaphore_release(&rw->writer_sem, false);
     }
 }
 
 void rwmutex_runlock(rwmutex_t* rw) {
-    int32_t r = atomic_fetch_add(&rw->reader_count, -1);
+    int32_t r = atomic_add(&rw->reader_count, -1);
     if (r < 0) {
         // Outlined slow-path to allow the fast-path to be inlined
         rwlock_unlock_slow(rw, r);
@@ -67,17 +74,17 @@ void rwmutex_lock(rwmutex_t* rw) {
     mutex_lock(&rw->mutex);
 
     // Announce to readers there is a pending writer
-    int32_t r = atomic_fetch_add(&rw->reader_count, -RWMUTEX_MAX_READERS) + RWMUTEX_MAX_READERS;
+    int32_t r = atomic_add(&rw->reader_count, -RWMUTEX_MAX_READERS) + RWMUTEX_MAX_READERS;
 
     // Wait for active readers.
-    if (r != 0 && atomic_fetch_add(&rw->reader_wait, r) != 0) {
+    if (r != 0 && atomic_add(&rw->reader_wait, r) != 0) {
         semaphore_acquire(&rw->writer_sem, false);
     }
 }
 
 void rwmutex_unlock(rwmutex_t* rw) {
     // Announce to readers there is no active writer.
-    int32_t r = atomic_fetch_add(&rw->reader_count, RWMUTEX_MAX_READERS);
+    int32_t r = atomic_add(&rw->reader_count, RWMUTEX_MAX_READERS);
     ASSERT(r < RWMUTEX_MAX_READERS);
 
     // Unblock blocked readers, if any.

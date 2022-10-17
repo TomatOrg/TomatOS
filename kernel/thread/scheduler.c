@@ -1258,6 +1258,9 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
         // change the status to dead
         cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_DEAD);
 
+        // don't keep the managed thread alive anymore
+        current_thread->tcb->managed_thread = NULL;
+
         // release the reference that the scheduler has
         release_thread(current_thread);
     }

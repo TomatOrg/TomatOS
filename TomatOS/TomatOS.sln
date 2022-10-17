@@ -8,6 +8,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tomato.Graphics", "Tomato.G
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Drivers", "Drivers", "{49D1584A-36A5-40A8-BCA6-BB005BBA2A30}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tomato.Terminal", "Tomato.Terminal\Tomato.Terminal.csproj", "{56585CEC-F1D8-4A89-B725-56100E79B015}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,6 +28,10 @@ Global
 		{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C0F6349C-BCF5-4A3F-AAE5-EF1FCB6A8F95}.Release|Any CPU.Build.0 = Release|Any CPU
+		{56585CEC-F1D8-4A89-B725-56100E79B015}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{56585CEC-F1D8-4A89-B725-56100E79B015}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{56585CEC-F1D8-4A89-B725-56100E79B015}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{56585CEC-F1D8-4A89-B725-56100E79B015}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 	EndGlobalSection

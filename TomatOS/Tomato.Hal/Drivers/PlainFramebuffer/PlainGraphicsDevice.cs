@@ -11,14 +11,16 @@ internal class PlainGraphicsDevice : IGraphicsDevice
     /// <summary>
     /// Don't give the user our list
     /// </summary>
-    public IEnumerable<IGraphicsOutput> Outputs
+    public IGraphicsOutput[] Outputs
     {
         get
         {
+            var outputs = new IGraphicsOutput[_outputs.Length];
             for (var i = 0; i < _outputs.Length; i++)
             {
-                yield return _outputs[i];
+                outputs[i] = _outputs[i];
             }
+            return outputs;
         }
     }
 
