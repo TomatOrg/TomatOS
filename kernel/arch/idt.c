@@ -368,6 +368,8 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
 
         if (old_bp == 0) {
             break;
+        } else if (old_bp >= (size_t)base_ptr) {
+            WARN("\tGoes back to %p", old_bp);
         }
         base_ptr = (size_t*)old_bp;
     }

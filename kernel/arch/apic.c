@@ -205,12 +205,8 @@ err_t init_apic() {
     cpuid(CPUID_VERSION_INFO, NULL, NULL, &version_info_ecx.packed, NULL);
     CHECK(version_info_ecx.TSC_Deadline);
 
-    // enable the local timer
-    lapic_lvt_timer_t timer = {
-        .vector = IRQ_PREEMPT,
-        .tsc_deadline = 1,
-    };
-    lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
+    // configure for preempt by default
+    lapic_set_preempt();
 
     // TODO: program wires
 
@@ -267,6 +263,24 @@ void lapic_send_ipi_lowest_priority(uint8_t vector) {
 
 size_t get_apic_id() {
     return lapic_read(XAPIC_ID_OFFSET) >> 24;
+}
+
+void lapic_set_wakeup() {
+    // enable the local timer
+    lapic_lvt_timer_t timer = {
+        .vector = IRQ_WAKEUP,
+        .tsc_deadline = 1,
+    };
+    lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
+}
+
+void lapic_set_preempt() {
+    // enable the local timer
+    lapic_lvt_timer_t timer = {
+        .vector = IRQ_PREEMPT,
+        .tsc_deadline = 1,
+    };
+    lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
 }
 
 void lapic_set_timeout(uint64_t microseconds) {

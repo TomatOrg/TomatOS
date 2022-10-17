@@ -1146,10 +1146,25 @@ INTERRUPT static thread_t* find_runnable() {
             //       we are just gonna sleep for that time
             if (wait_us > 0) {
                 // we want to sleep, so sleep for the given amount of
-                // time or when an interrupt happens
+                // time or when an interrupt happens, we will keep at
+                // a normal priority because we want to be waiting for
+                // the timer if someone else can process the irq
                 atomic_store(&m_polling_cpu, get_cpu_id());
+
+                // prepare to sleep, we want to get a wakeup which does not
+                // cause a stack change, and we want it after the given amount of
+                // time
+                lapic_set_wakeup();
                 lapic_set_timeout(wait_us);
+
                 __asm__ ("sti; hlt; cli");
+
+                // we are back, return to have the timer be preempt, and also
+                // cancel the deadline in the case that we got an early wakeup
+                // which was no related to the timer
+                lapic_set_preempt();
+                scheduler_cancel_deadline();
+
                 atomic_store(&m_polling_cpu, -1);
             }
 
@@ -1178,7 +1193,9 @@ INTERRUPT static thread_t* find_runnable() {
 
         // we have nothing to do, so put the cpu into
         // a sleeping state until an interrupt or something
-        // else happens. we will lower the state
+        // else happens. we will lower the state to make sure
+        // that interrupts will arrive to us at the highest
+        // priority
         __writecr8(PRIORITY_SCHEDULER_WAIT);
         __asm__ ("sti; hlt; cli");
         __writecr8(PRIORITY_NORMAL);
@@ -1216,13 +1233,6 @@ static void enter_scheduler() {
 
 INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
     enter_scheduler();
-
-    // we are spinning, so we should not
-    // actually schedule anything and just
-    // return, since there are timers to run
-    if (m_polling_cpu == get_cpu_id()) {
-        return;
-    }
 
     // save the current thread, don't park it
     save_current_thread(ctx, false);

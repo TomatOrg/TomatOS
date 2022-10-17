@@ -36,6 +36,16 @@ void lapic_send_ipi_lowest_priority(uint8_t vector);
 size_t get_apic_id();
 
 /**
+ * Configures the lapic to fire a wakeup
+ */
+void lapic_set_wakeup();
+
+/**
+ * Configures the lapic to fire a preempt
+ */
+void lapic_set_preempt();
+
+/**
  * Set the deadline in microseconds since now
  */
 void lapic_set_timeout(uint64_t microseconds);
