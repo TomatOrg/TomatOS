@@ -17,7 +17,13 @@ internal class PS2Keyboard : IKeyboard
     Action<KeyEvent> _callback = null;
     Irq _irq;
 
-    public void RegisterCallback(Action<KeyEvent> cb) => _callback = cb;
+    public void RegisterCallback(Action<KeyEvent> cb)
+    {
+        _callback = cb;
+        _irq = IoApic.RegisterIrq(PS2.KBD_IRQ);
+        var irqThread = new Thread(IrqWait);
+        irqThread.Start();
+    }
 
     static KeyCode[] set1 = new KeyCode[] {
         KeyCode.None,
@@ -278,12 +284,6 @@ internal class PS2Keyboard : IKeyboard
         KeyCode.None
     };
 
-    internal PS2Keyboard()
-    {
-        _irq = IoApic.RegisterIrq(PS2.KBD_IRQ);
-        var irqThread = new Thread(IrqWait);
-        irqThread.Start();
-    }
     private void IrqWait()
     {
         while (true)
@@ -318,16 +318,12 @@ internal class PS2Mouse : IRelMouse
     Irq _irq;
     Action<RelMouseEvent> _callback = null;
 
-    internal PS2Mouse()
-    {
-        _irq = IoApic.RegisterIrq(PS2.MOUSE_IRQ);
-        var irqThread = new Thread(IrqWait);
-        irqThread.Start();
-    }
-    
     public void RegisterCallback(Action<RelMouseEvent> cb)
     {
         _callback = cb;
+        _irq = IoApic.RegisterIrq(PS2.MOUSE_IRQ);
+        var irqThread = new Thread(IrqWait);
+        irqThread.Start();
     }
 
     private void IrqWait()
@@ -339,7 +335,7 @@ internal class PS2Mouse : IRelMouse
             _irq.Wait();
             var data = PS2.MouseReceive();
             if (_callback is null) continue;
-            
+
             switch (cycle)
             {
                 case 0:
@@ -405,7 +401,7 @@ internal class PS2
     const byte MOUSE_COMMAND_SELFTEST = 0xFF;
     const byte MOUSE_COMMAND_SETDEFAULTS = 0xF6;
     const byte MOUSE_COMMAND_ENABLE_DATA_REPORTING = 0xF4;
-    
+
     private static void ControllerWaitRead()
     {
         while (true)
@@ -486,11 +482,11 @@ internal class PS2
         // get configuration
         ControllerSendCommand(COMMAND_READBYTE);
         var conf = ControllerReceiveCommandParam();
-        
+
         conf |= CONFIG_KBD_IRQ;
         conf |= CONFIG_MOUSE_IRQ;
         conf |= CONFIG_KBD_SET2_TO_1; // i can just use set 1 and pretend the hell that is the late 90s PC industry never happened
-        
+
         // set configuration
         ControllerSendCommand(COMMAND_WRITEBYTE);
         ControllerSendCommandParam(conf);

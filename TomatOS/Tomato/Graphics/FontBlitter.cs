@@ -73,7 +73,7 @@ public struct FontBlitter
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void DrawChar(Span<uint> pixels, Span<uint> memory, in Glyph glyph, int x, int y, uint color)
+    private void DrawInternal(Span<uint> pixels, Span<uint> memory, in Glyph glyph, int x, int y, uint color)
     {
         var fullAtlasWidth = _font.AtlasWidth;
 
@@ -127,12 +127,30 @@ public struct FontBlitter
             // draw it  
             if (glyph.AtlasBounds.Width != 0)
             {
-                DrawChar(pixels, memory, glyph, cursorX, cursorY, color);
+                DrawInternal(pixels, memory, glyph, cursorX, cursorY, color);
             }
             
             // draw it 
             cursorX += glyph.Advance;
         }
     }
-    
+    public void DrawChar(char c, int cursorX, int cursorY)
+    {
+        var pixels = _font.Pixels.Span;
+        var memory = _memory.Span;
+        var color = _color;
+        
+        // filter invalid chars
+        if (c < _font.First || c > _font.Last)
+            return;
+
+        // filter empty bitmaps
+        ref var glyph = ref _font.Glyphs[c - _font.First];
+
+        // draw it  
+        if (glyph.AtlasBounds.Width != 0)
+        {
+            DrawInternal(pixels, memory, glyph, cursorX, cursorY, color);
+        }
+    }
 }
