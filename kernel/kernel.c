@@ -251,10 +251,7 @@ static void kernel_startup() {
             CHECK(threadType != NULL);
 
             // jit the thread type, since we are going to create an instance of it
-            waitable_t* w = NULL;
-            CHECK_AND_RETHROW(jit_type(threadType, &w));
-            waitable_wait(w, true);
-            release_waitable(w);
+            CHECK_AND_RETHROW(jit_type(threadType));
 
             // get a reference to the current thread to put in the managed part, we are going
             // to pass our reference to this class essentially

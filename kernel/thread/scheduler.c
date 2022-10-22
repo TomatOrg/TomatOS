@@ -870,7 +870,7 @@ static void break_poller() {
     }
 }
 
-void scheduler_wake_poller(int64_t when) {
+void  scheduler_wake_poller(int64_t when) {
     if (atomic_load(&m_last_poll) == 0) {
         // In find_runnable we ensure that when polling the poll_until
         // field is either zero or the time to which the current poll

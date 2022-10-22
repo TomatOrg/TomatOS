@@ -49,8 +49,8 @@ typedef enum timer_status {
 } timer_status_t;
 
 typedef struct timer {
-    // If this timer is on a heap, which CPU's heap it is on.
-    int cpu;
+    // If this timer is on a heap, which timers heap it is on.
+    void* timers;
 
  	// Timer wakes up at when, and then at when+period, ... (period > 0 only)
 	// each time calling func(arg, now) in the timer thread, so func must be

@@ -343,9 +343,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     char buffer[256] = { 0 };
     debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
     ERROR("Code: %s", buffer);
-//    if (vmm_is_mapped(ctx->rip)) {
-//        debug_disasm_at((void*)ctx->rip, 1);
-//    }
+    debug_disasm_at((void*)ctx->rip, 5);
 
     ERROR("");
 
@@ -368,8 +366,9 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
 
         if (old_bp == 0) {
             break;
-        } else if (old_bp >= (size_t)base_ptr) {
+        } else if (old_bp <= (size_t)base_ptr) {
             WARN("\tGoes back to %p", old_bp);
+            break;
         }
         base_ptr = (size_t*)old_bp;
     }

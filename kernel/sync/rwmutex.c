@@ -46,7 +46,7 @@
 void rwmutex_rlock(rwmutex_t* rw) {
     if (atomic_add(&rw->reader_count, 1) < 0) {
         // A writer is pending, wait for it.
-        semaphore_acquire(&rw->reader_sem, false);
+        semaphore_acquire(&rw->reader_sem, false, -1);
     }
 }
 
@@ -78,7 +78,7 @@ void rwmutex_lock(rwmutex_t* rw) {
 
     // Wait for active readers.
     if (r != 0 && atomic_add(&rw->reader_wait, r) != 0) {
-        semaphore_acquire(&rw->writer_sem, false);
+        semaphore_acquire(&rw->writer_sem, false, -1);
     }
 }
 

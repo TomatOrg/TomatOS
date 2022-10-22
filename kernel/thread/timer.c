@@ -197,9 +197,9 @@ INTERRUPT static void update_timer_modified_earliest(timers_t* timers, int64_t n
  */
 INTERRUPT static void do_delete_timer0(timers_t* timers) {
     timer_t* timer = timers->timers[0];
-    ASSERT(timer->cpu == get_cpu_id());
+    ASSERT(timer->timers == timers);
 
-    timer->cpu = -1;
+    timer->timers = NULL;
 
     // pop it, and replace from the back if there is still items
     timer_t* last = arrpop(timers->timers);
@@ -218,9 +218,8 @@ INTERRUPT static void do_delete_timer0(timers_t* timers) {
 }
 
 INTERRUPT static void do_add_timer(timers_t* timers, timer_t* timer) {
-    // set that the timer is on this cpu
-    ASSERT(timer->cpu == -1);
-    timer->cpu = get_cpu_id();
+    ASSERT(timer->timers == timers);
+    timer->timers = get_cpu_local_base(&m_timers);
 
     // push the timer, make sure to update the ref count
     int i = arrlen(timers->timers);
@@ -241,7 +240,9 @@ INTERRUPT static void do_add_timer(timers_t* timers, timer_t* timer) {
  */
 static int do_delete_timer(timers_t* timers, int i) {
     timer_t* timer = timers->timers[i];
-    timer->cpu = -1;
+    ASSERT(timer->timers == timers);
+
+    timer->timers = NULL;
 
     int last = arrlen(timers->timers) - 1;
     if (i != last) {
@@ -284,7 +285,7 @@ static void clean_timers(timers_t* timers) {
         }
 
         timer_t* timer = timers->timers[0];
-        ASSERT(timer->cpu == get_cpu_id());
+        ASSERT(timer->timers == timers);
 
         timer_status_t status = atomic_load(&timer->status);
         switch (status) {
@@ -481,6 +482,7 @@ INTERRUPT static void run_one_timer(timers_t* timers, timer_t* timer, int64_t no
 INTERRUPT static int64_t run_timer(timers_t* timers, int64_t now) {
     while (true) {
         timer_t* timer = timers->timers[0];
+        ASSERT(timer->timers == timers);
 
         timer_status_t status = atomic_load(&timer->status);
         switch (status) {
@@ -593,7 +595,7 @@ INTERRUPT static void clear_deleted_timers(timers_t* timers) {
 
                 case TIMER_DELETED: {
                     if (atomic_compare_exchange_strong(&timer->status, &status, TIMER_REMOVING)) {
-                        timer->cpu = -1;
+                        timer->timers = NULL;
                         cdel++;
 
                         status = TIMER_REMOVING;
@@ -649,13 +651,21 @@ INTERRUPT static void clear_deleted_timers(timers_t* timers) {
 
 timer_t* create_timer() {
     timer_t* timer = malloc(sizeof(timer_t));
-    timer->cpu = -1;
+    if (timer == NULL) {
+        return timer;
+    }
+
+    timer->timers = NULL;
     timer->ref_count = 1;
     return timer;
 }
 
 void timer_start(timer_t* timer) {
-    timer->status = TIMER_WAITING;
+    ASSERT(timer->when > 0 && "timer when must be positive");
+    ASSERT(timer->period >= 0 && "timer period must be non-negative");
+    ASSERT(timer->status == TIMER_NO_STATUS && "timer_start called with initialized timer");
+
+    atomic_store(&timer->status, TIMER_WAITING);
 
     int64_t when = timer->when;
 
@@ -685,7 +695,7 @@ bool timer_stop(timer_t* timer) {
                 if (atomic_compare_exchange_strong(&timer->status, &status, TIMER_MODIFYING)) {
                     // Must fetch cpu before changing status, as clean_timers in another
                     // thread can clear cpu of a TIMER_DELETED timer.
-                    int cpu = timer->cpu;
+                    timers_t* timers = timer->timers;
 
                     status = TIMER_MODIFYING;
                     ASSERT(atomic_compare_exchange_strong(&timer->status, &status, TIMER_DELETED));
@@ -693,7 +703,6 @@ bool timer_stop(timer_t* timer) {
                     scheduler_preempt_enable();
 
                     // report that we have marked this as deleted to the given cpu
-                    timers_t* timers = get_cpu_base(cpu, &m_timers);
                     atomic_fetch_add(&timers->deleted_timers, 1);
 
                     // Timer was not yet run
@@ -701,7 +710,6 @@ bool timer_stop(timer_t* timer) {
                 } else {
                     scheduler_preempt_enable();
                 }
-
             } break;
 
             case TIMER_DELETED:
@@ -725,7 +733,7 @@ bool timer_stop(timer_t* timer) {
             } break;
 
             case TIMER_MODIFYING: {
-                // Simultaneous calls to delete_timer and modify_timer.
+                // Simultaneous calls to timer_stop and timer_modify.
                 // Wait for the other call to complete.
                 scheduler_yield();
             } break;
@@ -781,7 +789,7 @@ bool timer_modify(timer_t* timer, int64_t when, int64_t period, timer_func_t fun
                 // Prevent preemption while the timer is in TIMER_MODIFYING
                 scheduler_preempt_disable();
                 if (atomic_compare_exchange_strong(&timer->status, &status, TIMER_MODIFYING)) {
-                    timers_t* timers = get_cpu_base(timer->cpu, &m_timers);
+                    timers_t* timers = timer->timers;
                     atomic_fetch_sub(&timers->deleted_timers, 1);
                     pending = false; // timer already stopped
                     goto got_timer;
@@ -841,7 +849,7 @@ got_timer:
 
         // get the timers of the given cpu
         if (new_status == TIMER_MODIFIED_EARLIER) {
-            timers_t* timers = get_cpu_base(timer->cpu, &m_timers);
+            timers_t* timers = timer->timers;
             update_timer_modified_earliest(timers, when);
         }
 
@@ -866,6 +874,9 @@ timer_t* put_timer(timer_t* timer) {
 
 INTERRUPT void release_timer(timer_t* timer) {
     if (atomic_fetch_sub(&timer->ref_count, 1) == 1) {
+        // we lost all references, must be already stopped
+        ASSERT(timer->status == TIMER_REMOVED || timer->status == TIMER_DELETED);
+
         // this was the last ref, delete
         free(timer);
     }

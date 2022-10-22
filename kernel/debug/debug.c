@@ -91,6 +91,11 @@ size_t debug_get_code_size(void* ptr) {
 }
 
 void debug_disasm_at(void* ptr, int opcodes) {
+    // check ptr is mapped and has space for a full opcode
+    if (!vmm_is_mapped((uintptr_t) ptr + 15)) {
+        return;
+    }
+
     // initialize decoder and formatter
     ZydisDecoder decoder;
     ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
@@ -113,17 +118,18 @@ void debug_disasm_at(void* ptr, int opcodes) {
                                         instruction.operand_count_visible, buffer, sizeof(buffer),
                                         (uintptr_t)ptr);
 
-        // get the symbol name
-        char addr_buffer[256] = { 0 };
-        debug_format_symbol((uintptr_t)ptr, addr_buffer, sizeof(addr_buffer));
-
         // print it
-        TRACE(" %c %s: %s", first ? '>' : ' ', addr_buffer, buffer);
+        TRACE(" %c %s", first ? '>' : ' ', buffer);
         first = false;
 
         // next...
         ptr += instruction.length;
         if (--opcodes == 0) {
+            break;
+        }
+
+        // make sure we don't decode unmapped bytes
+        if (!vmm_is_mapped((uintptr_t) (ptr + 15))) {
             break;
         }
     }
