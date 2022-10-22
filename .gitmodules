@@ -1,6 +1,7 @@
 [submodule "limine"]
 	path = limine
 	url = git@github.com:limine-bootloader/limine.git
+	shallow = true
 [submodule "lib/zydis"]
 	path = lib/zydis
 	url = git@github.com:zyantific/zydis.git

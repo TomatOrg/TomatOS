@@ -17,6 +17,7 @@
 
 #include <debug/debug.h>
 #include <debug/asan.h>
+#include <debug/profiler.h>
 
 #include <util/except.h>
 #include <util/string.h>
@@ -250,7 +251,9 @@ static void kernel_startup() {
     CHECK_AND_RETHROW(init_kernel_internal_calls());
 
     // load the corelib
+    profiler_start();
     CHECK_AND_RETHROW(loader_load_corelib(m_corelib_file.address, m_corelib_file.size));
+    profiler_stop();
 
     // load the kernel assembly
     System_Reflection_Assembly kernel_asm = NULL;

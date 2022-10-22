@@ -1,8 +1,10 @@
 ########################################################################################################################
 # Build constants
 ########################################################################################################################
-USE_GCC		:= 0
+USE_GCC		:= 1
 USE_KASAN	:= 0
+USE_PROF	:= 1
+DEBUG		:= 1
 
 ifeq ($(USE_GCC), 1)
 CC 			:= gcc
@@ -12,8 +14,6 @@ CC 			:= ccache clang
 LD			:= ld.lld
 endif
 
-# Build in debug or release mode
-DEBUG		:= 0
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
@@ -36,7 +36,7 @@ CFLAGS 		+= -D__SERIAL_TRACE__
 CFLAGS 		+= -D__GRAPHICS_TRACE__
 
 ifeq ($(DEBUG),1)
-	CFLAGS	+= -O0 -g
+	CFLAGS	+= -O0 -g3
 	CFLAGS 	+= -fstack-protector-all
 #	CFLAGS 	+= -fno-sanitize=alignment
 #	ifeq ($(USE_GCC), 0)
@@ -52,6 +52,11 @@ endif
 ifeq ($(USE_KASAN),1)
 	CFLAGS  += -DKASAN -fsanitize=kernel-address -fasan-shadow-offset=0xdfffe00000000000
 endif
+# NOTE: requires GCC!
+# clang doesn't support exclude-file-list
+ifeq ($(USE_PROF),1)
+	CFLAGS	+= -finstrument-functions -finstrument-functions-exclude-file-list=kernel/ -finstrument-functions-exclude-file-list=lib/tinydotnet/lib/
+endif
 
 CFLAGS 		+= -mno-avx -mno-avx2 -fno-pie -fno-pic -Wno-error=unused-but-set-variable
 CFLAGS		+= -ffreestanding -static -fshort-wchar
@@ -65,7 +70,7 @@ CFLAGS 		+= -Ilib/tinydotnet/lib
 
 SRCS 		:= $(shell find kernel -name '*.c')
 
-LDFLAGS		+= -Tkernel/linker.ld -nostdlib -static -z max-page-size=0x1000
+LDFLAGS		+= -Tkernel/linker.ld -nostdlib -static -z max-page-size=0x1000 
 
 # For the printf library
 CFLAGS		+= -DPRINTF_NTOA_BUFFER_SIZE=64
@@ -126,6 +131,9 @@ $(BIN_DIR)/tomatos.elf: $(OBJS) | Makefile
 	@echo LD $@
 	@mkdir -p $(@D)
 	@$(LD) $(LDFLAGS) -o $@ $^
+
+scripts/profiler_gen: scripts/profiler_gen.c
+	@$(CC) -Ikernel -O2 $< -o $@
 
 # For zyndis we tell it we are posix just so it will be happy
 $(BUILD_DIR)/lib/zydis/%.c.o: lib/zydis/%.c
