@@ -183,9 +183,14 @@ bool semaphore_acquire(semaphore_t* semaphore, bool lifo, int64_t timeout) {
 
         // if we have a timeout then prepare a timer for it
         timer_t* timer = NULL;
+        semaphore_timeout_context_t ctx;
         if (timeout > 0) {
             timer = create_timer();
-            timer->arg = wt;
+            ctx = (semaphore_timeout_context_t){
+                .wt = wt,
+                .sm = semaphore
+            };
+            timer->arg = &ctx;
             timer->func = (timer_func_t) semaphore_acquire_timeout;
             timer->when = (int64_t) microtime() + timeout;
             timer_start(timer);

@@ -218,7 +218,7 @@ INTERRUPT static void do_delete_timer0(timers_t* timers) {
 }
 
 INTERRUPT static void do_add_timer(timers_t* timers, timer_t* timer) {
-    ASSERT(timer->timers == timers);
+    ASSERT(timer->timers == NULL);
     timer->timers = get_cpu_local_base(&m_timers);
 
     // push the timer, make sure to update the ref count
@@ -875,7 +875,13 @@ timer_t* put_timer(timer_t* timer) {
 INTERRUPT void release_timer(timer_t* timer) {
     if (atomic_fetch_sub(&timer->ref_count, 1) == 1) {
         // we lost all references, must be already stopped
-        ASSERT(timer->status == TIMER_REMOVED || timer->status == TIMER_DELETED);
+        // or never started
+        int status = timer->status;
+        ASSERT(
+            status == TIMER_REMOVED ||
+            status == TIMER_DELETED ||
+            status == TIMER_NO_STATUS
+        );
 
         // this was the last ref, delete
         free(timer);

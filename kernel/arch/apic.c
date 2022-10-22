@@ -5,6 +5,7 @@
 #include "time/tsc.h"
 #include "cpuid.h"
 #include "irq/irq.h"
+#include "thread/cpu_local.h"
 
 #include <util/defs.h>
 #include <mem/mem.h>
@@ -272,6 +273,9 @@ void lapic_set_wakeup() {
         .tsc_deadline = 1,
     };
     lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
+
+    // serialize the lapic write
+    _mm_mfence();
 }
 
 void lapic_set_preempt() {
@@ -281,6 +285,9 @@ void lapic_set_preempt() {
         .tsc_deadline = 1,
     };
     lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
+
+    // serialize the lapic write
+    _mm_mfence();
 }
 
 void lapic_set_timeout(uint64_t microseconds) {
