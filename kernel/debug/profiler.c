@@ -13,7 +13,7 @@
 
 #define NOINSTRUMENT __attribute__((no_instrument_function))
 
-#ifdef PROF
+#ifdef __PROF__
 static __thread bool m_instrument_enable = false;
 
 #define LOG_BUFFER_SIZE (64 * 1024 * 1024)
@@ -22,7 +22,7 @@ static int m_log_buffer_idx;
 #endif
 
 void profiler_start() {
-#ifdef PROF
+#ifdef __PROF__
     TRACE("Profiler started");
     m_log_buffer_idx = 0;
     m_log_buffer[m_log_buffer_idx++] = get_tsc_freq();
@@ -30,13 +30,13 @@ void profiler_start() {
 #endif
 }
 void profiler_stop() {
-#ifdef PROF
+#ifdef __PROF__
     m_instrument_enable = false;
     TRACE("Profiler finished: memsave 0x%p %d profiler.trace", m_log_buffer, m_log_buffer_idx * 8);
 #endif
 }
 
-#ifdef PROF
+#ifdef __PROF__
 INTERRUPT NOINSTRUMENT
 void __cyg_profile_func_enter(void* func, void* call) {
     if (!m_instrument_enable) return;

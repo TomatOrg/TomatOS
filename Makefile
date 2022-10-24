@@ -16,9 +16,6 @@ USE_KASAN	:= 0
 USE_PROF	:= 0
 
 # Should we compile with no-optimizations
-DEBUG		:= 0
-
-# Build in debug or release mode
 DEBUG		:= 1
 
 OUT_DIR		:= out
