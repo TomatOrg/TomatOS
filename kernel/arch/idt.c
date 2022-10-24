@@ -750,7 +750,8 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
             lapic_eoi();
         } break;
 
-        // TODO: have this be a single empty iret
+        // TODO: we don't need to save the full register context,
+        //       make this be smaller
         case IRQ_WAKEUP: {
             lapic_eoi();
         } break;

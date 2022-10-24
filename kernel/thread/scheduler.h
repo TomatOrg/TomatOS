@@ -1,6 +1,7 @@
 #pragma once
 
 #include "thread.h"
+#include "cpu_local.h"
 
 #include <util/except.h>
 #include <arch/idt.h>
