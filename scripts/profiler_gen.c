@@ -122,6 +122,11 @@ const char* debug_get_name(uintptr_t addr) {
 #define BUFFER_SIZE (100 * 1024 * 1024)
 
 int main(int argc, char** argv) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <spall result file>\n", argv[0]);
+        exit(1);
+    }
+    
     m_symbols_capacity = 16;
     m_symbols = malloc(m_symbols_capacity * sizeof(symbol_t));
     m_symbols_len = 0;

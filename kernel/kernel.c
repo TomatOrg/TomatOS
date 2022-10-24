@@ -242,8 +242,10 @@ static void kernel_startup() {
         TRACE("Loading `%s`", file->path);
 
         if (i == 0) {
+            profiler_start();
             // load the corelib
             CHECK_AND_RETHROW(loader_load_corelib(file->address, file->size));
+            profiler_stop();
 
             // we are now going to initialize a managed thread for this thread, so stuff like the ThreadPool
             // will work properly even with this initialization thread
