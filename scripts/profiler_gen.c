@@ -12,8 +12,11 @@
 #include <stdio.h>
 #include <assert.h>
 
+#define SPALL_IMPLEMENTATION
+#include "spall.h"
+
 typedef struct symbol {
-    uint32_t address;
+    uint64_t address;
     size_t size;
     const char* name;
 } symbol_t;
@@ -84,7 +87,7 @@ void debug_load_symbols() {
     Elf64_Sym* symbols = kernel + symtab->sh_offset;
     for (int i = 0; i < symtab->sh_size / sizeof(Elf64_Sym); i++) {
         insert_symbol((symbol_t){
-            .address = (uint32_t)symbols[i].st_value,
+            .address = symbols[i].st_value,
             .size = symbols[i].st_size,
             .name = strtab + symbols[i].st_name
         });
@@ -116,55 +119,40 @@ const char* debug_get_name(uintptr_t addr) {
     return NULL;
 }
 
-typedef struct stack_ent {
-    const char* func_name;
-    uint32_t time;
-} stack_ent_t;
+#define BUFFER_SIZE (100 * 1024 * 1024)
 
-int main(void) {
-    m_symbols_capacity = 4;
+int main(int argc, char** argv) {
+    m_symbols_capacity = 16;
     m_symbols = malloc(m_symbols_capacity * sizeof(symbol_t));
     m_symbols_len = 0;
 
     debug_load_symbols();
 
-    stack_ent_t* stack = malloc(sizeof(stack_ent_t) * 256);
-    int stack_idx = 0;
-
     struct stat stat;
     int dumpfd = open("profiler.trace", O_RDONLY);
     fstat(dumpfd, &stat);
-    uint32_t* dump = mmap(NULL, stat.st_size, PROT_READ, MAP_PRIVATE, dumpfd, 0);
+    uint64_t* dump = mmap(NULL, stat.st_size, PROT_READ, MAP_PRIVATE, dumpfd, 0);
 
-    int buffer_size = 256 * 1024;
-    int max_line_size = 32 * 1024;
-    char* buffer = malloc(buffer_size); 
-    int buffer_idx = 0;
+    uint64_t ticks_per_us = dump[0];
+	SpallProfile ctx = SpallInit(argv[1], 1.0 / (double)ticks_per_us);
 
-    int outfd = open("profiler.trace.txt", O_CREAT | O_WRONLY);
-    for (size_t i = 0; i < stat.st_size / 4;) {
-        uint32_t firstbyte = dump[i++];
-        if (firstbyte >> 31) { // function entry
-            stack[stack_idx++] = (stack_ent_t) {
-                .func_name = debug_get_name(firstbyte),
-                .time = dump[i++]
-            };
+	unsigned char *buffer = malloc(BUFFER_SIZE);
+
+	SpallBuffer buf = {};
+	buf.length = BUFFER_SIZE;
+	buf.data = buffer;
+
+	SpallBufferInit(&ctx, &buf);
+	for (size_t i = 1; i < stat.st_size / 8;) {
+		uint64_t firstbyte = dump[i++];
+        if (firstbyte >> 63) { // function entry
+            const char *name = debug_get_name(firstbyte);
+            SpallTraceBeginLenTidPid(&ctx, &buf, name, strlen(name), 0, 0, dump[i++]);
         } else { // function exit
-            for (int j = 0; j < stack_idx; j++) {
-                int len = strlen(stack[j].func_name);
-                memcpy(buffer + buffer_idx, stack[j].func_name, len);
-                buffer_idx += len;
-                buffer[buffer_idx++] = (j != (stack_idx - 1)) ? ';' : ' ';
-            }
-            buffer_idx += sprintf(buffer + buffer_idx, "%zu\n", firstbyte - stack[stack_idx - 1].time);
-
-            // overestimate: assume a line will take up to max_line_size
-            if (buffer_idx >= (buffer_size - max_line_size)) {
-                write(outfd, buffer, buffer_idx);
-                buffer_idx = 0;
-            }
-
-            stack_idx--;
+		    SpallTraceEndTidPid(&ctx, &buf, 0, 0, firstbyte);
         }
-    } 
+	}
+
+	SpallBufferQuit(&ctx, &buf);
+	SpallQuit(&ctx);
 }

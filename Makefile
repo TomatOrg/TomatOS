@@ -1,10 +1,10 @@
 ########################################################################################################################
 # Build constants
 ########################################################################################################################
-USE_GCC		:= 1
+USE_GCC		:= 0
 USE_KASAN	:= 0
-USE_PROF	:= 1
-DEBUG		:= 1
+USE_PROF	:= 0
+DEBUG		:= 0
 
 ifeq ($(USE_GCC), 1)
 CC 			:= gcc
@@ -55,7 +55,9 @@ endif
 # NOTE: requires GCC!
 # clang doesn't support exclude-file-list
 ifeq ($(USE_PROF),1)
-	CFLAGS	+= -finstrument-functions -finstrument-functions-exclude-file-list=kernel/ -finstrument-functions-exclude-file-list=lib/tinydotnet/lib/
+	CFLAGS	+= -DPROF -finstrument-functions \
+	-finstrument-functions-exclude-file-list=kernel/ \
+	-finstrument-functions-exclude-file-list=lib/tinydotnet/lib/
 endif
 
 CFLAGS 		+= -mno-avx -mno-avx2 -fno-pie -fno-pic -Wno-error=unused-but-set-variable
