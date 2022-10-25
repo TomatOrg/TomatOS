@@ -13,6 +13,7 @@
 
 #define NOINSTRUMENT __attribute__((no_instrument_function))
 
+static uint64_t start_time; 
 #ifdef __PROF__
 // we need this so we don't crash before threadlocal storage has been initialized (lol)
 static bool m_global_instrument_enable = false;
@@ -31,6 +32,7 @@ void profiler_start() {
     m_global_instrument_enable = true;
     m_instrument_enable = true;
 #endif
+    start_time = microtime();
 }
 void profiler_stop() {
 #ifdef __PROF__
@@ -39,6 +41,7 @@ void profiler_stop() {
     m_instrument_enable = false;
     TRACE("Profiler finished: memsave 0x%p %d profiler.trace", m_log_buffer, m_log_buffer_idx * 8);
 #endif
+    TRACE("Time elapsed: %d microseconds", microtime() - start_time);
 }
 
 #ifdef __PROF__

@@ -83,6 +83,13 @@ int strcmp(const char *a, const char *b) {
     }
 }
 
+void *memchr(const void *src, int c, size_t n) {
+	const unsigned char *s = src;
+	c = (unsigned char)c;
+	for (; n && *s != c; s++, n--);
+	return n ? (void *)s : 0;
+}
+
 size_t strlen(const char *str) {
     size_t length = 0;
     while(*str++ != 0) {

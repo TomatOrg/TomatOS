@@ -32,7 +32,8 @@ BUILD_DIR	:= $(OUT_DIR)/build
 # Choose a compiler
 ifeq ($(USE_GCC),1)
 CC 			:= gcc
-LD 			:= gcc
+LD 			:= ld.lld # FIXME: TODO: GNU ld is broken
+CFLAGS 		+= -U __linux__ # undefine linux, otherwise mimalloc uses Linux syscalls
 else
 CC 			:= ccache clang
 LD			:= ld.lld
@@ -94,6 +95,7 @@ endif
 	CFLAGS	+= -D__PROF__
 	CFLAGS 	+= -finstrument-functions
 	CFLAGS 	+= -finstrument-functions-exclude-file-list=kernel/
+	CFLAGS 	+= -finstrument-functions-exclude-file-list=lib/mimalloc/
 	CFLAGS 	+= -finstrument-functions-exclude-file-list=lib/tinydotnet/lib/
 endif
 
@@ -125,6 +127,24 @@ CFLAGS		+= -DPRINTF_DISABLE_SUPPORT_EXPONENTIAL
 
 SRCS 		+= $(shell find lib/tinydotnet/src/dotnet -name '*.c')
 CFLAGS 		+= -Ilib/tinydotnet/src
+
+#-----------------------------------------------------------------------------------------------------------------------
+# mimalloc
+#-----------------------------------------------------------------------------------------------------------------------
+	
+SRCS 		+= lib/mimalloc/src/bitmap.c
+SRCS 		+= lib/mimalloc/src/arena.c
+SRCS 		+= lib/mimalloc/src/segment.c
+SRCS 		+= lib/mimalloc/src/page.c
+SRCS 		+= lib/mimalloc/src/alloc.c
+SRCS 		+= lib/mimalloc/src/alloc-aligned.c
+SRCS 		+= lib/mimalloc/src/heap.c
+SRCS 		+= lib/mimalloc/src/random.c
+SRCS 		+= lib/mimalloc/src/region.c
+CFLAGS 		+= -DMADV_NORMAL
+CFLAGS 		+= -Ilib/mimalloc/src
+CFLAGS 		+= -Ilib/mimalloc/include
+CFLAGS		+= -DMI_DEBUG=0 -DMI_SECURE=1
 
 #-----------------------------------------------------------------------------------------------------------------------
 # utf8-utf16-converter

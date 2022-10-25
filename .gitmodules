@@ -8,3 +8,7 @@
 [submodule "lib/tinydotnet"]
 	path = lib/tinydotnet
 	url = git@github.com:TomatOrg/tinydotnet.git
+[submodule "lib/mimalloc"]
+	path = lib/mimalloc
+	url = git@github.com:microsoft/mimalloc.git
+	branch = dev

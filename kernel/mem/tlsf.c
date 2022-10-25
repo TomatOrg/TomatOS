@@ -152,6 +152,8 @@ typedef struct block_header {
 #ifndef DNDEBUG
 		/* Who allocated it? */
 		void *allocation_addr;
+		/* Who freed it? */
+		void *free_addr;
 #endif
 	} metadata;
 
@@ -1030,6 +1032,12 @@ ASAN_NO_SANITIZE_ADDRESS void tlsf_track_allocation(void* addr, void* data)
 {
 	block_header_t *hdr = block_from_ptr(addr);
 	hdr->metadata.allocation_addr = data;
+}
+
+ASAN_NO_SANITIZE_ADDRESS void tlsf_track_free(void* addr, void* data)
+{
+	block_header_t *hdr = block_from_ptr(addr);
+	hdr->metadata.free_addr = data;
 }
 #endif
 
