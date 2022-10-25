@@ -2,21 +2,24 @@
 # Build constants
 ########################################################################################################################
 
+# Should we compile with no-optimizations
+DEBUG		?= 1
+
 # Should GCC be used instead of clang
 # needed for some debug utilities
-USE_GCC		:= 0
+USE_GCC		?= 0
 
 # Should UBSAN be enabled
-USE_UBSAN	:= 0
+USE_UBSAN	?= 0
 
 # Should KASAN be enabled
-USE_KASAN	:= 0
+USE_KASAN	?= 0
 
 # Should we enable the profiler
-USE_PROF	:= 0
+USE_PROF	?= 0
 
-# Should we compile with no-optimizations
-DEBUG		:= 1
+# Should LTO be enabled
+USE_LTO		?= 0
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
@@ -27,7 +30,7 @@ BUILD_DIR	:= $(OUT_DIR)/build
 #-----------------------------------------------------------------------------------------------------------------------
 
 # Choose a compiler
-ifeq ($(USE_GCC), 1)
+ifeq ($(USE_GCC),1)
 CC 			:= gcc
 LD 			:= gcc
 else
@@ -52,25 +55,24 @@ CFLAGS 		+= -D__SERIAL_TRACE__
 CFLAGS 		+= -D__GRAPHICS_TRACE__
 
 ifeq ($(DEBUG),1)
-	# No optimizations at all and full debug info
-	CFLAGS	+= -O0 -g3
+# No optimizations at all and full debug info
+CFLAGS	+= -O0 -g3
 
-	# Enable a full stack protector for debugging
-	CFLAGS 	+= -fstack-protector-all
+# Enable a full stack protector for debugging
+CFLAGS 	+= -fstack-protector-all
 
-	# Mark that we are in debug
-	CFLAGS 	+= -D__DEBUG__
+# Mark that we are in debug
+CFLAGS 	+= -D__DEBUG__
 else
-	# full optimizations, but still emit debug info
-	CFLAGS	+= -O3 -g
+# full optimizations, but still emit debug info
+CFLAGS	+= -O3 -g
 
-	# set no debugging, mostly used for the libraries we use
-	CFLAGS 	+= -DNDEBUG
+# set no debugging, mostly used for the libraries we use
+CFLAGS 	+= -DNDEBUG
+endif
 
-	# TODO: why only on clang we use lto?
-	ifeq ($(USE_GCC), 0)
-		CFLAGS		+= -flto
-	endif
+ifeq ($(USE_LTO),1)
+CFLAGS		+= -flto
 endif
 
 # if we want to use kasan
