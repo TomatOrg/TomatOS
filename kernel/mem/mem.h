@@ -33,8 +33,8 @@ STATIC_ASSERT(BUDDY_TREE_END < STACK_POOL_START);
 
 // The virtual area used for the GC objects, total of 26 pools, each
 // is 512GB, so total of 13TB of virtual memory
-#define OBJECT_HEAP_START               (0xffff810000000000)
-#define OBJECT_HEAP_END                 (0xffff810000000000 + SIZE_1TB * 13)
+#define OBJECT_HEAP_START               (0xffff810000000000ull)
+#define OBJECT_HEAP_END                 (0xffff810000000000ull + SIZE_1TB * 13)
 STATIC_ASSERT(STACK_POOL_END < OBJECT_HEAP_START);
 
 // This is the area the recursive paging exist on
@@ -50,7 +50,7 @@ STATIC_ASSERT(OBJECT_HEAP_END < RECURSIVE_PAGING_START);
 STATIC_ASSERT(RECURSIVE_PAGING_END < KERNEL_HEAP_START);
 
 // This is where the kernel virtual address is
-#define KERNEL_BASE                     (0xffffffff80000000)
+#define KERNEL_BASE                     (0xffffffff80000000ull)
 STATIC_ASSERT(KERNEL_HEAP_END < KERNEL_BASE);
 
 #define PHYS_TO_DIRECT(x) \

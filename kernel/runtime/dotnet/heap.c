@@ -21,8 +21,6 @@
 static mi_heap_t* m_heap;
 
 err_t init_heap() {
-    void mi_process_load();
-    mi_process_load();
     m_heap = mi_heap_new();
     return NO_ERROR;
 }
@@ -46,16 +44,9 @@ void heap_free(System_Object object) {
 void heap_reclaim() { }
 
 System_Object heap_find_fast(void *ptr) {
-    // TODO:
-    if ((uintptr_t)ptr < 0xFFFF810000000000ULL) {
-        return NULL;
-    }
-    //printf("heap find fast %p\n", ptr);
+    if ((uintptr_t)ptr < OBJECT_HEAP_START || (uintptr_t)ptr >= OBJECT_HEAP_END) return NULL;
     mi_segment_t* segment = _mi_ptr_segment(ptr);
     mi_page_t* page = _mi_segment_page_of(segment, ptr);
-    //uintptr_t page_start = (uintptr_t)_mi_segment_page_start(segment, page, page->xblock_size, NULL, NULL);
-    //uintptr_t diff = ((uintptr_t)ptr - page_start) % page->xblock_size;
-    //uintptr_t start = (uintptr_t)ptr - diff;
     return (void*)_mi_page_ptr_unalign(segment, page, ptr);
 }
 

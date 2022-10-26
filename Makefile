@@ -29,6 +29,8 @@ BUILD_DIR	:= $(OUT_DIR)/build
 # General configurations
 #-----------------------------------------------------------------------------------------------------------------------
 
+CFLAGS 		:=
+
 # Choose a compiler
 ifeq ($(USE_GCC),1)
 CC 			:= gcc
@@ -38,8 +40,6 @@ else
 CC 			:= ccache clang
 LD			:= ld.lld
 endif
-
-CFLAGS 		:=
 
 # For clang we need a target
 ifeq ($(USE_GCC), 0)
@@ -141,6 +141,7 @@ SRCS 		+= lib/mimalloc/src/alloc-aligned.c
 SRCS 		+= lib/mimalloc/src/heap.c
 SRCS 		+= lib/mimalloc/src/random.c
 SRCS 		+= lib/mimalloc/src/region.c
+SRCS 		+= lib/mimalloc/src/init.c
 CFLAGS 		+= -DMADV_NORMAL
 CFLAGS 		+= -Ilib/mimalloc/src
 CFLAGS 		+= -Ilib/mimalloc/include

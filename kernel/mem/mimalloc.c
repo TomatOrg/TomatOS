@@ -16,7 +16,7 @@ void _mi_stats_done() {}
 void mi_stats_print(void* out) {}
 void _mi_verbose_message(const char* fmt, ...) {}
 void _mi_warning_message(const char* fmt, ...) {}
-void _mi_error_message(const char* fmt, ...) {}
+void _mi_error_message(int err, const char* fmt, ...) {}
 
 bool mi_option_is_enabled(int option) {
     return false;
@@ -49,8 +49,8 @@ bool _mi_os_commit(void* p, size_t size, bool* is_zero, void* stats) {
 bool _mi_os_decommit(void* addr, size_t size, void* stats) { return true; }
 
 _Atomic(size_t) _mi_numa_node_count = 1;
-size_t _mi_os_numa_node_get(void) { return 0; }
-size_t _mi_os_numa_node_count_get(void) { return 1; }
+int _mi_os_numa_node_get(void* tld) { return 0; }
+size_t _mi_os_numa_node_count_get() { return 1; }
 
 bool _mi_os_reset(void* addr, size_t size, void* tld_stats) { return true; }
 bool _mi_os_unreset(void* addr, size_t size, bool* is_zero, void* tld_stats) { return true; }
