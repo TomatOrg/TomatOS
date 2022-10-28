@@ -16,4 +16,12 @@
         </Reference>
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="ubuntu-regular.sdfnt" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <EmbeddedResource Include="Fonts\ubuntu-regular.sdfnt" />
+    </ItemGroup>
+
 </Project>

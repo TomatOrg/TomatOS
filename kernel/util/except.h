@@ -86,7 +86,7 @@ _Noreturn void assertion_fail();
 // A check that fails if the expression returns false
 //----------------------------------------------------------------------------------------------------------------------
 
-#if 1
+#if 0
 #define ASSERT_ON_CHECK ASSERT(0)
 #else
 #define ASSERT_ON_CHECK

@@ -30,6 +30,7 @@ sudo cp -rv \
   artifacts/limine.cfg \
   lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll \
   TomatOS/Tomato.Hal/bin/Release/net6.0/Tomato.Hal.dll \
+  TomatOS/Tomato.Graphics/bin/Release/net6.0/Tomato.Graphics.dll \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it
@@ -37,16 +38,3 @@ sync
 sudo umount out/build/test_image
 sudo losetup -d `cat out/build/loopback_dev`
 rm -rf out/build/loopback_dev out/build/test_image
-
-qemu-system-x86_64 \
-  -drive if=virtio,file=out/build/test.hdd \
-  -monitor telnet:localhost:1235,server,nowait \
-  -serial stdio \
-  -machine q35 \
-  --enable-kvm \
-  -cpu host,+invtsc,+tsc-deadline \
-  -smp 4 \
-  -m 2G \
-  -s \
-  -no-reboot \
-  -no-shutdown

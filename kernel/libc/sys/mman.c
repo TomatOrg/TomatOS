@@ -11,9 +11,15 @@ int mprotect(void *addr, size_t len, int prot) {
         // printf("committing %p %02x len %x\n", addr, prot, len);
         // mimalloc commits only a few pages at a time, this works fine
         uintptr_t start = ALIGN_DOWN((uintptr_t)addr, PAGE_SIZE), end = ALIGN_UP((uintptr_t)(addr + len), PAGE_SIZE);
-        vmm_map(DIRECT_TO_PHYS(palloc(end - start)), (void*)start, (end - start) / PAGE_SIZE, MAP_WRITE);
+        void* data = palloc(end - start);
+        if (data == NULL) {
+            return -1;
+        }
+
+        vmm_map(DIRECT_TO_PHYS(data), (void*)start, (end - start) / PAGE_SIZE, MAP_WRITE);
         return 0;
-    } 
+    }
+
     return IS_ERROR(vmm_set_perms(ALIGN_DOWN(addr, PAGE_SIZE), (ALIGN_UP((uintptr_t)addr+len, PAGE_SIZE) - ALIGN_DOWN((uintptr_t)addr, PAGE_SIZE)) / PAGE_SIZE, prot)) ? -1 : 0;
 }
 
