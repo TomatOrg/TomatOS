@@ -19,12 +19,18 @@ public static class Hal
     
     public static void Main()
     {
+        // only allow entry once
+        if (_started)
+        {
+            throw new InvalidOperationException();
+        }
+        _started = true;
+    
         Debug.Print("Managed kernel is starting!");
         
         // all we need to do is call the acpi setup, everything will be
         // done on its own from that point forward
         AcpiManager.Init();
-        
     }
 
     #endregion
