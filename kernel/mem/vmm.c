@@ -380,8 +380,14 @@ INTERRUPT err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
     // simply iterate all the indexes and free them
     size_t page_size = 0;
     for (int i = 0; i < page_count; i++, va += page_size) {
+        size_t pml4i = ((uintptr_t)va >> 39) & 0x1FFull;
+        size_t pml3i = ((uintptr_t)va >> 30) & 0x3FFFFull;
         size_t pml2i = ((uintptr_t)va >> 21) & 0x7FFFFFFull;
         size_t pml1i = ((uintptr_t)va >> 12) & 0xFFFFFFFFFull;
+
+        // make sure it is mapped to avoid problems
+        CHECK(PAGE_TABLE_PML4[pml4i].present);
+        CHECK(PAGE_TABLE_PML3[pml3i].present);
 
         // handle both large and normal pages
         CHECK(PAGE_TABLE_PML2[pml2i].present);
