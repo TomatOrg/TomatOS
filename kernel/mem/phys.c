@@ -121,7 +121,7 @@ INTERRUPT static void free_at_level(void* ptr, int level) {
         int neighbor = ((uintptr_t)ptr & ((block_size * 2) - 1)) == 0 ? 1 : -1;
 
         list_entry_t* neighbor_entry = ptr + neighbor * block_size;
-        page_entry_t* neighbor_pt = &PAGE_TABLE_PML1[PML1_INDEX(neighbor_entry)];
+        page_entry_4kb_t* neighbor_pt = &PAGE_TABLE_PML1[PML1_INDEX(neighbor_entry)];
 
         // check if there is a neighbor
         if (neighbor_pt->buddy_level == 0) {

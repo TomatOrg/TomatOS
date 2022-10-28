@@ -4,17 +4,17 @@
 #include <util/defs.h>
 #include <stdbool.h>
 
-typedef struct page_entry {
+typedef struct page_entry_4kb {
     uint64_t present : 1;
     uint64_t writeable : 1;
     uint64_t user_accessible : 1;
-    uint64_t pwt : 1;
-    uint64_t pcd : 1;
+    uint64_t pat0 : 1;
+    uint64_t pat1 : 1;
     uint64_t accessed : 1;
     uint64_t dirty : 1;
-    uint64_t huge_page_or_pat : 1;
+    uint64_t pat2 : 1;
     uint64_t global : 1;
-    uint64_t _available2 : 3;
+    uint64_t _available : 3;
     uint64_t frame : 40;
 
     // -- available : 11 --
@@ -24,9 +24,55 @@ typedef struct page_entry {
     uint64_t _available1 : 6;
 
     uint64_t no_execute : 1;
-} PACKED page_entry_t;
-STATIC_ASSERT(sizeof(page_entry_t) == sizeof(uint64_t));
+} PACKED page_entry_4kb_t;
+STATIC_ASSERT(sizeof(page_entry_4kb_t) == sizeof(uint64_t));
 
+typedef struct page_entry_2mb {
+    uint64_t present : 1;
+    uint64_t writeable : 1;
+    uint64_t user_accessible : 1;
+    uint64_t pat0 : 1;
+    uint64_t pat1 : 1;
+    uint64_t accessed : 1;
+    uint64_t dirty : 1;
+    uint64_t huge_page : 1;
+    uint64_t global : 1;
+    uint64_t _available : 3;
+    uint64_t pat2 : 1;
+    uint64_t _reserved : 8;
+    uint64_t frame : 31;
+
+    // -- available : 11 --
+    // see the phys.c for more info
+    uint64_t buddy_level : 4;
+    uint64_t buddy_alloc : 1;
+    uint64_t _available1 : 6;
+
+    uint64_t no_execute : 1;
+} PACKED page_entry_2mb_t;
+STATIC_ASSERT(sizeof(page_entry_2mb_t) == sizeof(uint64_t));
+
+typedef struct page_entry {
+    uint64_t present : 1;
+    uint64_t writeable : 1;
+    uint64_t user_accessible : 1;
+    uint64_t pwt : 1;
+    uint64_t pcd : 1;
+    uint64_t accessed : 1;
+    uint64_t _available1 : 1;
+    uint64_t huge_page : 1;
+    uint64_t _available2 : 4;
+    uint64_t frame : 40;
+
+    // -- available : 11 --
+    // see the phys.c for more info
+    uint64_t buddy_level : 4;
+    uint64_t buddy_alloc : 1;
+    uint64_t _available3 : 6;
+
+    uint64_t no_execute : 1;
+} PACKED page_entry_t;
+STATIC_ASSERT(sizeof(page_entry_2mb_t) == sizeof(uint64_t));
 
 typedef enum caching_mode {
     CACHE_WRITE_BACK = 0,
@@ -41,8 +87,8 @@ typedef enum caching_mode {
 
 typedef signed long long pml_index_t;
 
-#define PAGE_TABLE_PML1     ((page_entry_t*)0xFFFFFF0000000000ull)
-#define PAGE_TABLE_PML2     ((page_entry_t*)0xFFFFFF7F80000000ull)
+#define PAGE_TABLE_PML1     ((page_entry_4kb_t*)0xFFFFFF0000000000ull)
+#define PAGE_TABLE_PML2     ((page_entry_2mb_t*)0xFFFFFF7F80000000ull)
 #define PAGE_TABLE_PML3     ((page_entry_t*)0xFFFFFF7FBFC00000ull)
 #define PAGE_TABLE_PML4     ((page_entry_t*)0xFFFFFF7FBFDFE000ull)
 
@@ -78,16 +124,6 @@ void vmm_switch_allocator();
 void init_vmm_per_cpu();
 
 /**
- * Setup a single level of the page table, this will allocate the page
- * if needed
- *
- * @param pml       [IN] The PML virtual base
- * @param pml       [IN] The next PML virtual base
- * @param index     [IN] The index of the page in the level
- */
-bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index);
-
-/**
  * Unmap a single page from the direct map, don't page fault
  * if the page is not already mapped.
  *
@@ -116,6 +152,11 @@ typedef enum map_perm {
      * Map the page as write-combining.
      */
     MAP_WC = (1 << 3),
+
+    /**
+     * Map a large page, instead of a small one
+     */
+    MAP_LARGE = (1 << 4),
 } map_perm_t;
 
 /**
@@ -151,18 +192,6 @@ err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms);
  * @param perms         [IN] The permissions to set
  */
 err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms);
-
-/**
- * Unmap the given virtual address.
- *
- * @remark
- * If the page you are trying to unmap is not already mapped a page fault could occur
- *
- * @param va            [IN] The virtual address
- * @param page_count    [IN] The amount of pages to unmap
- * @param phys          [IN, OPTIONAL] Will contain the physical addresses that were unmapped
- */
-void vmm_unmap(void* va, size_t page_count, uintptr_t* phys);
 
 /**
  * Checks if the given address is mapped

@@ -31,10 +31,9 @@ STATIC_ASSERT(DIRECT_MAP_END < BUDDY_TREE_START);
 #define STACK_POOL_END                  (STACK_POOL_START + STACK_POOL_SIZE)
 STATIC_ASSERT(BUDDY_TREE_END < STACK_POOL_START);
 
-// The virtual area used for the GC objects, total of 26 pools, each
-// is 512GB, so total of 13TB of virtual memory
+// The virtual area used for the GC objects, we give it a nice 32TB cause why not
 #define OBJECT_HEAP_START               (0xffff810000000000ull)
-#define OBJECT_HEAP_END                 (0xffff810000000000ull + SIZE_1TB * 13)
+#define OBJECT_HEAP_END                 (0xffff810000000000ull + SIZE_1TB * 32)
 STATIC_ASSERT(STACK_POOL_END < OBJECT_HEAP_START);
 
 // This is the area the recursive paging exist on
