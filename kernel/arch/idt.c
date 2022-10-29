@@ -351,7 +351,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     ERROR("Stack trace:");
     size_t* base_ptr = (size_t*)ctx->rbp;
     while (true) {
-        if (!vmm_is_mapped((uintptr_t)base_ptr)) {
+        if (!vmm_is_mapped((uintptr_t)base_ptr, 1)) {
             break;
         }
 

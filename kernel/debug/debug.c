@@ -92,7 +92,7 @@ size_t debug_get_code_size(void* ptr) {
 
 void debug_disasm_at(void* ptr, int opcodes) {
     // check ptr is mapped and has space for a full opcode
-    if (!vmm_is_mapped((uintptr_t) ptr + 15)) {
+    if (!vmm_is_mapped((uintptr_t) ptr + 15, 1)) {
         return;
     }
 
@@ -129,7 +129,7 @@ void debug_disasm_at(void* ptr, int opcodes) {
         }
 
         // make sure we don't decode unmapped bytes
-        if (!vmm_is_mapped((uintptr_t) (ptr + 15))) {
+        if (!vmm_is_mapped((uintptr_t) (ptr + 15), 1)) {
             break;
         }
     }

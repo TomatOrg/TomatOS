@@ -454,7 +454,52 @@ cleanup:
     return err;
 }
 
-INTERRUPT bool vmm_is_mapped(uintptr_t ptr) {
+INTERRUPT bool vmm_is_mapped(uintptr_t ptr, size_t size) {
+    bool fully_mapped = false;
+
+    irq_spinlock_lock(&m_vmm_spinlock);
+
+    // simply iterate all the indexes and free them
+    size_t page_size = 0;
+    for (uintptr_t i = 0; i < size; i += page_size) {
+        size_t pml4i = (i >> 39) & 0x1FFull;
+        size_t pml3i = (i >> 30) & 0x3FFFFull;
+        size_t pml2i = (i >> 21) & 0x7FFFFFFull;
+        size_t pml1i = (i >> 12) & 0xFFFFFFFFFull;
+
+        // make sure it is mapped to avoid problems
+        if (!PAGE_TABLE_PML4[pml4i].present) {
+            goto cleanup;
+        }
+
+        if (!PAGE_TABLE_PML3[pml3i].present) {
+            goto cleanup;
+        }
+
+        // handle both large and normal pages
+        if (!PAGE_TABLE_PML2[pml2i].present) {
+            goto cleanup;
+        }
+
+        if (PAGE_TABLE_PML2[pml2i].huge_page) {
+            page_size = SIZE_2MB;
+        } else {
+            page_size = PAGE_SIZE;
+
+            // make sure the page is mapped and change the write/exec perms
+            if (!PAGE_TABLE_PML1[pml1i].present) {
+                goto cleanup;
+            }
+        }
+    }
+
+    fully_mapped = true;
+
+cleanup:
+    irq_spinlock_unlock(&m_vmm_spinlock);
+
+    return fully_mapped;
+
     // make sure it is present
     if (!PAGE_TABLE_PML4[PML4_INDEX(ptr)].present) return false;
     if (!PAGE_TABLE_PML3[PML3_INDEX(ptr)].present) return false;
