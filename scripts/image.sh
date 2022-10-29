@@ -31,6 +31,7 @@ sudo cp -rv \
   lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll \
   TomatOS/Tomato.Hal/bin/Release/net6.0/Tomato.Hal.dll \
   TomatOS/Tomato.Graphics/bin/Release/net6.0/Tomato.Graphics.dll \
+  TomatOS/Tomato.Terminal/bin/Release/net6.0/Tomato.Terminal.dll \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it

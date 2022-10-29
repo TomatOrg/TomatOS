@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -45,6 +47,17 @@ public struct TypefaceGlyph
 public class Typeface
 {
 
+    public static Typeface Default;
+    
+    static Typeface()
+    {
+        // load the default font
+        using var stream = typeof(Typeface).Assembly.GetManifestResourceStream("Tomato.Graphics.Fonts.ubuntu-regular.sdfnt")!;
+        var arr = new byte[stream.Length];
+        stream.Read(arr);
+        Default = new Typeface(arr);
+    }
+    
     internal TypefaceAtlas Atlas { get; }
     internal TypefaceMetrics Metrics { get; }
     internal Memory<TypefaceGlyph> Glyphs { get; }
