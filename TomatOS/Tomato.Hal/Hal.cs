@@ -1,9 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Tomato.Hal.Acpi;
 using Tomato.Hal.Drivers.PlainFramebuffer;
 using Tomato.Hal.Managers;
@@ -31,6 +28,9 @@ public static class Hal
         // all we need to do is call the acpi setup, everything will be
         // done on its own from that point forward
         AcpiManager.Init();
+        
+        // TODO: something better once we have real graphics acceleration support
+        DisplayManager.RegisterGraphicsDevice(new PlainGraphicsDevice());
     }
 
     #endregion

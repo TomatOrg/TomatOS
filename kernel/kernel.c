@@ -300,7 +300,6 @@ static void kernel_startup() {
 
 cleanup:
     ASSERT(!IS_ERROR(err));
-    TRACE("Kernel initialization finished!");
 }
 
 /**

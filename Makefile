@@ -3,7 +3,7 @@
 ########################################################################################################################
 
 # Should we compile with no-optimizations
-DEBUG		?= 1
+DEBUG		?= 0
 
 # Should GCC be used instead of clang
 # needed for some debug utilities
@@ -19,7 +19,7 @@ USE_KASAN	?= 0
 USE_PROF	?= 0
 
 # Should LTO be enabled
-USE_LTO		?= 0
+USE_LTO		?= 1
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
