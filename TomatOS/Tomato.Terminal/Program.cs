@@ -41,7 +41,8 @@ internal static class Program
         framebuffer.Backing = m;
 
         _terminal = new Terminal(framebuffer, memory, null, new Font(Typeface.Default, 16));
-        _terminal.InsertString("Hello world from our awesome terminal!");
+        _terminal.InsertLine("Hello world from our awesome terminal.");
+        _terminal.InsertLine("Welcome to TomatOS!");
     }
 
 }

@@ -167,12 +167,32 @@ public class Terminal
         _cursorX += g.Advance;
     }
 
-    public void InsertString(string str)
+    public void InsertLine(string str)
     {
+        // NOTE: X coords are absolute, Y coords relative to line start
+        int minX = Int32.MaxValue, minY = Int32.MaxValue;
+        int maxX = Int32.MinValue, maxY = Int32.MinValue;
         foreach (var c in str)
         {
-            InsertChar(c);
+            _textBuffer[_currentLine].Add(c);
+
+            var g = _font.Glyphs[(int)c - _font.First];
+            var pb = g.PlaneBounds;
+            _fontBlitter.DrawChar(c, _cursorX, CursorYMemory(_currentLine));
+
+            minX = Math.Min(minX, _cursorX + pb.X);
+            minY = Math.Min(minY, pb.Y);
+            maxX = Math.Max(maxX, _cursorX + pb.X + pb.Width);
+            maxY = Math.Max(maxY, pb.Y + pb.Height);
+
+            _cursorX += g.Advance;
         }
+        BlitHelper(minX, CursorYMemory(_currentLine) + minY, minX, CursorYScreen(_currentLine) + minY, maxX - minX, maxY - minY);
+        _framebuffer.Flush();
+        // newline
+        _textBuffer.Add(new List<char>());
+        _currentLine++;
+        _cursorX = 0;
     }
 
     private void KeyboardHandler(in KeyEvent k)
