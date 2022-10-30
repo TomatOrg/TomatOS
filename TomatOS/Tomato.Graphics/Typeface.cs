@@ -52,7 +52,7 @@ public class Typeface
     static Typeface()
     {
         // load the default font
-        using var stream = typeof(Typeface).Assembly.GetManifestResourceStream("Tomato.Graphics.Fonts.ubuntu-regular.sdfnt")!;
+        using var stream = typeof(Typeface).Assembly.GetManifestResourceStream("Tomato.Graphics.Fonts.Roboto.sdfnt")!;
         var arr = new byte[stream.Length];
         stream.Read(arr);
         Default = new Typeface(arr);

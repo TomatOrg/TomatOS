@@ -17,11 +17,11 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="ubuntu-regular.sdfnt" />
+      <None Remove="Roboto.sdfnt" />
     </ItemGroup>
 
     <ItemGroup>
-      <EmbeddedResource Include="Fonts\ubuntu-regular.sdfnt" />
+      <EmbeddedResource Include="Fonts\Roboto.sdfnt" />
     </ItemGroup>
 
 </Project>
