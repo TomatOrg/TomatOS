@@ -33,9 +33,9 @@ public interface IRelMouse
     // TODO: information like polling rate or what not?
     
     /// <summary>
-    /// Register a callback that is going to be called whenever an event is received.
+    /// Set a callback that is going to be called whenever an event is received.
     /// Note: This callback may block the input subsystem until this callback is returned!
     /// </summary>
-    public void RegisterCallback(RelMouseCallback callback);
+    public RelMouseCallback Callback { set; }
     
 }

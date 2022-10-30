@@ -249,7 +249,7 @@ public class Terminal
         _maxLines = _framebuffer.Height / _font.Size;
 
         // register the keyboard callback
-        kbd.RegisterCallback(KeyboardHandler);
+        kbd.Callback = KeyboardHandler;
     }
     
 }

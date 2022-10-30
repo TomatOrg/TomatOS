@@ -241,6 +241,13 @@ static void kernel_startup() {
         struct limine_file* file = &m_assemblies[i];
         TRACE("Loading `%s`", file->path);
 
+        // on the last assembly disable the kernel
+        // terminal so we won't have anything weird
+        if (i == arrlen(m_assemblies) - 1) {
+            TRACE("Disabling framebuffer");
+            term_disable();
+        }
+
         if (i == 0) {
             profiler_start();
             // load the corelib

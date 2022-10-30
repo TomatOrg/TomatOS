@@ -27,6 +27,9 @@ internal static class Program
             return;
         }
 
+        // get the keyboard
+        var keyboard = _displayManager.Keyboards[0];
+        
         // get the graphics device
         var dev = _displayManager.GraphicsDevices[0];
         var output = dev.Outputs[0];
@@ -40,9 +43,7 @@ internal static class Program
         var memory = MemoryMarshal.Cast<byte, uint>(m);
         framebuffer.Backing = m;
 
-        var kbd = Tomato.Hal.Hal.Keyboard;
-        _terminal = new Terminal(framebuffer, memory, kbd, new Font(Typeface.Default, 16));
-        _terminal.InsertLine("Hello world from our awesome terminal.");
+        _terminal = new Terminal(framebuffer, memory, keyboard, new Font(Typeface.Default, 16));
         _terminal.InsertLine("Welcome to TomatOS!");
     }
 

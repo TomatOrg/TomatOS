@@ -21,5 +21,7 @@ public delegate void KeyboardCallback(in KeyEvent key);
 
 public interface IKeyboard
 {
-    public void RegisterCallback(KeyboardCallback callback);
+    
+    public KeyboardCallback Callback { set; }
+    
 }

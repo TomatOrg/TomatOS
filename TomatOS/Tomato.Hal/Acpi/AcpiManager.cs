@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Tomato.Hal.Acpi.Resource;
+using Tomato.Hal.Drivers.Ps2;
 using Tomato.Hal.Pci;
 using Tomato.Hal.Platform.Pc;
 
@@ -152,6 +154,21 @@ public static class AcpiManager
         // TODO: startup the AML interpreter
         
         // TODO: enable ACPI mode
+        
+        // for now create PS2 resources
+        InitPs2();
+    }
+
+    internal static void InitPs2()
+    {
+        // create all the resources
+        var dataPort = new IoResource(0x60, 1);
+        var commandPort = new IoResource(0x64, 1);
+        var keyboardIrq = new IrqResource(new[] { IoApic.RegisterIrq(1) });
+        var mouseIrq = new IrqResource(new[] { IoApic.RegisterIrq(12) });
+
+        // init the controller        
+        new Ps2Controller(commandPort, dataPort, keyboardIrq, mouseIrq);
     }
     
 }
