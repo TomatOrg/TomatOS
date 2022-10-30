@@ -200,10 +200,10 @@ public class Terminal
         switch (k.Released)
         {
             // handle shift/alt 
-            case false when k.Code is KeyCode.LeftShift or KeyCode.RightShift: _shift++; return;
-            case true when k.Code is KeyCode.LeftShift or KeyCode.RightShift: _shift--; return;
-            case false when (k.Code == KeyCode.RightAlt): _altgr++; return;
-            case true when (k.Code == KeyCode.RightAlt): _altgr--; return;
+            case false when k.Code is KeyMap.LeftShift or KeyMap.RightShift: _shift++; return;
+            case true when k.Code is KeyMap.LeftShift or KeyMap.RightShift: _shift--; return;
+            case false when (k.Code == KeyMap.RightAlt): _altgr++; return;
+            case true when (k.Code == KeyMap.RightAlt): _altgr--; return;
             
             // we got released
             case true:
@@ -213,11 +213,11 @@ public class Terminal
             default:
                 switch (k.Code)
                 {
-                    case KeyCode.Enter:
+                    case KeyMap.Enter:
                         InsertNewLine();
                         break;
             
-                    case KeyCode.Backspace:
+                    case KeyMap.Backspace:
                         InsertBackspace();
                         break;
             
@@ -249,7 +249,7 @@ public class Terminal
         _maxLines = _framebuffer.Height / _font.Size;
 
         // register the keyboard callback
-        // kbd.RegisterCallback(KeyboardHandler);
+        kbd.RegisterCallback(KeyboardHandler);
     }
     
 }

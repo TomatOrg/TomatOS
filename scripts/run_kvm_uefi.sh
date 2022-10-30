@@ -12,7 +12,6 @@ qemu-system-x86_64 \
   -smp 4 \
   -bios /usr/share/ovmf/bios.bin \
   -m 2G \
-  -display none \
   -s \
   -no-reboot \
   -no-shutdown

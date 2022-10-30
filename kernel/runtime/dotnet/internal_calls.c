@@ -176,6 +176,15 @@ static System_Exception Tomato_Hal_Irq_IrqWait(uint64_t irq) {
     return NULL;
 }
 
+static method_result_t Tomato_Hal_Platform_Pc_IoPorts_In8(uint16_t port) {
+    return (method_result_t){ .exception = NULL, .value = __inbyte(port) };
+}
+
+static System_Exception Tomato_Hal_Platform_Pc_IoPorts_Out8(uint16_t port, uint8_t value) {
+    __outbyte(port, value);
+    return NULL;
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Code generation checking
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -238,6 +247,9 @@ err_t init_kernel_internal_calls() {
     MIR_load_external(ctx, "int32 [Tomato.Hal-v1]Tomato.Hal.Irq::AllocateIrq(int32,[Tomato.Hal-v1]Tomato.Hal.Irq+IrqMaskType,uint64)", Tomato_Hal_Irq_AllocateIrq);
     MIR_load_external(ctx, "[Tomato.Hal-v1]Tomato.Hal.Irq::IrqWait(int32)", Tomato_Hal_Irq_IrqWait);
 
+    // IO ports
+    MIR_load_external(ctx, "uint8 [Tomato.Hal-v1]Tomato.Hal.Platform.Pc.IoPorts::In8(uint16)", Tomato_Hal_Platform_Pc_IoPorts_In8);
+    MIR_load_external(ctx, "[Tomato.Hal-v1]Tomato.Hal.Platform.Pc.IoPorts::Out8(uint16,uint8)", Tomato_Hal_Platform_Pc_IoPorts_Out8);
     // Boot information
     MIR_load_external(ctx, "bool [Tomato.Hal-v1]Tomato.Hal.Hal::GetNextFramebuffer([Corelib-v1]System.Int32&,[Corelib-v1]System.UInt64&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&,[Corelib-v1]System.Int32&)", Tomato_Hal_Hal_GetNextFramebuffer);
     MIR_load_external(ctx, "uint64 [Tomato.Hal-v1]Tomato.Hal.Hal::GetRsdp()", Tomato_Hal_Hal_GetRsdp);

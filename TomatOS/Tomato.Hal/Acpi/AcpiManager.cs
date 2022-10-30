@@ -35,7 +35,7 @@ public static class AcpiManager
                     var ioa = new IoApic(ioapic.IoApicAddress, ioapic.GlobalSystemInterruptBase);
                     Debug.Print($"IOAPIC[{IoApic.IoApics.Count}]: id={ioapic.IoApicId}, address={ioa.Address:x8}, gsi={ioa.GsiBase}-{ioa.GsiEnd}");
                     IoApic.IoApics.Add(ioa);
-;                } break;
+                } break;
 
                 // found a new ISO, add it 
                 case MultipleApicDescription.StructureType.InterruptSourceOverride:

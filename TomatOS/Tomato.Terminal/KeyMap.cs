@@ -128,7 +128,14 @@ public static class KeyMap
         0,	/* All other keys are undefined */
     };
     
-    public static int GetCodepoint(KeyCode code, bool shiftHeld, bool altGrHeld)
+    public const int LeftShift = 0x2A;
+    public const int RightShift = 0x36;
+    public const int LeftAlt = 0x38;
+    public const int RightAlt = 0x38 | 0x80;
+    public const int Enter = 0x1C;
+    public const int Backspace = 0x0E;
+
+    public static int GetCodepoint(int code, bool shiftHeld, bool altGrHeld)
     {
         // select one 
         var map = shiftHeld ? _usKeymapShift : (altGrHeld ? _usKeymapAlt : _usKeymap);

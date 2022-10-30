@@ -40,7 +40,8 @@ internal static class Program
         var memory = MemoryMarshal.Cast<byte, uint>(m);
         framebuffer.Backing = m;
 
-        _terminal = new Terminal(framebuffer, memory, null, new Font(Typeface.Default, 16));
+        var kbd = Tomato.Hal.Hal.Keyboard;
+        _terminal = new Terminal(framebuffer, memory, kbd, new Font(Typeface.Default, 16));
         _terminal.InsertLine("Hello world from our awesome terminal.");
         _terminal.InsertLine("Welcome to TomatOS!");
     }
