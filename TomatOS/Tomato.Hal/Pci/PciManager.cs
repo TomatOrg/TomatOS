@@ -103,7 +103,7 @@ public static class PciManager
             foreach (var attr in Attribute.GetCustomAttributes(type, typeof(PciDriverAttribute)))
             {
                 var driver = (PciDriverAttribute)attr;
-                if (driver.VendorId == 0xFFFF)
+                if (driver.VendorId != 0xFFFF)
                 {
                     // normal driver
                     var hash = GetDriverHash(driver.VendorId, driver.DeviceId);

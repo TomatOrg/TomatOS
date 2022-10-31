@@ -4,8 +4,8 @@
 
 qemu-system-x86_64 \
   -drive if=virtio,file=out/build/test.hdd \
-  -monitor telnet:localhost:1235,server,nowait \
-  -serial stdio \
+  -serial mon:stdio \
+  -trace virtio* \
   -machine q35 \
   --enable-kvm \
   -cpu host,+invtsc,+tsc-deadline \
@@ -14,4 +14,4 @@ qemu-system-x86_64 \
   -m 2G \
   -s \
   -no-reboot \
-  -no-shutdown
+  -no-shutdown \

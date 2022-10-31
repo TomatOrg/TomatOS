@@ -129,6 +129,15 @@ public static class PciSpec
     
 }
 
+/// <summary>
+/// Fields common to all PCI capabilities
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct PciCapability
+{
+    public byte Id;
+    public byte Next;
+}
 
 [Flags]
 public enum PciCommand : ushort

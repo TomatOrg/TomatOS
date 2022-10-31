@@ -2,9 +2,9 @@ using System;
 
 namespace Tomato.Hal.Pci;
 
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public class PciDriverAttribute : Attribute
 {
-
     public ushort VendorId { get; }
     public ushort DeviceId { get; }
     
@@ -25,5 +25,4 @@ public class PciDriverAttribute : Attribute
         Subclass = subclass;
         ProgIf = progIf;
     }
-    
 }
