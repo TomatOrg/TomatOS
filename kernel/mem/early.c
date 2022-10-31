@@ -26,4 +26,5 @@ uintptr_t early_alloc_page_phys() {
 
     // we could not find enough memory
     ASSERT(!"Failed to allocate early memory");
+    return 0;
 }

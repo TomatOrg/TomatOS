@@ -2,13 +2,8 @@
 ## Install Spall
 Download and install Odin. The Windows version doesn't include wasm-ld, as far as I could tell, so it won't work.
 NOTE: it doesn't work on Alpine either.
-Clone `https://github.com/colrdavidson/spall`.
-Modify the last lines of `src/config.odin`, setting default_config_name to the profiler trace path and name.
-NOTE: due to an Odin limitation, it is relative to src/, unless you want to do ../ until you reach /.
-So for a file in `your_spall_repo_path/tomatos.spall`, you will have to
-```
-default_config_name :: "../tomatos.spall"`
-```
+Clone `https://github.com/colrdavidson/spall`, and build+run with `python build.py run`.
+Keeping the window open will minimize loading time on larger files.
 
 ## Run
 Modify the Makefile to have those options.
@@ -18,7 +13,8 @@ USE_GCC		:= 1
 USE_PROF	:= 1
 DEBUG		:= 1
 ```
-Add `profiler_start()` and `profiler_end()` around what you want to profile.
+
+Add `profiler_start()` and `profiler_stop()` around what you want to profile.
 For example, `kernel.c` has
 ```c
 profiler_start();
@@ -32,7 +28,4 @@ After `profiler_stop()`, it will write something like
 Open the QEMU monitor and write the command to dump.
 
 ## Postprocessing
-Build `scripts/profiler_gen` and run it, passing as a parameter the output path picked above.
-
-## Run the profiler
-In the spall repo, `python build.py run` and run point a web browser to the address printed.
+Build `scripts/profiler_gen` and run it, passing as a parameter the output path.

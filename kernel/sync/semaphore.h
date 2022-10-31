@@ -11,7 +11,7 @@ typedef struct semaphore {
     _Atomic(uint32_t) nwait;
 } semaphore_t;
 
-void semaphore_acquire(semaphore_t* semaphore, bool lifo);
+bool semaphore_acquire(semaphore_t* semaphore, bool lifo, int64_t timeout);
 
 void semaphore_release(semaphore_t* semaphore, bool handoff);
 

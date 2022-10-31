@@ -29,9 +29,10 @@ sudo cp -rv \
   out/bin/tomatos.elf \
   artifacts/limine.cfg \
   lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll \
-  TomatOS/Tomato/bin/Release/net6.0/Tomato.dll \
-  artifacts/kbd.dat \
-  artifacts/ubuntu-regular.sdfnt \
+  TomatOS/Tomato.Hal/bin/Release/net6.0/Tomato.Hal.dll \
+  TomatOS/Tomato.Graphics/bin/Release/net6.0/Tomato.Graphics.dll \
+  TomatOS/Tomato.Terminal/bin/Release/net6.0/Tomato.Terminal.dll \
+  TomatOS/Tomato.Drivers.Virtio/bin/Release/net6.0/Tomato.Drivers.Virtio.dll \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it
@@ -39,16 +40,3 @@ sync
 sudo umount out/build/test_image
 sudo losetup -d `cat out/build/loopback_dev`
 rm -rf out/build/loopback_dev out/build/test_image
-
-qemu-system-x86_64 \
-  -drive if=virtio,file=out/build/test.hdd \
-  -monitor telnet:localhost:1235,server,nowait \
-  -serial stdio \
-  -machine q35 \
-  --enable-kvm \
-  -cpu host,+invtsc,+tsc-deadline \
-  -smp 4 \
-  -m 2G \
-  -s \
-  -no-reboot \
-  -no-shutdown

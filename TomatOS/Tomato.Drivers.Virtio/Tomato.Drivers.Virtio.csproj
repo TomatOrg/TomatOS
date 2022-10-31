@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <UseAppHost>false</UseAppHost>
+        <TargetFramework>net6.0</TargetFramework>
+        <NoStdLib>true</NoStdLib>
+        <NoConfig>true</NoConfig>
+        <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
+        <IlcSystemModule>Corelib</IlcSystemModule>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Reference Include="Corelib">
+            <HintPath>../../lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll</HintPath>
+        </Reference>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Tomato.Hal\Tomato.Hal.csproj" />
+    </ItemGroup>
+
+</Project>

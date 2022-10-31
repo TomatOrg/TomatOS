@@ -152,6 +152,8 @@ typedef struct block_header {
 #ifndef DNDEBUG
 		/* Who allocated it? */
 		void *allocation_addr;
+		/* Who freed it? */
+		void *free_addr;
 #endif
 	} metadata;
 
@@ -1031,6 +1033,12 @@ ASAN_NO_SANITIZE_ADDRESS void tlsf_track_allocation(void* addr, void* data)
 	block_header_t *hdr = block_from_ptr(addr);
 	hdr->metadata.allocation_addr = data;
 }
+
+ASAN_NO_SANITIZE_ADDRESS void tlsf_track_free(void* addr, void* data)
+{
+	block_header_t *hdr = block_from_ptr(addr);
+	hdr->metadata.free_addr = data;
+}
 #endif
 
 void *tlsf_malloc(tlsf_t *tlsf, size_t size)
@@ -1170,7 +1178,7 @@ void *tlsf_realloc(tlsf_t *tlsf, void *ptr, size_t size)
 			if (p != NULL) {
 				const size_t minsize = tlsf_min(cursize, size);
 				// this needs to be an uninstrumented memcpy, so it doesn't trigger poisoning
-#ifdef KASAN
+#ifdef __KASAN__
 				void* __memcpy(void* restrict dest, const void* restrict src, size_t n);
 				__memcpy(p, ptr, minsize);
 #else

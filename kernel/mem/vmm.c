@@ -15,12 +15,7 @@
 
 #include "arch/intrin.h"
 #include "sync/irq_spinlock.h"
-
-// The recursive page table addresses
-#define PAGE_TABLE_PML1            ((page_entry_t*)0xFFFFFF0000000000ull)
-#define PAGE_TABLE_PML2            ((page_entry_t*)0xFFFFFF7F80000000ull)
-#define PAGE_TABLE_PML3            ((page_entry_t*)0xFFFFFF7FBFC00000ull)
-#define PAGE_TABLE_PML4            ((page_entry_t*)0xFFFFFF7FBFDFE000ull)
+#include "arch/idt.h"
 
 /**
  * The root physical address of the kernel phys table
@@ -42,7 +37,7 @@ static irq_spinlock_t m_vmm_spinlock = INIT_IRQ_SPINLOCK();
  *
  * @param type  [IN] the stivale2 type
  */
-static const char* get_memmap_type_name(uint32_t type) {
+INTERRUPT static const char* get_memmap_type_name(uint32_t type) {
     switch (type) {
         case LIMINE_MEMMAP_USABLE: return "usable";
         case LIMINE_MEMMAP_RESERVED: return "reserved";
@@ -56,7 +51,7 @@ static const char* get_memmap_type_name(uint32_t type) {
     }
 }
 
-err_t init_vmm() {
+INTERRUPT err_t init_vmm() {
     err_t err = NO_ERROR;
 
     // Setup recursive paging, we are going to set this for both the new cr3 and
@@ -185,11 +180,11 @@ cleanup:
     return err;
 }
 
-void vmm_switch_allocator() {
+INTERRUPT void vmm_switch_allocator() {
     m_early_alloc = false;
 }
 
-void init_vmm_per_cpu() {
+INTERRUPT void init_vmm_per_cpu() {
     // set the NX bit, disable syscall since we are not gonna use them
     msr_efer_t efer = (msr_efer_t) { .packed = __readmsr(MSR_IA32_EFER) };
     efer.NXE = 1;
@@ -216,7 +211,7 @@ void init_vmm_per_cpu() {
 // Implementation details of the vmm
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void unmap_direct_page(uintptr_t pa) {
+INTERRUPT static void unmap_direct_page(uintptr_t pa) {
     uintptr_t va = (uintptr_t)PHYS_TO_DIRECT(pa);
     size_t pml4i = (va >> 39) & 0x1FFull;
     size_t pml3i = (va >> 30) & 0x3FFFFull;
@@ -226,11 +221,11 @@ static void unmap_direct_page(uintptr_t pa) {
     if (!PAGE_TABLE_PML3[pml3i].present) return;
     if (!PAGE_TABLE_PML2[pml2i].present) return;
     if (!PAGE_TABLE_PML1[pml1i].present) return;
-    PAGE_TABLE_PML1[pml1i] = (page_entry_t){ 0 };
+    PAGE_TABLE_PML1[pml1i] = (page_entry_4kb_t){ 0 };
     __invlpg((void*)va);
 }
 
-void vmm_unmap_direct_page(uintptr_t pa) {
+INTERRUPT void vmm_unmap_direct_page(uintptr_t pa) {
     irq_spinlock_lock(&m_vmm_spinlock);
     unmap_direct_page(pa);
     irq_spinlock_unlock(&m_vmm_spinlock);
@@ -239,7 +234,7 @@ void vmm_unmap_direct_page(uintptr_t pa) {
 /**
  * Allocate a page for the vmm to use
  */
-static uintptr_t vmm_alloc_page() {
+INTERRUPT static uintptr_t vmm_alloc_page() {
     uintptr_t new_phys = INVALID_PHYS_ADDR;
 
     if (m_early_alloc) {
@@ -263,7 +258,10 @@ static uintptr_t vmm_alloc_page() {
     return new_phys;
 }
 
-bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
+INTERRUPT bool vmm_setup_level(void* pml_ptr, void* next_pml_ptr, size_t index) {
+    page_entry_t* pml = pml_ptr;
+    page_entry_t* next_pml = next_pml_ptr;
+
     if (!pml[index].present) {
         uintptr_t frame = vmm_alloc_page();
         if (frame == INVALID_PHYS_ADDR) {
@@ -281,19 +279,24 @@ bool vmm_setup_level(page_entry_t* pml, page_entry_t* next_pml, size_t index) {
         void* page = (uint8_t*)next_pml + index * PAGE_SIZE;
         __invlpg(page);
         memset(page, 0, PAGE_SIZE);
+    } else if (pml[index].huge_page) {
+        // don't allocate on top of a huge page
+        ERROR("trying to setup a level on a page mapped as large!");
+        return false;
     }
 
     return true;
 }
 
-static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
+INTERRUPT static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
+    size_t page_size = perms & MAP_LARGE ? SIZE_2MB : PAGE_SIZE;
 
-    CHECK(((uintptr_t)va % 4096) == 0);
-    CHECK(((uintptr_t)pa % 4096) == 0);
+    CHECK(((uintptr_t)va % page_size) == 0);
+    CHECK(((uintptr_t)pa % page_size) == 0);
 
     uint32_t cachingmode = (perms & MAP_WC) ? CACHE_WRITE_COMBINING : CACHE_WRITE_BACK;
-    for (uintptr_t cva = (uintptr_t)va; cva < (uintptr_t)va + page_count * PAGE_SIZE; cva += PAGE_SIZE, pa += PAGE_SIZE) {
+    for (uintptr_t cva = (uintptr_t)va; cva < (uintptr_t)va + page_count * page_size; cva += page_size, pa += page_size) {
         // calculate the indexes of each of these
         size_t pml4i = (cva >> 39) & 0x1FFull;
         size_t pml3i = (cva >> 30) & 0x3FFFFull;
@@ -303,25 +306,49 @@ static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms)
         // setup the top levels properly
         CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML4, PAGE_TABLE_PML3, pml4i), ERROR_OUT_OF_MEMORY);
         CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML3, PAGE_TABLE_PML2, pml3i), ERROR_OUT_OF_MEMORY);
-        CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML2, PAGE_TABLE_PML1, pml2i), ERROR_OUT_OF_MEMORY);
 
-        // setup the pml1 entry
-        PAGE_TABLE_PML1[pml1i] = (page_entry_t) {
-            .present = 1,
-            .frame = pa >> 12,
-            .writeable = (perms & MAP_WRITE) ? 1 : 0,
-            .no_execute = (perms & MAP_EXEC) ? 0 : 1,
-            .huge_page_or_pat = (cachingmode >> 2) & 1,
-            .pcd              = (cachingmode >> 1) & 1,
-            .pwt              = (cachingmode >> 0) & 1
-        };
+        if (perms & MAP_LARGE) {
+            // if this is already mapped, make sure its mapped as 2mb, so we won't have
+            // any weird shit going on
+            if (PAGE_TABLE_PML2[pml2i].present) {
+                CHECK(PAGE_TABLE_PML2[pml2i].huge_page);
+            }
+
+            // setup the pml2 entry
+            PAGE_TABLE_PML2[pml2i] = (page_entry_2mb_t) {
+                .present            = 1,
+                .frame              = pa >> 21,
+                .writeable          = (perms & MAP_WRITE) ? 1 : 0,
+                .no_execute         = (perms & MAP_EXEC) ? 0 : 1,
+                .huge_page          = 1,
+                .pat2               = (cachingmode >> 2) & 1,
+                .pat1               = (cachingmode >> 1) & 1,
+                .pat0               = (cachingmode >> 0) & 1,
+            };
+        } else {
+            // set the last level
+            CHECK_ERROR(vmm_setup_level(PAGE_TABLE_PML2, PAGE_TABLE_PML1, pml2i), ERROR_OUT_OF_MEMORY);
+
+            // setup the pml1 entry
+            PAGE_TABLE_PML1[pml1i] = (page_entry_4kb_t) {
+                .present            = 1,
+                .frame              = pa >> 12,
+                .writeable          = (perms & MAP_WRITE) ? 1 : 0,
+                .no_execute         = (perms & MAP_EXEC) ? 0 : 1,
+                .pat2               = (cachingmode >> 2) & 1,
+                .pat1               = (cachingmode >> 1) & 1,
+                .pat0               = (cachingmode >> 0) & 1
+            };
+        }
 
         // invalidate the new mapped address
         __invlpg((void*)cva);
 
         // unmap the direct page if we need to
         if (perms & MAP_UNMAP_DIRECT) {
-            unmap_direct_page(pa);
+            for (int i = 0; i < page_size / PAGE_SIZE; i++) {
+                unmap_direct_page(pa + i * PAGE_SIZE);
+            }
         }
     }
 
@@ -329,7 +356,7 @@ cleanup:
     return err;
 }
 
-err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
+INTERRUPT err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
     irq_spinlock_lock(&m_vmm_spinlock);
@@ -341,25 +368,55 @@ cleanup:
     return err;
 }
 
-err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
+INTERRUPT err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
     irq_spinlock_lock(&m_vmm_spinlock);
 
-    CHECK(((uintptr_t)va % 4096) == 0);
+    // large page is not valid on this, you will have to
+    // unmap and map again with large page
+    CHECK((perms & MAP_LARGE) == 0);
 
     // simply iterate all the indexes and free them
-    for (int i = 0; i < page_count; i++, va += PAGE_SIZE) {
+    size_t page_size = 0;
+    for (int i = 0; i < page_count; i++, va += page_size) {
+        size_t pml4i = ((uintptr_t)va >> 39) & 0x1FFull;
+        size_t pml3i = ((uintptr_t)va >> 30) & 0x3FFFFull;
+        size_t pml2i = ((uintptr_t)va >> 21) & 0x7FFFFFFull;
         size_t pml1i = ((uintptr_t)va >> 12) & 0xFFFFFFFFFull;
 
-        // make sure the page is mapped and change the write/exec perms
-        CHECK(PAGE_TABLE_PML1[pml1i].present);
-        PAGE_TABLE_PML1[pml1i].writeable = (perms & MAP_WRITE) ? 1 : 0;
-        PAGE_TABLE_PML1[pml1i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+        // make sure it is mapped to avoid problems
+        CHECK(PAGE_TABLE_PML4[pml4i].present);
+        CHECK(PAGE_TABLE_PML3[pml3i].present);
 
-        // unmap if needed
-        if (perms & MAP_UNMAP_DIRECT) {
-            unmap_direct_page(PAGE_TABLE_PML1[pml1i].frame << 12);
+        // handle both large and normal pages
+        CHECK(PAGE_TABLE_PML2[pml2i].present);
+        if (PAGE_TABLE_PML2[pml2i].huge_page) {
+            page_size = SIZE_2MB;
+            CHECK(((uintptr_t)va % page_size) == 0);
+
+            PAGE_TABLE_PML2[pml2i].writeable = (perms & MAP_WRITE) ? 1 : 0;
+            PAGE_TABLE_PML2[pml2i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+
+            // unmap if needed
+            if (perms & MAP_UNMAP_DIRECT) {
+                uintptr_t frame = PAGE_TABLE_PML2[pml2i].frame << 21;
+                for (int j = 0; j < SIZE_2MB / PAGE_SIZE; j++) {
+                    unmap_direct_page(frame + j * PAGE_SIZE);
+                }
+            }
+        } else {
+            page_size = PAGE_SIZE;
+
+            // make sure the page is mapped and change the write/exec perms
+            CHECK(PAGE_TABLE_PML1[pml1i].present);
+            PAGE_TABLE_PML1[pml1i].writeable = (perms & MAP_WRITE) ? 1 : 0;
+            PAGE_TABLE_PML1[pml1i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+
+            // unmap if needed
+            if (perms & MAP_UNMAP_DIRECT) {
+                unmap_direct_page(PAGE_TABLE_PML1[pml1i].frame << 12);
+            }
         }
 
         // invalidate the TLB entry
@@ -374,18 +431,20 @@ cleanup:
     return err;
 }
 
-err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms) {
+INTERRUPT err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
     void* cva = NULL;
 
+    size_t page_size = (perms & MAP_LARGE) ? SIZE_2MB : PAGE_SIZE;
+
     irq_spinlock_lock(&m_vmm_spinlock);
 
-    CHECK(((uintptr_t)va % 4096) == 0);
+    CHECK(((uintptr_t)va % page_size) == 0);
 
-    for (cva = va; cva < va + page_count * PAGE_SIZE; cva += PAGE_SIZE) {
-        uintptr_t page = vmm_alloc_page();
-        CHECK(page != INVALID_PHYS_ADDR);
-        CHECK_AND_RETHROW(do_map(page, cva, 1, perms));
+    for (cva = va; cva < va + page_count * page_size; cva += page_size) {
+        void* page = palloc(page_size);
+        CHECK(page != NULL);
+        CHECK_AND_RETHROW(do_map(DIRECT_TO_PHYS(page), cva, 1, perms));
     }
 
 cleanup:
@@ -395,36 +454,68 @@ cleanup:
     return err;
 }
 
-void vmm_unmap(void* va, size_t page_count, uintptr_t* phys) {
+INTERRUPT bool vmm_is_mapped(uintptr_t ptr, size_t size) {
+    bool fully_mapped = false;
 
-    size_t pml1i = ((uintptr_t)va >> 12) & 0xFFFFFFFFFull;
+    irq_spinlock_lock(&m_vmm_spinlock);
 
     // simply iterate all the indexes and free them
-    for (int i = 0; i < page_count; i++, pml1i++) {
-        if (PAGE_TABLE_PML1[pml1i].present) {
-            if (phys != NULL) {
-                phys[i] = PAGE_TABLE_PML1[pml1i].frame << 12;
-            }
-            PAGE_TABLE_PML1[pml1i] = (page_entry_t){ 0 };
+    size_t page_size = 0;
+    for (uintptr_t i = 0; i < size; i += page_size) {
+        size_t pml4i = (i >> 39) & 0x1FFull;
+        size_t pml3i = (i >> 30) & 0x3FFFFull;
+        size_t pml2i = (i >> 21) & 0x7FFFFFFull;
+        size_t pml1i = (i >> 12) & 0xFFFFFFFFFull;
+
+        // make sure it is mapped to avoid problems
+        if (!PAGE_TABLE_PML4[pml4i].present) {
+            goto cleanup;
+        }
+
+        if (!PAGE_TABLE_PML3[pml3i].present) {
+            goto cleanup;
+        }
+
+        // handle both large and normal pages
+        if (!PAGE_TABLE_PML2[pml2i].present) {
+            goto cleanup;
+        }
+
+        if (PAGE_TABLE_PML2[pml2i].huge_page) {
+            page_size = SIZE_2MB;
         } else {
-            if (phys != NULL) {
-                phys[i] = INVALID_PHYS_ADDR;
+            page_size = PAGE_SIZE;
+
+            // make sure the page is mapped and change the write/exec perms
+            if (!PAGE_TABLE_PML1[pml1i].present) {
+                goto cleanup;
             }
         }
     }
 
-}
+    fully_mapped = true;
 
-bool vmm_is_mapped(uintptr_t ptr) {
+cleanup:
+    irq_spinlock_unlock(&m_vmm_spinlock);
+
+    return fully_mapped;
+
     // make sure it is present
     if (!PAGE_TABLE_PML4[PML4_INDEX(ptr)].present) return false;
     if (!PAGE_TABLE_PML3[PML3_INDEX(ptr)].present) return false;
-    if (!PAGE_TABLE_PML2[PML2_INDEX(ptr)].present) return false;
+
+    // 2mb page
+    size_t pml2_index = PML2_INDEX(ptr);
+    page_entry_2mb_t entry = PAGE_TABLE_PML2[pml2_index];
+    if (!entry.present) return false;
+    if (entry.huge_page) return true;
+
+    // 4kb page
     if (!PAGE_TABLE_PML1[PML1_INDEX(ptr)].present) return false;
     return true;
 }
 
-err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present) {
+INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present) {
     err_t err = NO_ERROR;
 
     if (KERNEL_HEAP_START <= fault_address && fault_address < KERNEL_HEAP_END) {

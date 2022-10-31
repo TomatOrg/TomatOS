@@ -7,5 +7,6 @@ TomatOS/.vs/
 .cache
 compile_commands.json
 test/*.dat
-profiler.trace*
+*.spall
+*.trace
 scripts/profiler_gen

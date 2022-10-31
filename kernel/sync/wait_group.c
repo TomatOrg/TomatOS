@@ -83,7 +83,7 @@ void wait_group_wait(wait_group_t* wg) {
 
         // Increment waiters count
         if (atomic_compare_exchange_strong(&wg->state, &state, state + 1)) {
-            semaphore_acquire(&wg->sema, false);
+            semaphore_acquire(&wg->sema, false, -1);
 
             if (wg->state != 0) {
                 ASSERT("wait_group is reused before previous wait has returned");

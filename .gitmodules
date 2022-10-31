@@ -5,6 +5,12 @@
 [submodule "lib/zydis"]
 	path = lib/zydis
 	url = git@github.com:zyantific/zydis.git
+	shallow = true
 [submodule "lib/tinydotnet"]
 	path = lib/tinydotnet
 	url = git@github.com:TomatOrg/tinydotnet.git
+[submodule "lib/mimalloc"]
+	path = lib/mimalloc
+	url = git@github.com:microsoft/mimalloc.git
+	branch = dev
+	shallow = true

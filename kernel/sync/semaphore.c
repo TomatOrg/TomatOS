@@ -32,6 +32,8 @@
 
 #include "semaphore.h"
 #include "thread/waitable.h"
+#include "thread/timer.h"
+#include "time/tsc.h"
 
 #include <thread/scheduler.h>
 
@@ -66,12 +68,7 @@ void semaphore_queue(semaphore_t* semaphore, waiting_thread_t* wt, bool lifo) {
     }
 }
 
-waiting_thread_t* semaphore_dequeue(semaphore_t* semaphore) {
-    waiting_thread_t* wt = semaphore->waiters;
-    if (wt == NULL) {
-        return NULL;
-    }
-
+static void semaphore_remove_wt(semaphore_t* semaphore, waiting_thread_t* wt) {
     if (wt->wait_link != NULL) {
         waiting_thread_t* t = wt->wait_link;
         // Substitute t, for wt in the root
@@ -87,6 +84,17 @@ waiting_thread_t* semaphore_dequeue(semaphore_t* semaphore) {
     } else {
         semaphore->waiters = NULL;
     }
+
+}
+
+waiting_thread_t* semaphore_dequeue(semaphore_t* semaphore) {
+    waiting_thread_t* wt = semaphore->waiters;
+    if (wt == NULL) {
+        return NULL;
+    }
+
+    semaphore_remove_wt(semaphore, wt);
+
     wt->ticket = 0;
     return wt;
 }
@@ -104,10 +112,47 @@ static bool semaphore_can_acquire(semaphore_t* semaphore) {
     }
 }
 
-void semaphore_acquire(semaphore_t* semaphore, bool lifo) {
+typedef struct semaphore_timeout_context {
+    semaphore_t* sm;
+    waiting_thread_t* wt;
+} semaphore_timeout_context_t;
+
+static void semaphore_acquire_timeout(semaphore_timeout_context_t* ctx, uint64_t now) {
+    // fast path, check if the waiting thread was already dequeued
+    if (ctx->wt->wait_link == NULL) {
+        return;
+    }
+
+    // slow path, lock the semaphore and dequeue the waiting thread if needed
+
+    spinlock_lock(&ctx->sm->lock);
+
+    // make sure this wt is not awake yet, and wake it up but with timeout
+    if (ctx->wt->wait_link != NULL) {
+        // remove from the semaphore waiting list
+        semaphore_remove_wt(ctx->sm, ctx->wt);
+
+        // mark the ticket as a timeout
+        ctx->wt->ticket = -1;
+
+        // ready the thread
+        scheduler_ready_thread(ctx->wt->thread);
+    }
+
+    spinlock_unlock(&ctx->sm->lock);
+}
+
+bool semaphore_acquire(semaphore_t* semaphore, bool lifo, int64_t timeout) {
+    bool acquired = false;
+
     // Easy case
     if (semaphore_can_acquire(semaphore)) {
-        return;
+        return true;
+    }
+
+    // we have a zero timeout, return right now
+    if (timeout == 0) {
+        return false;
     }
 
     // Harder case:
@@ -136,15 +181,44 @@ void semaphore_acquire(semaphore_t* semaphore, bool lifo) {
         // (we set nwait above), so go to sleep.
         semaphore_queue(semaphore, wt, lifo);
 
+        // if we have a timeout then prepare a timer for it
+        timer_t* timer = NULL;
+        semaphore_timeout_context_t ctx;
+        if (timeout > 0) {
+            timer = create_timer();
+            ctx = (semaphore_timeout_context_t){
+                .wt = wt,
+                .sm = semaphore
+            };
+            timer->arg = &ctx;
+            timer->func = (timer_func_t) semaphore_acquire_timeout;
+            timer->when = (int64_t) microtime() + timeout;
+            timer_start(timer);
+        }
+
         // park the thread, making sure to unlock our lock
         scheduler_park((void*)spinlock_unlock, &semaphore->lock);
 
+        // cleanup the timeout timer
+        if (timer != NULL) {
+            timer_stop(timer);
+            release_timer(timer);
+        }
+
+        // check if we got a timeout, if so break
+        if (wt->ticket == -1) {
+            break;
+        }
+
         if (wt->ticket != 0 || semaphore_can_acquire(semaphore)) {
+            acquired = true;
             break;
         }
     }
 
     release_waiting_thread(wt);
+
+    return acquired;
 }
 
 void semaphore_release(semaphore_t* semaphore, bool handoff) {
@@ -205,7 +279,7 @@ void semaphore_release(semaphore_t* semaphore, bool handoff) {
 
 static void hammer_semaphore(semaphore_t* s, int loops, waitable_t* wdone) {
     for (int i = 0; i < loops; i++) {
-        semaphore_acquire(s, false);
+        semaphore_acquire(s, false, -1);
         semaphore_release(s, false);
     }
     waitable_send(wdone, true);

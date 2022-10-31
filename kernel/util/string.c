@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <limits.h>
 
-#ifdef KASAN
+#ifdef __KASAN__
 #define WRAP_IF_NEEDED(x) __##x
 #else
 #define WRAP_IF_NEEDED(x) x
@@ -81,6 +81,13 @@ int strcmp(const char *a, const char *b) {
             return 1;
         i++;
     }
+}
+
+void *memchr(const void *src, int c, size_t n) {
+	const unsigned char *s = src;
+	c = (unsigned char)c;
+	for (; n && *s != c; s++, n--);
+	return n ? (void *)s : 0;
 }
 
 size_t strlen(const char *str) {

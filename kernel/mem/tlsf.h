@@ -68,6 +68,7 @@ void tlsf_free(tlsf_t *tlsf, void *ptr);
 
 #ifndef DNDEBUG
 void tlsf_track_allocation(void* addr, void* data);
+void tlsf_track_free(void* addr, void* data);
 #endif
 
 /* Returns internal block size, not original request size */

@@ -343,9 +343,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     char buffer[256] = { 0 };
     debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
     ERROR("Code: %s", buffer);
-//    if (vmm_is_mapped(ctx->rip)) {
-//        debug_disasm_at((void*)ctx->rip, 1);
-//    }
+    debug_disasm_at((void*)ctx->rip, 5);
 
     ERROR("");
 
@@ -353,7 +351,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     ERROR("Stack trace:");
     size_t* base_ptr = (size_t*)ctx->rbp;
     while (true) {
-        if (!vmm_is_mapped((uintptr_t)base_ptr)) {
+        if (!vmm_is_mapped((uintptr_t)base_ptr, 1)) {
             break;
         }
 
@@ -367,6 +365,9 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
         TRACE("\t> %s (0x%p)", buffer, ret_addr);
 
         if (old_bp == 0) {
+            break;
+        } else if (old_bp <= (size_t)base_ptr) {
+            WARN("\tGoes back to %p", old_bp);
             break;
         }
         base_ptr = (size_t*)old_bp;
@@ -749,7 +750,8 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
             lapic_eoi();
         } break;
 
-        // TODO: have this be a single empty iret
+        // TODO: we don't need to save the full register context,
+        //       make this be smaller
         case IRQ_WAKEUP: {
             lapic_eoi();
         } break;

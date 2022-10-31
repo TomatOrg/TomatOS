@@ -117,7 +117,7 @@ static void mutex_lock_slow(mutex_t* mutex) {
             if (wait_start_time == 0) {
                 wait_start_time = microtime();
             }
-            semaphore_acquire(&mutex->semaphore, queue_lifo);
+            semaphore_acquire(&mutex->semaphore, queue_lifo, -1);
             starving = starving || microtime() - wait_start_time > STARVATION_THRESHOLD_US;
             old = mutex->state;
             if ((old & MUTEX_STARVING) != 0) {

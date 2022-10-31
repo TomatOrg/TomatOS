@@ -90,7 +90,7 @@
 #define	ATOMIC_VAR_INIT(value)		(value)
 #define	atomic_init(obj, value)		__c11_atomic_init(obj, value)
 #else
-#define	ATOMIC_VAR_INIT(value)		{ .__val = (value) }
+#define	ATOMIC_VAR_INIT(value)		(value)
 #define	atomic_init(obj, value)		((void)((obj)->__val = (value)))
 #endif
 /*

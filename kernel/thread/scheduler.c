@@ -870,7 +870,7 @@ static void break_poller() {
     }
 }
 
-void scheduler_wake_poller(int64_t when) {
+void  scheduler_wake_poller(int64_t when) {
     if (atomic_load(&m_last_poll) == 0) {
         // In find_runnable we ensure that when polling the poll_until
         // field is either zero or the time to which the current poll
@@ -967,6 +967,12 @@ static void cpu_wake_idle() {
     mask_clear(m_idle_cpus, get_cpu_id());
     atomic_fetch_sub(&m_idle_cpus_count, 1);
 }
+
+/**
+ * flags that the scheduler is waiting for an irq, used
+ * to handle spurious IRQ_PREEMPT
+ */
+static bool CPU_LOCAL m_waiting_for_irq;
 
 INTERRUPT static thread_t* find_runnable() {
     thread_t* thread = NULL;
@@ -1146,10 +1152,27 @@ INTERRUPT static thread_t* find_runnable() {
             //       we are just gonna sleep for that time
             if (wait_us > 0) {
                 // we want to sleep, so sleep for the given amount of
-                // time or when an interrupt happens
+                // time or when an interrupt happens, we will keep at
+                // a normal priority because we want to be waiting for
+                // the timer if someone else can process the irq
                 atomic_store(&m_polling_cpu, get_cpu_id());
+
+                // prepare to sleep, we want to get a wakeup which does not
+                // cause a stack change, and we want it after the given amount of
+                // time
+                lapic_set_wakeup();
                 lapic_set_timeout(wait_us);
+
+                m_waiting_for_irq = true;
                 __asm__ ("sti; hlt; cli");
+                m_waiting_for_irq = false;
+
+                // we are back, return to have the timer be preempt, and also
+                // cancel the deadline in the case that we got an early wakeup
+                // which was no related to the timer
+                lapic_set_preempt();
+                scheduler_cancel_deadline();
+
                 atomic_store(&m_polling_cpu, -1);
             }
 
@@ -1178,9 +1201,13 @@ INTERRUPT static thread_t* find_runnable() {
 
         // we have nothing to do, so put the cpu into
         // a sleeping state until an interrupt or something
-        // else happens. we will lower the state
+        // else happens. we will lower the state to make sure
+        // that interrupts will arrive to us at the highest
+        // priority
         __writecr8(PRIORITY_SCHEDULER_WAIT);
+        m_waiting_for_irq = true;
         __asm__ ("sti; hlt; cli");
+        m_waiting_for_irq = false;
         __writecr8(PRIORITY_NORMAL);
 
         // we might have work so wake the cpu
@@ -1209,20 +1236,22 @@ INTERRUPT static void schedule(interrupt_context_t* ctx) {
 // Scheduler callbacks
 //----------------------------------------------------------------------------------------------------------------------
 
-static void enter_scheduler() {
+static void verify_can_enter_scheduler() {
     // NOTE: PRIORITY_NORMAL is accepted, but also PRIORITY_SCHEDULER_WAIT
     ASSERT(__readcr8() <= PRIORITY_NORMAL);
 }
 
 INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
-    enter_scheduler();
-
-    // we are spinning, so we should not
-    // actually schedule anything and just
-    // return, since there are timers to run
-    if (m_polling_cpu == get_cpu_id()) {
+    if (m_waiting_for_irq) {
+        // we got a spurious preempt, don't do anything
+        // NOTE: we are right now running with the same stack as
+        //       the schedule below us, so we need to be super careful
+        //       to not change anything of significance between the callpath
+        //       we have underneath us and our code
         return;
     }
+
+    verify_can_enter_scheduler();
 
     // save the current thread, don't park it
     save_current_thread(ctx, false);
@@ -1231,7 +1260,7 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
     schedule(ctx);
 }
 INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
-    enter_scheduler();
+    verify_can_enter_scheduler();
 
     // save the current thread, park it
     save_current_thread(ctx, true);
@@ -1249,7 +1278,7 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
 }
 
 INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
-    enter_scheduler();
+    verify_can_enter_scheduler();
 
     thread_t* current_thread = get_current_thread();
     m_current_thread = NULL;
@@ -1257,6 +1286,9 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
     if (current_thread != NULL) {
         // change the status to dead
         cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_DEAD);
+
+        // don't keep the managed thread alive anymore
+        current_thread->tcb->managed_thread = NULL;
 
         // release the reference that the scheduler has
         release_thread(current_thread);

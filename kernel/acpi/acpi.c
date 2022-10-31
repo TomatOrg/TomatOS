@@ -6,7 +6,9 @@
 #include "mem/mem.h"
 #include "util/defs.h"
 
-struct acpi_descriptor_header* m_rsdt = NULL;
+void* g_rsdp = NULL;
+
+static struct acpi_descriptor_header* m_rsdt = NULL;
 
 err_t init_acpi() {
     err_t err = NO_ERROR;
@@ -19,6 +21,9 @@ err_t init_acpi() {
     void* rsdp_page_vaddr = ALIGN_DOWN(rsdp, 4096); 
     CHECK_AND_RETHROW(vmm_map(DIRECT_TO_PHYS(rsdp_page_vaddr), rsdp_page_vaddr, 2, 0));
     CHECK(rsdp->signature == ACPI_1_0_RSDP_SIGNATURE);
+
+    // for use in C#
+    g_rsdp = rsdp;
 
     // get and validate the rsdt
     m_rsdt = PHYS_TO_DIRECT(rsdp->rsdt_address);

@@ -42,6 +42,7 @@ void* malloc(size_t size) {
     void* ptr = tlsf_memalign(m_tlsf, 16, size);
 #ifndef DNDEBUG
     tlsf_track_allocation(ptr, __builtin_return_address(0));
+    tlsf_track_free(ptr, 0);
 #endif    
     irq_spinlock_unlock(&m_tlsf_lock);
     if (ptr != NULL) {
@@ -59,6 +60,7 @@ void* malloc_aligned(size_t size, size_t alignment) {
     void* ptr = tlsf_memalign(m_tlsf, alignment, size);
 #ifndef DNDEBUG
     tlsf_track_allocation(ptr, __builtin_return_address(0));
+    tlsf_track_free(ptr, 0);
 #endif    
     irq_spinlock_unlock(&m_tlsf_lock);
     if (ptr != NULL) {
@@ -72,6 +74,7 @@ void* realloc(void* ptr, size_t size) {
     ptr = tlsf_realloc(m_tlsf, ptr, size);
 #ifndef DNDEBUG
     tlsf_track_allocation(ptr, __builtin_return_address(0));
+    tlsf_track_free(ptr, 0);
 #endif    
     irq_spinlock_unlock(&m_tlsf_lock);
     return ptr;
@@ -79,6 +82,7 @@ void* realloc(void* ptr, size_t size) {
 
 void free(void* ptr) {
     irq_spinlock_lock(&m_tlsf_lock);
+    if (ptr) tlsf_track_free(ptr, __builtin_return_address(0));
     tlsf_free(m_tlsf, ptr);
     irq_spinlock_unlock(&m_tlsf_lock);
 }

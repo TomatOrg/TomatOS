@@ -234,6 +234,11 @@ static size_t m_tls_size = 0;
  */
 static size_t m_tls_align = 0;
 
+/*
+*/
+static size_t m_tls_filesz = 0;
+static uint8_t* m_tls_file = NULL;
+
 err_t init_tls() {
     void* kernel = g_limine_kernel_file.response->kernel_file->address;
 
@@ -246,14 +251,17 @@ err_t init_tls() {
     for (int i = 0; i < ehdr->e_phnum; i++) {
         Elf64_Phdr* segment = &segments[i];
         if (segment->p_type == PT_TLS) {
-            CHECK(segment->p_filesz == 0); // TODO: preset stuff
-
+            if (segment->p_filesz) {
+                m_tls_filesz = segment->p_filesz;
+                m_tls_file = malloc(m_tls_filesz);
+                memcpy(m_tls_file, kernel + segment->p_offset, m_tls_filesz);
+            }
             // take the tls size and properly align it
             m_tls_size = segment->p_memsz;
             m_tls_size += (-m_tls_size - segment->p_vaddr) & (segment->p_align - 1);
             m_tls_align = segment->p_align;
 
-            TRACE("tls: %d bytes", m_tls_size);
+            TRACE("tls: memsz=%d filesz=%d", m_tls_size, m_tls_filesz);
             break;
         }
     }
@@ -345,7 +353,8 @@ retry:
     // super important, the tcb itself must not be cleared, the gc
     // relies on the values to be consistent!
     memset((void*)((uintptr_t)thread->tcb - m_tls_size), 0, m_tls_size);
-
+    memcpy(thread->tcb, m_tls_file, m_tls_filesz);
+    
 cleanup:
     scheduler_preempt_enable();
     return thread;
