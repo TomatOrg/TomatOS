@@ -11,10 +11,6 @@ public class FileSystemManager
     private static FileSystemManager _instance = new FileSystemManager();
     private static bool _claimed = false;
 
-    /// <summary>
-    /// Claim the DisplayManager, only one person can do that and he should manage everything
-    /// to do with new displays and input devices.
-    /// </summary>
     public static FileSystemManager Claim()
     {
         if (_claimed)

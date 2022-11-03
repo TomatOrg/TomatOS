@@ -76,7 +76,7 @@ public class MemoryServices
     /// <param name="range">The mapped range</param>
     /// <returns>The physical address</returns>
     [MethodImpl(MethodImplOptions.InternalCall, MethodCodeType = MethodCodeType.Runtime)]
-    internal static extern ulong GetMappedPhysicalAddress(Memory<byte> range);
+    public static extern ulong GetMappedPhysicalAddress(Memory<byte> range);
 
     
     /// <summary>

@@ -33,6 +33,7 @@ sudo cp -rv \
   TomatOS/Tomato.Graphics/bin/Release/net6.0/Tomato.Graphics.dll \
   TomatOS/Tomato.Terminal/bin/Release/net6.0/Tomato.Terminal.dll \
   TomatOS/Tomato.Drivers.Virtio/bin/Release/net6.0/Tomato.Drivers.Virtio.dll \
+  TomatOS/Tomato.Drivers.Fat/bin/Release/net6.0/Tomato.Drivers.Fat.dll \
   out/build/test_image/boot/
 
 # Finish with the disk, umount it

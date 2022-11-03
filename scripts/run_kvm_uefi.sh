@@ -5,7 +5,6 @@
 qemu-system-x86_64 \
   -drive if=virtio,file=out/build/test.hdd \
   -serial mon:stdio \
-  -trace virtio* \
   -machine q35 \
   --enable-kvm \
   -cpu host,+invtsc,+tsc-deadline \

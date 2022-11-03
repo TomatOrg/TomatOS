@@ -1,4 +1,5 @@
 using Tomato.Hal.Interfaces;
+using System.Threading.Tasks;
 
 namespace Tomato.Hal.Io;
 
@@ -9,6 +10,6 @@ public interface IFileSystemDriver
     /// Try to create a file system on the given block device, return NULL if not a compatible
     /// filesystem, returns an instance of the filesystem if compatible
     /// </summary>
-    IFileSystem TryCreate(IBlock block);
+    Task<IFileSystem> TryCreate(IBlock block);
 
 }

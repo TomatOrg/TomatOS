@@ -45,8 +45,6 @@ public abstract class VirtioPci
         Field<ushort> Notifier;
         readonly internal Irq Interrupt;
 
-        public TaskCompletionSource[] Completions;
-
         internal QueueInfo(int index, int size, Field<ushort> notifier, Irq interrupt)
         {
             Index = index;
@@ -81,9 +79,6 @@ public abstract class VirtioPci
             FirstFree = 0;
             LastSeenUsed = 0;
             AddedHeads = 0;
-
-            // one completion per descriptor chain head
-            Completions = new TaskCompletionSource[Size];
         }
 
         /// <summary>

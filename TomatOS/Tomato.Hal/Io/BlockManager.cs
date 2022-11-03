@@ -1,11 +1,48 @@
 using System;
+using System.Runtime.InteropServices;
+using System.Buffers;
+using System.Threading;
+using System.Diagnostics;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using Tomato.Hal.Interfaces;
-
+using Tomato.Hal.Managers;
+using Tomato.Hal.Pci;
+using Tomato.Hal.Io;
+using Tomato.Hal;
 namespace Tomato.Hal.Io;
 
 public static class BlockManager
 {
+    // TODO: add specific partition types for GPT and MBR
+    public class GenericPartition : IBlock
+    {
+        IBlock _drive;
+        long _start, _end;
+
+        public GenericPartition(IBlock drive, long start, long end)
+        {
+            _drive = drive;
+            _start = start;
+            _end = end;
+        }
+
+        public bool Removable => _drive.Removable;
+        public bool Present => _drive.Present;
+        public bool ReadOnly => _drive.ReadOnly;
+        public bool WriteCaching => _drive.WriteCaching;    
+        public long LastBlock => _drive.LastBlock;
+        public int BlockSize => _drive.BlockSize;
+        public int IoAlign => _drive.IoAlign;
+        public int OptimalTransferLengthGranularity => _drive.OptimalTransferLengthGranularity;
+
+        public Task ReadBlocks(long lba, Memory<byte> memory, CancellationToken token = default) => _drive.ReadBlocks(lba + _start, memory, token);
+
+        public Task WriteBlocks(long lba, Memory<byte> memory, CancellationToken token = default) => _drive.WriteBlocks(lba + _start, memory, token);
+
+        public Task FlushBlocks(CancellationToken token = default) => _drive.FlushBlocks(token);
+    }
 
     private static bool _driversLocked = false;
     private static List<IFileSystemDriver> _drivers = new();
@@ -24,7 +61,7 @@ public static class BlockManager
         foreach (var driver in _drivers)
         {
             // try to parse the filesystem with this driver
-            var fs = driver.TryCreate(block);
+            var fs = driver.TryCreate(block).Result;
             if (fs == null) 
                 continue;
                 
@@ -43,12 +80,10 @@ public static class BlockManager
     /// <param name="block"></param>
     private static void ProcessBlock(IBlock block)
     {
-        // TODO: check for GPT
-        
+        // check for GPT
+        Gpt.IteratePartitions(block, (GenericPartition p) => DispatchBlock(p));
         // TODO: check for MBR
-        
-        // process the block as un-partitioned
-        DispatchBlock(block);
+        // TODO: process the block as un-partitioned
     }
 
     /// <summary>
@@ -66,7 +101,7 @@ public static class BlockManager
             // go over the existing blocks trying to parse them
             for (var i = 0; i < _blocks.Count; i++)
             {
-                var fs = driver.TryCreate(_blocks[i]);
+                var fs = driver.TryCreate(_blocks[i]).Result;
                 if (fs == null) 
                     continue;
                 
