@@ -113,4 +113,32 @@ internal class FatDriver : IFileSystemDriver
             Attribs = r.CreateField<byte>(11);
         }
     }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct DirentDateTime
+    {
+        internal uint Data;
+
+        internal DirentDateTime(uint data) => Data = data;
+        internal DirentDateTime(ushort data) => Data = ((uint)data) << 16;
+
+        internal DirentDateTime(DateTime dt) :
+              this(((uint)(dt.Year - 1980) << (16 + 9)) |
+                   ((uint)dt.Month << (16 + 5)) |
+                   ((uint)dt.Day << (16 + 0)) |
+                   ((uint)dt.Hour << 11) |
+                   ((uint)dt.Minute << 5) |
+                   ((uint)(dt.Second / 2))) {}
+
+        internal DateTime ToDateTime()
+        {
+            var hour = (int)(Data >> 11) & 0b11111;
+            var min = (int)(Data >> 5) & 0b111111;
+            var sec = (int)((Data >> 0) & 0b11111) * 2; // yes, the second field stores two-second intervals
+            var year = (int)((Data >> (16 + 9)) & 0b1111111) + 1980;
+            var month = (int)((Data >> (16 + 5)) & 0b1111); // january is stored as month 1, but so does C# DateTime
+            var day = (int)((Data >> (16 + 0)) & 0b11111);
+            return new DateTime(year, month, day, hour, min, sec);
+        }
+    }
 }
