@@ -39,6 +39,7 @@
 #include "mem/mem.h"
 #include "irq/irq.h"
 #include "mem/stack.h"
+#include "arch/gdt.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -1248,8 +1249,12 @@ static void* CPU_LOCAL m_idle_stack;
  */
 INTERRUPT static void set_schedule_thread(interrupt_context_t* ctx) {
     // set the stack and rip
+    memset(ctx, 0, sizeof(*ctx));
     ctx->rsp = (uint64_t) m_idle_stack + SIZE_8KB;
     ctx->rip = (uint64_t) schedule;
+    ctx->rflags = (rflags_t) { .always_one = 1 };
+    ctx->cs = GDT_CODE;
+    ctx->ss = GDT_DATA;
 
     // push a null to the stack, making sure it returns
     // to nothing

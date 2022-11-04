@@ -3,6 +3,7 @@
 #include <util/defs.h>
 
 #include <stdint.h>
+#include "regs.h"
 
 /**
  * Initialize the IDT (interrupt handling)
@@ -30,7 +31,7 @@ typedef struct interrupt_context {
     uint64_t int_num;
     uint64_t rip;
     uint64_t cs;
-    uint64_t rflags;
+    rflags_t rflags;
     uint64_t rsp;
     uint64_t ss;
 } interrupt_context_t;

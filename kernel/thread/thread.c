@@ -416,10 +416,10 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
 
     // Reset the thread save state:
     //  - set the rip as the thread entry
-    //  - set the rflags for ALWAYS_1 | IF | ID
+    //  - set the rflags for ALWAYS_1 | IF
     memset(&thread->save_state, 0, sizeof(thread->save_state));
     thread->save_state.rip = (uint64_t) entry;
-    thread->save_state.rflags = BIT1 | BIT9 | BIT21;
+    thread->save_state.rflags = (rflags_t){ .always_one = 1, .IF = 1 };
     thread->save_state.rsp = (uint64_t) thread->stack_top;
 
     // set the context

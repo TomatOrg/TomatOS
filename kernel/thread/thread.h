@@ -125,7 +125,7 @@ typedef struct thread_save_state {
     uint64_t rbx;
     uint64_t rax;
     uint64_t rip;
-    uint64_t rflags;
+    rflags_t rflags;
     uint64_t rsp;
 } thread_save_state_t;
 
