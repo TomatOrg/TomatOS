@@ -352,6 +352,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     size_t* base_ptr = (size_t*)ctx->rbp;
     while (true) {
         if (!vmm_is_mapped((uintptr_t)base_ptr, 1)) {
+            ERROR("\t%p is unmapped!", base_ptr);
             break;
         }
 
@@ -406,6 +407,19 @@ cleanup:
 // Interrupt handling code
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * Restores the interrupt context by reusing the common interrupt stub's
+ * return code, simply setting the stack to the context and then jumping
+ * to the common return code
+ */
+__attribute__((used,naked))
+void restore_interrupt_context(interrupt_context_t* ctx) {
+    __asm__ (
+        "movq %rdi, %rsp\n"
+        "jmp common_restore_interrupt_context"
+    );
+}
+
 __attribute__((used,naked)) void common_interrupt_stub() { __asm__ (
     ".cfi_signal_frame\n"
     ".cfi_def_cfa %rsp, 0\n"
@@ -459,6 +473,7 @@ __attribute__((used,naked)) void common_interrupt_stub() { __asm__ (
     ".cfi_rel_offset %r15, 0\n"
     "movq %rsp, %rdi\n"
     "call common_interrupt_handler\n"
+    "common_restore_interrupt_context:\n"
     "popq %r15\n"
     ".cfi_adjust_cfa_offset -8\n"
     ".cfi_restore %r15\n"
@@ -816,7 +831,6 @@ void init_idt() {
 #define EXCEPTIONS_STACK 1
 #define NMI_STACK 2
 #define FAULT_STACK 3
-#define SCHEDULER_STACK 4
     set_idt_entry(0x0, interrupt_handle_0x00, EXCEPTIONS_STACK);
     set_idt_entry(0x1, interrupt_handle_0x01, EXCEPTIONS_STACK);
     set_idt_entry(0x2, interrupt_handle_0x02, NMI_STACK);
@@ -849,7 +863,7 @@ void init_idt() {
     set_idt_entry(0x1d, interrupt_handle_0x1d, EXCEPTIONS_STACK);
     set_idt_entry(0x1e, interrupt_handle_0x1e, EXCEPTIONS_STACK);
     set_idt_entry(0x1f, interrupt_handle_0x1f, EXCEPTIONS_STACK);
-    set_idt_entry(IRQ_PREEMPT, interrupt_handle_0x20, SCHEDULER_STACK);
+    set_idt_entry(IRQ_PREEMPT, interrupt_handle_0x20, 0);
     set_idt_entry(0x21, interrupt_handle_0x21, 0);
     set_idt_entry(0x22, interrupt_handle_0x22, 0);
     set_idt_entry(0x23, interrupt_handle_0x23, 0);
@@ -1057,9 +1071,9 @@ void init_idt() {
     set_idt_entry(0xed, interrupt_handle_0xed, 0);
     set_idt_entry(0xee, interrupt_handle_0xee, 0);
     set_idt_entry(0xef, interrupt_handle_0xef, 0);
-    set_idt_entry(IRQ_YIELD, interrupt_handle_0xf0, SCHEDULER_STACK);
-    set_idt_entry(IRQ_PARK, interrupt_handle_0xf1, SCHEDULER_STACK);
-    set_idt_entry(IRQ_DROP, interrupt_handle_0xf2, SCHEDULER_STACK);
+    set_idt_entry(IRQ_YIELD, interrupt_handle_0xf0, 0);
+    set_idt_entry(IRQ_PARK, interrupt_handle_0xf1, 0);
+    set_idt_entry(IRQ_DROP, interrupt_handle_0xf2, 0);
     set_idt_entry(0xf3, interrupt_handle_0xf3, 0);
     set_idt_entry(0xf4, interrupt_handle_0xf4, 0);
     set_idt_entry(0xf5, interrupt_handle_0xf5, 0);

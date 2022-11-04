@@ -16,7 +16,16 @@
  */
 bool scheduler_can_spin(int i);
 
+/**
+ * Initialize the scheduler
+ */
 err_t init_scheduler();
+
+/**
+ * Called by each core to init per-core information, not needed on
+ * the BSP as it is called by the init_scheduler
+ */
+err_t init_scheduler_per_core();
 
 void scheduler_self_test();
 

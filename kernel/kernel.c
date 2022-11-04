@@ -142,6 +142,7 @@ static void per_cpu_start(struct limine_smp_info* info) {
     init_vmm_per_cpu();
     CHECK_AND_RETHROW(init_cpu_locals());
     CHECK_AND_RETHROW(init_apic());
+    CHECK_AND_RETHROW(init_scheduler_per_core());
 
     // make sure this is valid
     CHECK(info->lapic_id == get_apic_id());

@@ -52,6 +52,9 @@ CFLAGS 		+= -Wno-unused-label
 CFLAGS 		+= -Wno-address-of-packed-member
 CFLAGS 		+= -Wno-psabi
 
+# TODO: do we always want this? I think we do
+CFLAGS 		+= -fno-omit-frame-pointer
+
 CFLAGS 		+= -D__SERIAL_TRACE__
 CFLAGS 		+= -D__GRAPHICS_TRACE__
 

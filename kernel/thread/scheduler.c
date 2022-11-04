@@ -38,6 +38,7 @@
 #include "sync/irq_spinlock.h"
 #include "mem/mem.h"
 #include "irq/irq.h"
+#include "mem/stack.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -791,7 +792,7 @@ typedef struct random_enum {
 static uint32_t m_random_order_count = 0;
 static uint32_t* m_random_order_coprimes = NULL;
 
-INTERRUPT static uint32_t gcd(uint32_t a, uint32_t b) {
+static uint32_t gcd(uint32_t a, uint32_t b) {
     while (b != 0) {
         uint32_t t = b;
         b = a % b;
@@ -800,7 +801,7 @@ INTERRUPT static uint32_t gcd(uint32_t a, uint32_t b) {
     return a;
 }
 
-INTERRUPT static void random_order_reset(int count) {
+static void random_order_reset(int count) {
     m_random_order_count = count;
     arrsetlen(m_random_order_coprimes, 0);
     for (int i = 1; i <= count; i++) {
@@ -810,7 +811,7 @@ INTERRUPT static void random_order_reset(int count) {
     }
 }
 
-INTERRUPT static random_enum_t random_order_start(uint32_t i) {
+static random_enum_t random_order_start(uint32_t i) {
     return (random_enum_t) {
         .count = m_random_order_count,
         .pos = i % m_random_order_count,
@@ -818,16 +819,16 @@ INTERRUPT static random_enum_t random_order_start(uint32_t i) {
     };
 }
 
-INTERRUPT static bool random_enum_done(random_enum_t* e) {
+static bool random_enum_done(random_enum_t* e) {
     return e->i == e->count;
 }
 
-INTERRUPT static void random_enum_next(random_enum_t* e) {
+static void random_enum_next(random_enum_t* e) {
     e->i++;
     e->pos = (e->pos + e->inc) % e->count;
 }
 
-INTERRUPT static uint32_t random_enum_position(random_enum_t* e) {
+static uint32_t random_enum_position(random_enum_t* e) {
     return e->pos;
 }
 
@@ -889,7 +890,7 @@ void  scheduler_wake_poller(int64_t when) {
 
 #define STEAL_TRIES 4
 
-INTERRUPT static thread_t* steal_work(int64_t* now, int64_t* poll_until, bool* ran_timers) {
+static thread_t* steal_work(int64_t* now, int64_t* poll_until, bool* ran_timers) {
     *ran_timers = false;
 
     for (int i = 0; i < STEAL_TRIES; i++) {
@@ -974,7 +975,7 @@ static void cpu_wake_idle() {
  */
 static bool CPU_LOCAL m_waiting_for_irq;
 
-INTERRUPT static thread_t* find_runnable() {
+static thread_t* find_runnable() {
     thread_t* thread = NULL;
 
     while (true) {
@@ -1217,7 +1218,7 @@ INTERRUPT static thread_t* find_runnable() {
     }
 }
 
-INTERRUPT static void schedule(interrupt_context_t* ctx) {
+INTERRUPT static void schedule() {
     // will block until a thread is ready, essentially an idle loop,
     // this must return something eventually.
     thread_t* thread = find_runnable();
@@ -1229,7 +1230,31 @@ INTERRUPT static void schedule(interrupt_context_t* ctx) {
     }
 
     // actually run the new thread
-    execute(ctx, thread);
+    interrupt_context_t ctx = {};
+    execute(&ctx, thread);
+
+    // finally restore from the interrupt context, jumping
+    // directly to the process
+    restore_interrupt_context(&ctx);
+}
+
+/**
+ * The idle task
+ */
+static void* CPU_LOCAL m_idle_stack;
+
+/**
+ * This sets a dummy schedule threads
+ */
+INTERRUPT static void set_schedule_thread(interrupt_context_t* ctx) {
+    // set the stack and rip
+    ctx->rsp = (uint64_t) m_idle_stack + SIZE_8KB;
+    ctx->rip = (uint64_t) schedule;
+
+    // push a null to the stack, making sure it returns
+    // to nothing
+    PUSH(uint64_t, ctx->rsp, 0);
+    PUSH(uint64_t, ctx->rsp, 0);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1257,8 +1282,9 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
     save_current_thread(ctx, false);
 
     // now schedule a new thread
-    schedule(ctx);
+    set_schedule_thread(ctx);
 }
+
 INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
     verify_can_enter_scheduler();
 
@@ -1274,7 +1300,7 @@ INTERRUPT void scheduler_on_park(interrupt_context_t* ctx) {
     scheduler_cancel_deadline();
 
     // schedule a new thread
-    schedule(ctx);
+    set_schedule_thread(ctx);
 }
 
 INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
@@ -1297,7 +1323,7 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
     // cancel the deadline of the current thread, as it is dead
     scheduler_cancel_deadline();
 
-    schedule(ctx);
+    set_schedule_thread(ctx);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -1362,6 +1388,19 @@ err_t init_scheduler() {
 
     m_run_queues = malloc(get_cpu_count() * sizeof(local_run_queue_t));
     CHECK(m_run_queues != NULL);
+
+    // and set the scheduler stack
+    CHECK_AND_RETHROW(init_scheduler_per_core());
+
+cleanup:
+    return err;
+}
+
+err_t init_scheduler_per_core() {
+    err_t err = NO_ERROR;
+
+    m_idle_stack = palloc(SIZE_8KB);
+    CHECK(m_idle_stack != NULL);
 
 cleanup:
     return err;

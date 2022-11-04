@@ -48,3 +48,5 @@ typedef union page_fault_error {
     };
     uint32_t packed;
 } PACKED page_fault_error_t;
+
+void restore_interrupt_context(interrupt_context_t* ctx);

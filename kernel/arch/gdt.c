@@ -106,13 +106,11 @@ void init_tss(void* tss_memory) {
     uintptr_t ist1 = (uintptr_t)curr; curr += SIZE_8KB;
     uintptr_t ist2 = (uintptr_t)curr; curr += SIZE_8KB;
     uintptr_t ist3 = (uintptr_t)curr; curr += SIZE_8KB;
-    uintptr_t ist4 = (uintptr_t)curr; curr += SIZE_8KB;
 
     // set the ists
     tss->ist1 = ist1 + SIZE_8KB - 16;
     tss->ist2 = ist2 + SIZE_8KB - 16;
     tss->ist3 = ist3 + SIZE_8KB - 16;
-    tss->ist4 = ist4 + SIZE_8KB - 16;
 
     spinlock_lock(&m_tss_lock);
 

@@ -32,7 +32,7 @@ typedef struct gdt_entries {
     gdt64_entry_t data;
     tss64_entry_t tss;
 } PACKED gdt_entries_t;
-#define TSS_ALLOC_SIZE (104 + SIZE_8KB * 4)
+#define TSS_ALLOC_SIZE (104 + SIZE_8KB * 3)
 
 void init_gdt();
 

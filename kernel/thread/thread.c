@@ -216,6 +216,8 @@ INTERRUPT void restore_thread_context(thread_t* restrict target, interrupt_conte
     ctx->rip = regs->rip;
     ctx->rflags = regs->rflags;
     ctx->rsp = regs->rsp;
+    ctx->cs = GDT_CODE;
+    ctx->ss = GDT_DATA;
     restore_fx_state(&regs->fx_save_state);
     __writemsr(MSR_IA32_FS_BASE, (uintptr_t)target->tcb);
 }
