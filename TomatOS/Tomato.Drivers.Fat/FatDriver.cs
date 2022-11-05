@@ -114,6 +114,37 @@ internal class FatDriver : IFileSystemDriver
         }
     }
 
+    static internal Span<char> ConvertSfnToLfnString(Span<byte> sfn, char[] buf)
+    {
+        // trim spaces from name
+        int nameLen = 8;
+        for (; nameLen > 0; nameLen--) if (sfn[nameLen - 1] != ' ') break;
+
+        // trim spaces from extension
+        int extLen = 3;
+        for (; extLen > 0; extLen--) if (sfn[8 + (extLen - 1)] != ' ') break;
+
+        if (extLen == 0)
+        {
+            for (int j = 0; j < nameLen; j++) buf[j] = (char)sfn[j];
+            return new Span<char>(buf, 0, nameLen);
+        }
+        else
+        {
+            for (int j = 0; j < nameLen; j++) buf[j] = (char)sfn[j];
+            for (int j = 0; j < extLen; j++) buf[nameLen + 1 + j] = (char)sfn[8 + j];
+            buf[nameLen] = '.';
+            return new Span<char>(buf, 0, nameLen + 1 + extLen);
+        }
+    }
+
+    static internal Span<char> TrimLfnString(char[] buf, int len)
+    {
+        for (; len > 0; len--) if (buf[len - 1] != 0xFFFF) break;
+        if (buf[len - 1] == 0) len--;
+        return new Span<char>(buf, 0, len);
+    }
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct DirentDateTime
     {
