@@ -9,7 +9,7 @@ qemu-system-x86_64 \
   -machine q35 \
   --enable-kvm \
   -cpu host,+invtsc,+tsc-deadline \
-  -smp 4 \
+  -smp 1 \
   -m 2G \
   -s \
   -no-reboot \

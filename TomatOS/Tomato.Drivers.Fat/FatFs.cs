@@ -11,7 +11,7 @@ using Tomato.Hal.Io;
 using Tomato.Hal.Managers;
 using Tomato.Hal.Pci;
 
-namespace Tomato.Drivers.Virtio;
+namespace Tomato.Drivers.Fat;
 
 public class FatDirectory : FatNode, IDirectory
 {

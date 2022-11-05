@@ -8,7 +8,7 @@ qemu-system-x86_64 \
   -machine q35 \
   --enable-kvm \
   -cpu host,+invtsc,+tsc-deadline \
-  -smp 4 \
+  -smp 1 \
   -bios /usr/share/ovmf/x64/OVMF_CODE.fd \
   -m 2G \
   -s \
