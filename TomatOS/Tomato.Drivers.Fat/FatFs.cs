@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Collections.Generic;
@@ -98,7 +99,11 @@ public class FatDirectory : FatNode, IDirectory
         }
     }
 
-    public IAsyncEnumerable<INode> GetAsyncEnumerator(CancellationToken token = default) => null;
+    public async IAsyncEnumerable<INode> ReadEntries([EnumeratorCancellation] CancellationToken token = default)
+    {
+        if (_children.Count == 0) await ReadWholeDirent();
+        foreach (var c in _children) yield return c;
+    }
 }
 
 public class FatFile : FatNode, IFile
@@ -206,6 +211,10 @@ public class FatFs : IFileSystem
     {
         var root = await OpenVolume();
         var dir = await root.OpenDirectory("boot", 0);
+        Debug.Print("boot has:");
+        await foreach (var ent in dir.ReadEntries())
+            Debug.Print($"    {ent.FileName}");
+        
         var f = await dir.OpenFile("Tomato.Drivers.Fat.dll", 0);
         Debug.Print($"Tomato.Drivers.Fat.dll is {f.FileSize} bytes big");
         var d = new byte[512];

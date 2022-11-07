@@ -105,8 +105,7 @@ public interface IDirectory : INode
     /// </summary>
     /// <param name="token"></param>
     /// <returns></returns>
-    public IAsyncEnumerable<INode> GetAsyncEnumerator(CancellationToken token = default);
-
+    public IAsyncEnumerable<INode> ReadEntries(CancellationToken token = default);
 }
 
 /// <summary>
