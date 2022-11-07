@@ -53,7 +53,7 @@ internal static class Program
         (new Thread(() => Shell().Wait())).Start();
     }
 
-    static async Task Shell()
+    private static async Task Shell()
     {
         var fsm = FileSystemManager.Claim();
         fsm.NewFileSystem.WaitOne();

@@ -56,12 +56,16 @@ public static class BlockManager
         _driversLocked = true;
     }
 
-    private static void DispatchBlock(IBlock block)
+    /// <summary>
+    /// Dispatch a single block, assuming that this block 
+    /// </summary>
+    /// <param name="block"></param>
+    private static async Task DispatchBlock(IBlock block)
     {
         foreach (var driver in _drivers)
         {
             // try to parse the filesystem with this driver
-            var fs = driver.TryCreate(block).Result;
+            var fs = await driver.TryCreate(block);
             if (fs == null) 
                 continue;
                 
@@ -75,15 +79,25 @@ public static class BlockManager
     }
 
     /// <summary>
-    /// Processes the block by checking if the block is partitioned
+    /// Processes the block by checking if the block is partitioned, this
+    /// assumes that we are already with the lock
     /// </summary>
-    /// <param name="block"></param>
-    private static void ProcessBlock(IBlock block)
+    private static async Task ProcessBlock(IBlock block)
     {
         // check for GPT
-        Gpt.IteratePartitions(block, (GenericPartition p) => DispatchBlock(p));
+        if (await Gpt.IsGpt(block))
+        {
+            await foreach (var part in Gpt.IteratePartitions(block))
+            {
+                await DispatchBlock(part);
+            }
+        }
         // TODO: check for MBR
-        // TODO: process the block as un-partitioned
+        else
+        {
+            // process the block as un-partitioned
+            await DispatchBlock(block);
+        }
     }
 
     /// <summary>
@@ -120,7 +134,7 @@ public static class BlockManager
     {
         lock (_drivers)
         {
-            ProcessBlock(block);
+            ProcessBlock(block).Wait();
         }
     }
 

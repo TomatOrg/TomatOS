@@ -39,7 +39,7 @@ public class FileSystemManager
     /// <summary>
     /// Used to tell the owner that a new device was added, so it should check the devices again
     /// </summary>
-    public ManualResetEvent NewFileSystem = new ManualResetEvent(false);
+    public AutoResetEvent NewFileSystem = new AutoResetEvent(false);
     
     private FileSystemManager()
     {

@@ -15,88 +15,146 @@ namespace Tomato.Hal.Io;
 
 public static class Gpt 
 {
-    static public async Task<bool> IteratePartitions(IBlock disk, Action<BlockManager.GenericPartition> addCb)
-    {
-        bool foundNoPartitions = true;
-        var mem = MemoryServices.AllocatePhysicalMemory(disk.BlockSize).Memory;
-        await disk.ReadBlocks(1, mem);
-        var region = new Region(mem);
-        var hdr = new Header(region);
-        ulong currentlyReadLba = 1;
-        for (ulong i = 0; i < hdr.Entries; i++)
-        {
-            ulong idx = i * hdr.EntrySize;
-            ulong lba = hdr.PartitionsLba + idx / (ulong)disk.BlockSize;
-            ulong offset = idx % (ulong)disk.BlockSize;
-            if (lba != currentlyReadLba)
-            {
-                await disk.ReadBlocks((long)lba, mem);
-                currentlyReadLba = lba;
-            }
-            var part = new PartitionEntry(region.CreateRegion((int)offset));
-            if (!part.IsEmpty)
-            {
-                foundNoPartitions = false;
-                Debug.Print($"BlockManager.Gpt: part{i} at LBAs 0x{part.StartLba:x0}-0x{part.EndLba:x}");
-                addCb(new BlockManager.GenericPartition(disk, (long)part.StartLba, (long)part.EndLba));
-            }
-        }
-        return foundNoPartitions;
-    }
-    class PartitionEntry
-    {
-        public byte[] TypeGuid;
-        public byte[] UniqueGuid;
-        public ulong StartLba;
-        public ulong EndLba;
-        public ulong Attribs;
-        public byte[] PartName;
-        public bool IsEmpty;
-        public PartitionEntry(Region r)
-        {
-            TypeGuid = r.CreateMemory<byte>(0, 16).ToArray();
-            UniqueGuid = r.CreateMemory<byte>(0x10, 16).ToArray();
-            StartLba = r.CreateField<ulong>(0x20).Value;
-            EndLba = r.CreateField<ulong>(0x28).Value;
-            Attribs = r.CreateField<ulong>(0x30).Value;
-            PartName = r.CreateMemory<byte>(0x38, 72).ToArray();
-            IsEmpty = true;
-            for (int j = 0; j < 16; j++) if (TypeGuid[j] != 0)
-            {
-                IsEmpty = false;
-                break;
-            }
-        }
-    };
 
-    class Header
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct TableHeader
     {
+        public ulong Signature;
         public uint Revision;
         public uint HeaderSize;
-        public uint HeaderCrc;
-        public ulong ThisLba;
-        public ulong AlternateLba;
-        public ulong FirstUsableBlock;
-        public ulong LastUsableBlock;
-        public byte[] DiskGuid;
-        public ulong PartitionsLba;
-        public uint Entries;
-        public uint EntrySize;
-        public uint PartitionsCrc;
-        public Header(Region r)
+        public uint Crc32;
+        public uint Reserved;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct PartitionTableHeader
+    {
+        public TableHeader Header;
+        public long MyLba;
+        public long AlternateLba;
+        public long FirstUsableLba;
+        public long LastUsableLba;
+        public Guid DiskGuid;
+        public long PartitionEntryLba;
+        public uint NumberOfPartitionEntries;
+        public uint SizeOfPartitionEntry;
+        public uint PartitionEntryArrayCrc32;
+    }
+
+    // TODO: figure how to use this nicely
+    [StructLayout(LayoutKind.Sequential, Size = 36 * sizeof(char))]
+    public struct PartitionEntryName
+    {
+    }
+    
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct PartitionEntry
+    {
+        public Guid PartitionTypeGuid;
+        public Guid UniquePartitionGuid;
+        public long StartingLba;
+        public long EndingLba;
+        public ulong Attributes;
+        public PartitionEntryName PartitionName;
+    }
+
+    private static bool CheckGptTableHeader(long lba, Memory<byte> header)
+    {
+        ref var partHeader = ref MemoryMarshal.Cast<byte, PartitionTableHeader>(header.Span)[0];
+        // TODO: CRC check
+        return partHeader.Header.Signature != 0x5452415020494645 ||
+               partHeader.MyLba != lba ||
+               partHeader.SizeOfPartitionEntry < Unsafe.SizeOf<PartitionEntry>();
+    }
+    
+    private static async Task<bool> ValidateGptTable(Memory<byte> data, long lba, IBlock block)
+    {
+        // read the data, 
+        await block.ReadBlocks(lba, data);
+        
+        // validate the header in another place so we can use ref stuff
+        if (CheckGptTableHeader(lba, data))
+            return false;
+        
+        // TODO: validate partition entry array crc
+
+        return true;
+    }
+
+    private static long GetAlternateLba(Memory<byte> data)
+    {
+        return MemoryMarshal.Cast<byte, PartitionTableHeader>(data.Span)[0].AlternateLba;
+    }
+    
+    /// <summary>
+    /// Takes an IBlock and checks if it is GPT formatted 
+    /// </summary>
+    public static async Task<bool> IsGpt(IBlock block)
+    {
+        // TODO: verify protective MBR is valid
+
+        var primaryHeaderData = MemoryServices.AllocatePhysicalMemory(block.BlockSize).Memory;
+        var backupHeaderData = MemoryServices.AllocatePhysicalMemory(block.BlockSize).Memory;
+        
+        // check primary gpt table
+        if (!await ValidateGptTable(primaryHeaderData, 1, block))
         {
-            Revision = r.CreateField<uint>(0x8).Value;
-            HeaderSize = r.CreateField<uint>(0xC).Value;
-            HeaderCrc = r.CreateField<uint>(0x10).Value;
-            ThisLba = r.CreateField<ulong>(0x18).Value;
-            AlternateLba = r.CreateField<ulong>(0x20).Value;
-            FirstUsableBlock = r.CreateField<ulong>(0x28).Value;
-            LastUsableBlock = r.CreateField<ulong>(0x30).Value;
-            DiskGuid = r.CreateMemory<byte>(0x38).ToArray();
-            PartitionsLba = r.CreateField<ulong>(0x48).Value;
-            Entries = r.CreateField<uint>(0x50).Value;
-            EntrySize = r.CreateField<uint>(0x54).Value;
-            PartitionsCrc = r.CreateField<uint>(0x58).Value;
+            // No primary gpt table, check the backup just in case
+            if (!await ValidateGptTable(backupHeaderData, block.LastBlock, block))
+            {
+                // no valid backup, probably just not GPT formatted 
+                return false;
+            }
+            else
+            {
+                // TODO: if we got a valid backup we can try and restore the 
+                //       primary gpt table
+                return false;
+            }
+        }
+        else if (!await ValidateGptTable(backupHeaderData, GetAlternateLba(primaryHeaderData), block)) 
+        { 
+            // we got a valid primary lba but not a valid backup lba
+            
+            // TODO: try to restore the backup
+        }
+        
+        return true;
+    }
+
+    /// <summary>
+    /// Tries to parse the GPT table 
+    /// </summary>
+    public static async IAsyncEnumerable<BlockManager.GenericPartition> IteratePartitions(IBlock block)
+    {
+        // read the primary partition table, verifying it again just in case
+        var primaryHeaderData = MemoryServices.AllocatePhysicalMemory(block.BlockSize).Memory;
+        if (!await ValidateGptTable(primaryHeaderData, 1, block))
+            yield break;
+        
+        var partHeader = MemoryMarshal.Read<PartitionTableHeader>(primaryHeaderData.Span);
+        
+        // allocate the array for reading the partitions 
+        var sizeOfEntry = partHeader.SizeOfPartitionEntry;
+        var partEntryData = MemoryServices.AllocatePhysicalMemory((int)(partHeader.NumberOfPartitionEntries *
+                                                                        sizeOfEntry)).Memory;
+        await block.ReadBlocks(partHeader.PartitionEntryLba, partEntryData);
+        
+        // iterate all the partitions 
+        for (ulong i = 0; i < partHeader.NumberOfPartitionEntries; i++)
+        {
+            // read the entry 
+            var entry = MemoryMarshal.Read<PartitionEntry>(partEntryData.Span.Slice((int)(sizeOfEntry * i), (int)sizeOfEntry));
+            
+            // ignore empty partitions
+            if (entry.PartitionTypeGuid == Guid.Empty)
+            {
+                continue;
+            }
+            
+            // create the generic partition
+            yield return new BlockManager.GenericPartition(block, entry.StartingLba, entry.EndingLba);
         }
     }
+    
 }
