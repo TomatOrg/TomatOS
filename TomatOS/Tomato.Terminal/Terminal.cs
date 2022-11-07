@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Drawing;
 using Tomato.Graphics;
 using Tomato.Hal.Interfaces;
@@ -33,7 +34,7 @@ public class Terminal
     private int _shift = 0, _altgr = 0;
 
     // blit backbuffer position (mx,my) to frontbuffer (sx,sy)
-    private void BlitHelper(int mx, int my, int sx, int sy, int w, int h) => 
+    private void BlitHelper(int mx, int my, int sx, int sy, int w, int h) =>
         _framebuffer.Blit(mx + my * _framebuffer.Width, new Rectangle(sx, sy, w, h));
 
     // The code works by NEVER scrolling the frontbuffer
@@ -62,7 +63,7 @@ public class Terminal
             // TODO: support scrollBy != -1 here
             // TODO: make a DrawChar
             var m = _memory[(TopYMemory(_firstLine) * _framebuffer.Width)..];
-            for (var i = 0; i < _font.Size; i++) 
+            for (var i = 0; i < _font.Size; i++)
                 m.Slice(i * _framebuffer.Width, _framebuffer.Width).Span.Fill(0);
             var x = 0;
             foreach (var c in _textBuffer[_firstLine])
@@ -85,7 +86,7 @@ public class Terminal
         if (scrollBy > 0)
         {
             var m = _memory[(idx * _font.Size * _framebuffer.Width)..];
-            for (var i = 0; i < _font.Size; i++) 
+            for (var i = 0; i < _font.Size; i++)
                 m.Slice(i * _framebuffer.Width, _framebuffer.Width).Span.Fill(0);
         }
         Blit(0, idx + 1);
@@ -106,7 +107,7 @@ public class Terminal
         _textBuffer.Add(new List<char>());
 
         // time to scroll everything one line up
-        if (_currentLine >= _maxLines) 
+        if (_currentLine >= _maxLines)
             Scroll(1);
     }
 
@@ -167,7 +168,7 @@ public class Terminal
         _cursorX += g.Advance;
     }
 
-    public void InsertLine(string str)
+    public void Insert(string str)
     {
         // NOTE: X coords are absolute, Y coords relative to line start
         int minX = Int32.MaxValue, minY = Int32.MaxValue;
@@ -189,11 +190,10 @@ public class Terminal
         }
         BlitHelper(minX, CursorYMemory(_currentLine) + minY, minX, CursorYScreen(_currentLine) + minY, maxX - minX, maxY - minY);
         _framebuffer.Flush();
-        // newline
-        _textBuffer.Add(new List<char>());
-        _currentLine++;
-        _cursorX = 0;
     }
+
+    List<char> _readlineBuffer;
+    AutoResetEvent _readlineAre = new AutoResetEvent(false);
 
     private void KeyboardHandler(in KeyEvent k)
     {
@@ -204,36 +204,35 @@ public class Terminal
             case true when k.Code is KeyMap.LeftShift or KeyMap.RightShift: _shift--; return;
             case false when (k.Code == KeyMap.RightAlt): _altgr++; return;
             case true when (k.Code == KeyMap.RightAlt): _altgr--; return;
-            
             // we got released
-            case true:
-                return;
-            
+            case true: return;
             // we got pressed
-            default:
-                switch (k.Code)
-                {
-                    case KeyMap.Enter:
-                        InsertNewLine();
-                        break;
-            
-                    case KeyMap.Backspace:
-                        InsertBackspace();
-                        break;
-            
-                    default:
-                    {
-                        // get codepoint, with all the appropriate checks
-                        var c = KeyMap.GetCodepoint(k.Code, _shift > 0, _altgr > 0);
-                        if (c < _font.First || c >= (_font.First + _font.Glyphs.Length)) 
-                            return;
+            default: KeyPress(k.Code); return;
+        }
 
-                        InsertChar((char)c);
-                        break;
-                    }
-                }
+        void KeyPress(int k)
+        {
+            switch (k)
+            {
+                case KeyMap.Enter:
+                    if (_readlineAre != null) _readlineAre.Set();
+                    InsertNewLine();
+                    break;
 
-                break;
+                case KeyMap.Backspace:
+                    if (_readlineBuffer != null) _readlineBuffer.RemoveAt(_readlineBuffer.Count - 1);
+                    InsertBackspace();
+                    break;
+
+                default:
+                    // get codepoint, with all the appropriate checks
+                    var c = KeyMap.GetCodepoint(k, _shift > 0, _altgr > 0);
+                    if (c < _font.First || c >= (_font.First + _font.Glyphs.Length))
+                        return;
+                    if (_readlineBuffer != null) _readlineBuffer.Add((char)c);
+                    InsertChar((char)c);
+                    break;
+            }
         }
     }
     public Terminal(IFramebuffer fb, Memory<uint> m, IKeyboard kbd, Font f)
@@ -251,5 +250,13 @@ public class Terminal
         // register the keyboard callback
         kbd.Callback = KeyboardHandler;
     }
-    
+
+    public string ReadLine()
+    {
+        _readlineBuffer = new List<char>();
+        _readlineAre.WaitOne();
+        var str = new string(_readlineBuffer.ToArray());
+        _readlineBuffer = null;
+        return str;
+    }
 }

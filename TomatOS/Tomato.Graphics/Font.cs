@@ -64,16 +64,16 @@ public class Font
         {
             ref var glyph = ref glyphs[i];
             var planeBounds = Rectangle.FromLTRB(
-                (int)(glyph.PlaneBound.Left * size),
-                (int)(glyph.PlaneBound.Top * size),
-                (int)(glyph.PlaneBound.Right * size),
-                (int)(glyph.PlaneBound.Bottom * size)
+                (int)(glyph.PlaneBound.Left * size + 0.5f),
+                (int)(glyph.PlaneBound.Top * size + 0.5f),
+                (int)(glyph.PlaneBound.Right * size + 0.5f),
+                (int)(glyph.PlaneBound.Bottom * size + 0.5f)
             );
             var atlasBounds = RectangleF.FromLTRB(
-                (int)(glyph.AtlasBound.Left),
-                (int)(glyph.AtlasBound.Top),
-                (int)(glyph.AtlasBound.Right),
-                (int)(glyph.AtlasBound.Bottom)
+                (glyph.AtlasBound.Left + 0.5f),
+                (glyph.AtlasBound.Top + 0.5f),
+                (glyph.AtlasBound.Right + 0.5f),
+                (glyph.AtlasBound.Bottom + 0.5f)
             );
             Glyphs[i] = new Glyph((int)(glyph.Advance * size), planeBounds, atlasBounds);
         }

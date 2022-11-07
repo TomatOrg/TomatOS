@@ -113,8 +113,8 @@ public class FatFile : FatNode, IFile
 
     public async Task<int> Read(long offset, Memory<byte> buffer, CancellationToken token)
     {
-        var cluster = (uint)(offset / _fs.BlockSize);
-        var index = (int)(offset % _fs.BlockSize);
+        var cluster = (uint)(offset / _fs._clusterSize);
+        var index = (int)(offset % _fs._clusterSize);
 
         // traverse the clusterchain as much as needed
         uint currClusterIdx = _cachedClusterIdx;
@@ -141,11 +141,11 @@ public class FatFile : FatNode, IFile
 
         while (true)
         {
-            var clusterBuffer = await _fs.Read(_fs.ClusterToLba(_cachedClusterClusno), (int)_fs.BlockSize);
+            var clusterBuffer = await _fs.Read(_fs.ClusterToLba(_cachedClusterClusno), (int)_fs._clusterSize);
 
             var remainingInFile = _size - offset - (long)bytesRead;
             var remainingInBuf = buffer.Length - bytesRead;
-            int length = (int)Math.Min(remainingInBuf, Math.Min(remainingInFile, _fs.BlockSize));
+            int length = (int)Math.Min(remainingInBuf, Math.Min(remainingInFile, _fs._clusterSize));
             if (length <= 0) break;
 
             clusterBuffer.Slice(index, length).CopyTo(buffer.Slice(bytesRead));
@@ -204,37 +204,12 @@ public class FatFs : IFileSystem
         _clusterSize = _block.BlockSize * _bpb.SectorsPerCluster;
         _dataStart = _bpb.ReservedSectors + (_bpb.Fats * _bpb.LargeSectorsPerFat);
         Debug.Print("FatFs: Created volume");
-        Test().Wait();
     }
     
-    async Task Test()
-    {
-        var root = await OpenVolume();
-        var dir = await root.OpenDirectory("boot", 0);
-        Debug.Print("boot has:");
-        await foreach (var ent in dir.ReadEntries())
-            Debug.Print($"    {ent.FileName}");
-        
-        var f = await dir.OpenFile("Tomato.Drivers.Fat.dll", 0);
-        Debug.Print($"Tomato.Drivers.Fat.dll is {f.FileSize} bytes big");
-        var d = new byte[512];
-        var m = new Memory<byte>(d);
-        await f.Read(0, m);
-        for (int i = 0; i < 512;)
-        {
-            Debug.Print($"{X():x02}{X():x02} {X():x02}{X():x02} {X():x02}{X():x02} {X():x02}{X():x02} {X():x02}{X():x02} {X():x02}{X():x02} {X():x02}{X():x02} {X():x02}{X():x02}");
-            byte X() => m.Span[i++];
-        }
-
-        await f.Delete();
-        var f2 = await dir.OpenFile("Tomato.Drivers.Fat.dll", 0);
-        if (f2 == null) Debug.Print("successfully deleted!");
-    }
-
     public bool ReadOnly => true;
     public long VolumeSize => 0;
     public long FreeSpace => 0;
-    public long BlockSize => _block.BlockSize;
+    public long BlockSize => _clusterSize;
     public string VolumeLabel => "Hello world";
     public Task<IDirectory> OpenVolume()
     {
