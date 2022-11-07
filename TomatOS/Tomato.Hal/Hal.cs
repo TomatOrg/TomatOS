@@ -4,7 +4,6 @@ using System.Runtime.CompilerServices;
 using Tomato.Hal.Acpi;
 using Tomato.Hal.Drivers.PlainFramebuffer;
 using Tomato.Hal.Managers;
-using Tomato.Hal.Interfaces;
 
 namespace Tomato.Hal;
 

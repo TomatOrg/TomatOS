@@ -280,7 +280,7 @@ static void kernel_startup() {
             // load it as a normal assembly
             System_Reflection_Assembly assembly = NULL;
             if (IS_ERROR(loader_load_assembly(file->address, file->size, &assembly))) {
-                WARN("Failed to load assembly, ignoring...", file->path);
+                WARN("Failed to load assembly `%s`, ignoring...", file->path);
                 continue;
             }
 
