@@ -457,15 +457,17 @@ cleanup:
 INTERRUPT bool vmm_is_mapped(uintptr_t ptr, size_t size) {
     bool fully_mapped = false;
 
+    size = ALIGN_UP(size, SIZE_4KB);
+
     irq_spinlock_lock(&m_vmm_spinlock);
 
     // simply iterate all the indexes and free them
     size_t page_size = 0;
     for (uintptr_t i = 0; i < size; i += page_size) {
-        size_t pml4i = (i >> 39) & 0x1FFull;
-        size_t pml3i = (i >> 30) & 0x3FFFFull;
-        size_t pml2i = (i >> 21) & 0x7FFFFFFull;
-        size_t pml1i = (i >> 12) & 0xFFFFFFFFFull;
+        size_t pml4i = ((ptr + i) >> 39) & 0x1FFull;
+        size_t pml3i = ((ptr + i) >> 30) & 0x3FFFFull;
+        size_t pml2i = ((ptr + i) >> 21) & 0x7FFFFFFull;
+        size_t pml1i = ((ptr + i) >> 12) & 0xFFFFFFFFFull;
 
         // make sure it is mapped to avoid problems
         if (!PAGE_TABLE_PML4[pml4i].present) {
