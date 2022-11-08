@@ -60,17 +60,28 @@ internal static class Program
         var fs = fsm.FileSystems[0];
 
         var root = fs.OpenVolume().Result;
-        var cwd = root;
         _terminal.Insert($"Loaded rootfs with label \"{fs.VolumeLabel}\".");
         _terminal.InsertNewLine();
+
+        var path = new List<IDirectory>();
+        var cwd = root;
+
         while (true)
         {
+            foreach (var elem in path)
+            {
+                _terminal.Insert("/");
+                _terminal.Insert(elem.FileName);
+            }
             _terminal.Insert("> ");
+
             var command = _terminal.ReadLine();
             var commandArr = command.Split(' ');
             switch (commandArr[0])
             {
                 case "ls": await CmdList(commandArr); break;
+                case "cd": await CmdCd(commandArr); break;
+                case "cat": await CmdCat(commandArr); break;
                 default: await CmdNotFound(commandArr); break;
             }
         }
@@ -91,6 +102,52 @@ internal static class Program
                 _terminal.Insert(ent.FileName);
                 _terminal.InsertNewLine();
             }
+        }
+
+        async Task CmdCd(string[] arr)
+        {
+            if (arr.Length != 2)
+            {
+                _terminal.Insert("ERROR: wrong syntax for \"cd\".");
+                _terminal.InsertNewLine();
+                return;
+            }
+            var name = arr[1];
+            if (name == "..")
+            {
+                if (path.Count > 0) path.RemoveAt(path.Count - 1);
+                cwd = (path.Count == 0) ? root : path[path.Count - 1];
+            }
+            else
+            {
+                cwd = await cwd.OpenDirectory(name, 0);
+                path.Add(cwd);
+            }
+        }
+
+        async Task CmdCat(string[] arr)
+        {
+            if (arr.Length != 2)
+            {
+                _terminal.Insert("ERROR: wrong syntax for \"cat\".");
+                _terminal.InsertNewLine();
+                return;
+            }
+            var file = await cwd.OpenFile(arr[1], 0);
+            var d = new byte[512];
+            var m = new Memory<byte>(d);
+            while (true)
+            {
+                var br = await file.Read(0, m);
+                for (int i = 0; i < br; i++)
+                {
+                    char c = (char)m.Span[i];
+                    if (c == '\n') _terminal.InsertNewLine();
+                    else _terminal.Insert($"{c}");
+                }
+                if (br != 512) break;
+            }
+            _terminal.InsertNewLine();
         }
         Task CmdNotFound(string[] arr)
         {
