@@ -79,14 +79,46 @@ internal static class Program
             var commandArr = command.Split(' ');
             switch (commandArr[0])
             {
-                case "ls": await CmdList(commandArr); break;
+                case "ls": await CmdLs(commandArr); break;
                 case "cd": await CmdCd(commandArr); break;
                 case "cat": await CmdCat(commandArr); break;
                 default: await CmdNotFound(commandArr); break;
             }
         }
+        
+        async Task<IDirectory> OpenDirFromString(string s)
+        {
+            var names = s.Split('/');
+            var dir = cwd;
 
-        async Task CmdList(string[] arr)
+            int start = 0, end = names.Length - 1;
+            if (s[0] == '/') { dir = root; start++; }
+
+            for (int i = start; i < end; i++)
+                dir = await dir.OpenDirectory(names[i], 0);
+
+            if (names[end].Length != 0) dir = await dir.OpenDirectory(names[end], 0);
+
+            return dir;
+        }
+
+        async Task<IFile> OpenFileFromString(string s)
+        {
+            var names = s.Split('/');
+            var dir = cwd;
+
+            int start = 0, end = names.Length - 1;
+            if (s[0] == '/') { dir = root; start++; }
+
+            for (int i = start; i < end; i++)
+                dir = await dir.OpenDirectory(names[i], 0);
+            
+            // if (names[end].Length == 0) fail
+            var file = await dir.OpenFile(names[end], 0);
+            return file;
+        }
+
+        async Task CmdLs(string[] arr)
         {
             if (arr.Length > 2)
             {
@@ -95,7 +127,7 @@ internal static class Program
                 return;
             }
             var dir = cwd;
-            if (arr.Length == 2) dir = await dir.OpenDirectory(arr[1], 0);
+            if (arr.Length == 2) dir = await OpenDirFromString(arr[1]);
 
             await foreach (var ent in dir.ReadEntries())
             {
@@ -133,7 +165,7 @@ internal static class Program
                 _terminal.InsertNewLine();
                 return;
             }
-            var file = await cwd.OpenFile(arr[1], 0);
+            var file = await OpenFileFromString(arr[1]);
             var d = new byte[512];
             var m = new Memory<byte>(d);
             while (true)
