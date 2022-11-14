@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Tomato.Hal.Acpi;
 using Tomato.Hal.Drivers.PlainFramebuffer;
 using Tomato.Hal.Managers;

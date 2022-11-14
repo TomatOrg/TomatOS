@@ -64,21 +64,33 @@ typedef enum err {
 // Misc utilities
 //----------------------------------------------------------------------------------------------------------------------
 
-#define PANIC_ON(err) \
+
+// choose to either raise an exception or to halt, when GDB
+// is available it is easier to debug using the hlt method
+// instead of the trap method, but on real hardware using
+// the trap method is easier
+#if 0
+#define ASSERT_TRAP __builtin_trap()
+#else
+#define ASSERT_TRAP while (true) __asm__("cli; hlt")
+#endif
+
+#define PANIC_ON(err, ...) \
     do { \
         err_t ___err = err; \
         if (IS_ERROR(___err)) { \
+           IF(HAS_ARGS(__VA_ARGS__))(ERROR(__VA_ARGS__)); \
            ERROR("Panic with error `%R` failed at %s (%s:%d)", ___err, __FUNCTION__, __FILE__, __LINE__); \
-           while (1) __asm__("cli; hlt"); \
+           ASSERT_TRAP; \
         } \
     } while(0)
 
-_Noreturn void assertion_fail();
-#define ASSERT(check) \
+#define ASSERT(check, ...) \
     do { \
         if (!(check)) { \
-           ERROR("Assert `%s` failed at %s (%s:%d)", #check, __FUNCTION__, __FILE__, __LINE__); \
-           assertion_fail(); \
+            IF(HAS_ARGS(__VA_ARGS__))(ERROR(__VA_ARGS__)); \
+            ERROR("Assert `%s` failed at %s (%s:%d)", #check, __FUNCTION__, __FILE__, __LINE__); \
+            ASSERT_TRAP; \
         } \
     } while(0)
 
@@ -86,7 +98,7 @@ _Noreturn void assertion_fail();
 // A check that fails if the expression returns false
 //----------------------------------------------------------------------------------------------------------------------
 
-#if 0
+#if 1
 #define ASSERT_ON_CHECK ASSERT(0)
 #else
 #define ASSERT_ON_CHECK

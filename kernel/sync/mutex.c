@@ -40,6 +40,10 @@
 
 #include <stdatomic.h>
 
+#undef mutex_lock
+#undef mutex_unlock
+#undef mutex_try_lock
+
 typedef enum mutex_state {
     MUTEX_LOCKED = 1 << 0,
     MUTEX_WOKEN = 1 << 1,

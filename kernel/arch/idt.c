@@ -46,7 +46,10 @@ typedef struct idt {
 // Exception handling code
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-__attribute__((used,naked)) void common_exception_stub() { __asm__ (
+__asm__ (
+    ".global common_exception_stub\n"
+    "common_exception_stub:\n"
+    ".cfi_startproc simple\n"
     ".cfi_signal_frame\n"
     ".cfi_def_cfa %rsp, 0\n"
     ".cfi_offset %rip, 16\n"
@@ -147,7 +150,8 @@ __attribute__((used,naked)) void common_exception_stub() { __asm__ (
     "addq $16, %rsp\n"
     ".cfi_adjust_cfa_offset -16\n"
     "iretq\n"
-); }
+    ".cfi_endproc\n"
+);
 
 #define EXCEPTION_STUB(num) \
     __attribute__((naked)) \

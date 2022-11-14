@@ -58,9 +58,12 @@ CFLAGS 		+= -fno-omit-frame-pointer
 CFLAGS 		+= -D__SERIAL_TRACE__
 CFLAGS 		+= -D__GRAPHICS_TRACE__
 
+# ------------------
+# Set debug options
+# ------------------
 ifeq ($(DEBUG),1)
 # No optimizations at all and full debug info
-CFLAGS	+= -O0 -g3
+CFLAGS	+= -O0 -g
 
 # Enable a full stack protector for debugging
 CFLAGS 	+= -fstack-protector-all
@@ -75,6 +78,16 @@ CFLAGS	+= -O3 -g
 CFLAGS 	+= -DNDEBUG
 endif
 
+# ------------------
+# Set UBSAN option
+# ------------------
+ifeq ($(USE_UBSAN),1)
+CFLAGS		+= -fsanitize=undefined -fno-sanitize=alignment
+endif
+
+# ------------------
+# Set LTO option
+# ------------------
 ifeq ($(USE_LTO),1)
 CFLAGS		+= -flto
 endif
@@ -112,6 +125,7 @@ CFLAGS		+= -Ikernel/libc
 CFLAGS 		+= -isystem lib/libc
 CFLAGS 		+= -fms-extensions -Wno-microsoft-anon-tag
 CFLAGS 		+= -Ilib/tinydotnet/lib
+CFLAGS 		+= -Ilib/inc
 
 # Include all the sources
 # TODO: for reproducible build we should sort this

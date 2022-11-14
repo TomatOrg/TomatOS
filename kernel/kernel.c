@@ -468,6 +468,3 @@ cleanup:
     while (1)
         __halt();
 }
-_Noreturn void assertion_fail() {
-    while (1) __asm__("cli; hlt");
-}
