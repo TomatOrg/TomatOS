@@ -195,6 +195,7 @@ SRCS 		+= lib/tinydotnet/lib/mir/mir-gen.c
 
 CFLAGS 		+= -DMIR_NO_SCAN
 CFLAGS 		+= -DMIR_PARALLEL_GEN
+CFLAGS 		+= -DMIR_NO_RED_ZONE_ABI
 
 ########################################################################################################################
 # Targets
