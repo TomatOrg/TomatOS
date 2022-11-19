@@ -4,6 +4,8 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Tomato.Hal.Acpi.Resource;
 using Tomato.Hal.Drivers.Ps2;
+using Tomato.Hal.Drivers.Rtc;
+using Tomato.Hal.Managers;
 using Tomato.Hal.Pci;
 using Tomato.Hal.Platform.Pc;
 
@@ -157,9 +159,10 @@ public static class AcpiManager
         
         // for now create PS2 resources
         InitPs2();
+        InitPcRtc();
     }
 
-    internal static void InitPs2()
+    private static void InitPs2()
     {
         // create all the resources
         var dataPort = new IoResource(0x60, 1);
@@ -169,6 +172,12 @@ public static class AcpiManager
 
         // init the controller        
         new Ps2Controller(commandPort, dataPort, keyboardIrq, mouseIrq);
+    }
+
+    private static void InitPcRtc()
+    {
+        var port = new IoResource(0x70, 8);
+        new PcRtc(port);
     }
     
 }

@@ -16,29 +16,60 @@ internal static class Program
 {
 
     private static DisplayManager _displayManager;
+    private static FileSystemManager _fsManager;
     private static Terminal _terminal;
 
+    private static IKeyboard _keyboard;
+    private static IGraphicsDevice _device;
+    private static IFileSystem _fileSystem;
+    
+    private static void NewKeyboard(IKeyboard keyboard)
+    {
+        if (_keyboard != null)
+            return;
+        _keyboard = keyboard;
+    }
+
+    private static void NewGraphicsDevice(IGraphicsDevice device)
+    {
+        if (_device != null)
+            return;
+        _device = device;
+    }
+
+    private static void NewFileSystem(IFileSystem fs)
+    {
+        if (_fileSystem != null)
+            return;
+        _fileSystem = fs;
+    }
+    
     public static void Main()
     {
         try
         {
             _displayManager = DisplayManager.Claim();
+            lock (_displayManager)
+            {
+                _displayManager.NewKeyboardCallback = NewKeyboard;
+                _displayManager.NewGraphicsDeviceCallback = NewGraphicsDevice;
+            }
+
+            _fsManager = FileSystemManager.Claim();
+            lock (_fsManager)
+            {
+                _fsManager.NewFileSystemCallback = NewFileSystem;
+            }
         }
         catch (InvalidOperationException)
         {
-            Debug.Print("Failed to claim the display manager!");
             return;
         }
-
-        // get the keyboard
-        var keyboard = _displayManager.Keyboards[0];
-
-        // get the graphics device
-        var dev = _displayManager.GraphicsDevices[0];
-        var output = dev.Outputs[0];
+        
+        var output = _device.Outputs[0];
 
         // create a gpu framebuffer and attach it to the first output
-        var framebuffer = dev.CreateFramebuffer(output.Width, output.Height);
+        var framebuffer = _device.CreateFramebuffer(output.Width, output.Height);
         output.SetFramebuffer(framebuffer, new Rectangle(0, 0, output.Width, output.Height));
 
         // allocate a cpu backing 
@@ -46,21 +77,17 @@ internal static class Program
         var memory = MemoryMarshal.Cast<byte, uint>(m);
         framebuffer.Backing = m;
 
-        _terminal = new Terminal(framebuffer, memory, keyboard, new Font(Typeface.Default, 16));
+        _terminal = new Terminal(framebuffer, memory, _keyboard, new Font(Typeface.Default, 16));
         _terminal.Insert("Welcome to TomatOS!");
         _terminal.InsertNewLine();
 
-        (new Thread(() => Shell().Wait())).Start();
+        Task.Run(Shell);
     }
 
     private static async Task Shell()
     {
-        var fsm = FileSystemManager.Claim();
-        fsm.NewFileSystem.WaitOne();
-        var fs = fsm.FileSystems[0];
-
-        var root = fs.OpenVolume().Result;
-        _terminal.Insert($"Loaded rootfs with label \"{fs.VolumeLabel}\".");
+        var root = _fileSystem.OpenVolume().Result;
+        _terminal.Insert($"Loaded rootfs with label \"{_fileSystem.VolumeLabel}\".");
         _terminal.InsertNewLine();
 
         var path = new List<IDirectory>();

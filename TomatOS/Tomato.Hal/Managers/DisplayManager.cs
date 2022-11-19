@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using Tomato.Hal.Interfaces;
 
@@ -8,7 +9,7 @@ namespace Tomato.Hal.Managers;
 public class DisplayManager
 {
 
-    private static DisplayManager _instance = new DisplayManager();
+    private static readonly DisplayManager Instance = new();
     private static bool _claimed = false;
 
     /// <summary>
@@ -17,10 +18,19 @@ public class DisplayManager
     /// </summary>
     public static DisplayManager Claim()
     {
+        // fast path
         if (_claimed)
             throw new InvalidOperationException();
-        _claimed = true;
-        return _instance;
+
+        // slow path
+        lock (Instance)
+        {
+            if (_claimed)
+                throw new InvalidOperationException();
+            
+            _claimed = true;
+            return Instance;
+        }
     }
 
     /// <summary>
@@ -28,10 +38,19 @@ public class DisplayManager
     /// </summary>
     public static void RegisterMouse(IRelMouse mouse)
     {
-        lock (_instance)
+        if (mouse == null)
+            throw new ArgumentNullException(nameof(mouse));
+        
+        lock (Instance)
         {
-            _instance.Mice.Add(mouse);
-            _instance.NewDevice.Set();
+            if (Instance._relMice != null)
+            {
+                Instance._relMice.Add(mouse);
+            }
+            else
+            {
+                Instance._newRelMouseCallback(mouse);
+            }
         }
         
     }
@@ -41,10 +60,19 @@ public class DisplayManager
     /// </summary>
     public static void RegisterKeyboard(IKeyboard keyboard)
     {
-        lock (_instance)
-        {
-            _instance.Keyboards.Add(keyboard);
-            _instance.NewDevice.Set();
+        if (keyboard == null)
+            throw new ArgumentNullException(nameof(keyboard));
+        
+        lock (Instance)
+        {            
+            if (Instance._keyboards != null)
+            {
+                Instance._keyboards.Add(keyboard);
+            }
+            else
+            {
+                Instance._keyboardCallback(keyboard);
+            }
         }
     }
 
@@ -53,24 +81,86 @@ public class DisplayManager
     /// </summary>
     public static void RegisterGraphicsDevice(IGraphicsDevice device)
     {
-        lock (_instance)
+        if (device == null)
+            throw new ArgumentNullException(nameof(device));
+
+        lock (Instance)
         {
-            _instance.GraphicsDevices.Add(device);
-            _instance.NewDevice.Set();
+            if (Instance._relMice != null)
+            {
+                Instance._graphicsDevices.Add(device);
+            }
+            else
+            {
+                Instance._newGraphicsDeviceCallback(device);
+            }
         }
     }
 
-    // NOTE: accessing these devices should be done while the manager is locked!
-    
-    public List<IRelMouse> Mice { get; } = new();
-    public List<IKeyboard> Keyboards { get; } = new();
-    public List<IGraphicsDevice> GraphicsDevices { get; } = new();
+    // Used to store the devices until someone claims them 
+    private List<IRelMouse> _relMice = new();
+    private List<IKeyboard> _keyboards = new();
+    private List<IGraphicsDevice> _graphicsDevices = new();
 
-    /// <summary>
-    /// Used to tell the owner that a new device was added, so it should check the devices again
-    /// </summary>
-    public ManualResetEvent NewDevice = new ManualResetEvent(false);
+    // the actions to call whenever there is a new device
+    private Action<IRelMouse> _newRelMouseCallback = null;
+    private Action<IKeyboard> _keyboardCallback = null;
+    private Action<IGraphicsDevice> _newGraphicsDeviceCallback = null;
     
+    public Action<IRelMouse> NewRelMouseCallback
+    {
+        set
+        {
+            Debug.Assert(Monitor.IsEntered(this));
+            
+            if (_relMice != null)
+            {
+                foreach (var mice in _relMice)
+                {
+                    value(mice);
+                }
+                _relMice = null;
+            }
+            _newRelMouseCallback = value;
+        }
+    }
+    
+    public Action<IKeyboard> NewKeyboardCallback
+    {
+        set
+        {
+            Debug.Assert(Monitor.IsEntered(this));
+
+            if (_keyboards != null)
+            {
+                foreach (var keyboard in _keyboards)
+                {
+                    value(keyboard);
+                }
+                _keyboards = null;
+            }
+            _keyboardCallback = value;
+        }
+    }
+    
+    public Action<IGraphicsDevice> NewGraphicsDeviceCallback
+    {
+        set
+        {
+            Debug.Assert(Monitor.IsEntered(this));
+
+            if (_graphicsDevices != null)
+            {
+                foreach (var device in _graphicsDevices)
+                {
+                    value(device);
+                }
+                _graphicsDevices = null;
+            }
+            _newGraphicsDeviceCallback = value;
+        }
+    }
+
     private DisplayManager()
     {
     }

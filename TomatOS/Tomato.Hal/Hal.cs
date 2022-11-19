@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
+using TinyDotNet;
 using Tomato.Hal.Acpi;
 using Tomato.Hal.Drivers.PlainFramebuffer;
 using Tomato.Hal.Managers;
@@ -32,6 +33,17 @@ public static class Hal
         
         // TODO: something better once we have real graphics acceleration support
         DisplayManager.RegisterGraphicsDevice(new PlainGraphicsDevice());
+        
+        // finalize time setting
+        // it is fine if we don't have an rtc source until now 
+        try
+        {
+            ManagedHost.TimeBase = TimeManager.GetDefaultTimeProvider().GetCurrentTime().Result;
+        }
+        catch (Exception e)
+        {
+            Debug.Print(e.ToString());
+        }
     }
 
     #endregion
