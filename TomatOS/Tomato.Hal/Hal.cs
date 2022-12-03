@@ -38,7 +38,7 @@ public static class Hal
         // it is fine if we don't have an rtc source until now 
         try
         {
-            ManagedHost.TimeBase = TimeManager.GetDefaultTimeProvider().GetCurrentTime().Result;
+//            ManagedHost.TimeBase = TimeManager.GetDefaultTimeProvider().GetCurrentTime().Result;
         }
         catch (Exception e)
         {

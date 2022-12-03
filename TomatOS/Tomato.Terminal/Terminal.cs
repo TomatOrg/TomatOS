@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Drawing;
+using System.Diagnostics;
 using Tomato.Graphics;
 using Tomato.Hal.Interfaces;
 
@@ -28,15 +29,17 @@ public class Terminal
     // Current line the user is typing
     private int _currentLine = 0;
     // Current X coordinate in the current line
-    private int _cursorX;
+    private float _cursorX;
 
     // Keyboard state
     private int _shift = 0, _altgr = 0;
 
     // blit backbuffer position (mx,my) to frontbuffer (sx,sy)
-    private void BlitHelper(int mx, int my, int sx, int sy, int w, int h) =>
+    private void BlitHelper(int mx, int my, int sx, int sy, int w, int h)
+    {
         _framebuffer.Blit(mx + my * _framebuffer.Width, new Rectangle(sx, sy, w, h));
-
+    }
+    
     // The code works by NEVER scrolling the frontbuffer
     // instead on a newline it replaces the line that isn't visible anymore, with the new line to show
     // Hence we need to keep track of where to put text on the backbuffer, and where is it going to be shown, like this
@@ -48,11 +51,11 @@ public class Terminal
         E  E       E  F       E  G
         F  F       F  G       F  H
        >G >G       G >H       G >I */
-    // Note that the Y needs to account for the descender (we pass the cursor position to the FotnBlitter, not top left), otherwise characters get cut off
+    // Note that the Y needs to account for the descender (we pass the cursor position to the FontBlitter, not top left), otherwise characters get cut off
     public int TopYMemory(int line) => (line % _maxLines) * _font.Size;
     public int TopYScreen(int line) => (line - _firstLine) * _font.Size;
-    public int CursorYMemory(int line) => TopYMemory(line) + _font.Size - _font.Descender;
-    private int CursorYScreen(int line) => TopYScreen(line) + _font.Size - _font.Descender;
+    public int CursorYMemory(int line) => TopYMemory(line) + _font.Size;
+    private int CursorYScreen(int line) => TopYScreen(line) + _font.Size;
 
     public void Scroll(int scrollBy)
     {
@@ -65,7 +68,7 @@ public class Terminal
             var m = _memory[(TopYMemory(_firstLine) * _framebuffer.Width)..];
             for (var i = 0; i < _font.Size; i++)
                 m.Slice(i * _framebuffer.Width, _framebuffer.Width).Span.Fill(0);
-            var x = 0;
+            float x = 0.0f;
             foreach (var c in _textBuffer[_firstLine])
             {
                 var g = _font.Glyphs[c - _font.First];
@@ -125,7 +128,7 @@ public class Terminal
 
                 // advance cursor to the last character in the line
                 _cursorX = 0;
-                foreach (var c in line) _cursorX += _font.Glyphs[c - _font.First].Advance;
+                foreach (var c in line) _cursorX += (int)_font.Glyphs[c - _font.First].Advance;
 
                 // scrolling is only needed when there is more text than fits on the screen
                 if (_firstLine > 0) Scroll(-1);
@@ -138,17 +141,17 @@ public class Terminal
             var ch = line[line.Count - 1];
             line.RemoveAt(line.Count - 1);
 
-            // get information on the popped glyph. PlaneBounds is the rectangle occupied by it, relative to the cursor position
+            // get information on the popped glyph.
             var g = _font.Glyphs[ch - _font.First];
-            var pb = g.PlaneBounds;
-
             // pb represents the character to delete, so move the cursor back to where it was when that character was added, so the rectangle X and Y match
             _cursorX -= g.Advance;
-
+            // get information on where it was
+            var pb = g.GetIntegerPlaneBounds(_cursorX, 0);
+            
             // clear where the old character was
-            var fbSlice = _memory.Slice(_cursorX + pb.X + (CursorYMemory(_currentLine) + pb.Y) * _framebuffer.Width);
+            var fbSlice = _memory.Slice(pb.X + (CursorYMemory(_currentLine) + (int)pb.Y) * _framebuffer.Width);
             for (int i = 0; i < pb.Height; i++) fbSlice.Slice(i * _framebuffer.Width, pb.Width).Span.Fill(0);
-            BlitHelper(_cursorX + pb.X, CursorYMemory(_currentLine) + pb.Y, _cursorX + pb.X, CursorYScreen(_currentLine) + pb.Y, pb.Width, pb.Height);
+            BlitHelper(pb.X, CursorYMemory(_currentLine) + pb.Y, pb.X, CursorYScreen(_currentLine) + pb.Y, pb.Width, pb.Height);
 
             _framebuffer.Flush();
         }
@@ -159,10 +162,11 @@ public class Terminal
         _textBuffer[_currentLine].Add(c);
 
         var g = _font.Glyphs[(int)c - _font.First];
-        var pb = g.PlaneBounds;
+        var pb = g.GetIntegerPlaneBounds(_cursorX, 0);
+        
         _fontBlitter.DrawChar(c, _cursorX, CursorYMemory(_currentLine));
 
-        BlitHelper(_cursorX + pb.X, CursorYMemory(_currentLine) + pb.Y, _cursorX + pb.X, CursorYScreen(_currentLine) + pb.Y, pb.Width, pb.Height);
+        BlitHelper(pb.X, CursorYMemory(_currentLine) + pb.Y, pb.X, CursorYScreen(_currentLine) + pb.Y, pb.Width, pb.Height);
         _framebuffer.Flush();
 
         _cursorX += g.Advance;
@@ -178,12 +182,12 @@ public class Terminal
             _textBuffer[_currentLine].Add(c);
 
             var g = _font.Glyphs[(int)c - _font.First];
-            var pb = g.PlaneBounds;
+            var pb = g.GetIntegerPlaneBounds(_cursorX, 0);
             _fontBlitter.DrawChar(c, _cursorX, CursorYMemory(_currentLine));
 
-            minX = Math.Min(minX, _cursorX + pb.X);
+            minX = Math.Min(minX, pb.X);
             minY = Math.Min(minY, pb.Y);
-            maxX = Math.Max(maxX, _cursorX + pb.X + pb.Width);
+            maxX = Math.Max(maxX, pb.X + pb.Width);
             maxY = Math.Max(maxY, pb.Y + pb.Height);
 
             _cursorX += g.Advance;
