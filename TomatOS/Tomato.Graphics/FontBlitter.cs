@@ -61,8 +61,8 @@ public struct FontBlitter
         // Convert EccessFix into an atlas-space coordinate
         // the +0.5 (+128) is required for point sampling
         // (which the generated MSDF atlas assumes)  
-        int xFractionalStartFix = (int)((-xEccessFix + 128) * xDeltaFix / 256 + 128); 
-        int yFractionalStartFix = (int)((-yEccessFix + 128) * yDeltaFix / 256 + 128); 
+        int xFractionalStartFix = (int)((-xEccessFix) * xDeltaFix / 256 + 128); 
+        int yFractionalStartFix = (int)((-yEccessFix) * yDeltaFix / 256 + 128); 
 
         // If it starts below zero, fix by starting at 0
         if (pbInt.X < 0)
