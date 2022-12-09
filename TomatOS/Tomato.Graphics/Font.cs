@@ -5,17 +5,29 @@ namespace Tomato.Graphics;
 
 public struct Glyph
 {
-    public int Advance { get; }
-    public Rectangle PlaneBounds { get; }
+    public float Advance { get; }
+    public RectangleF PlaneBounds { get; }
     public RectangleF AtlasBounds { get; }
 
-    public Glyph(int advance, in Rectangle planeBounds, in RectangleF atlasBounds)
+    public Glyph(float advance, in RectangleF planeBounds, in RectangleF atlasBounds)
     {
         Advance = advance;
         PlaneBounds = planeBounds;
         AtlasBounds = atlasBounds;
     }
     
+    public System.Drawing.Rectangle GetIntegerPlaneBounds(float x, float y)
+    {
+        var planeX = x + PlaneBounds.X;
+        var planeY = y + PlaneBounds.Y;
+
+        int xStartPx = (int)(planeX + 10000) - 10000;
+        int yStartPx = (int)(planeY + 10000) - 10000;
+        int xEndPx = (int)(planeX + PlaneBounds.Width + 0.99f + 10000) - 10000;
+        int yEndPx = (int)(planeY + PlaneBounds.Height + 0.99f + 10000) - 10000;
+        
+        return Rectangle.FromLTRB(xStartPx, yStartPx, xEndPx, yEndPx);
+    }
 }
 
 public class Font
@@ -63,19 +75,19 @@ public class Font
         for (var i = 0; i < Glyphs.Length; i++)
         {
             ref var glyph = ref glyphs[i];
-            var planeBounds = Rectangle.FromLTRB(
-                (int)(glyph.PlaneBound.Left * size + 0.5f),
-                (int)(glyph.PlaneBound.Top * size + 0.5f),
-                (int)(glyph.PlaneBound.Right * size + 0.5f),
-                (int)(glyph.PlaneBound.Bottom * size + 0.5f)
+            var planeBounds = RectangleF.FromLTRB(
+                glyph.PlaneBound.Left * size,
+                glyph.PlaneBound.Top * size,
+                glyph.PlaneBound.Right * size,
+                glyph.PlaneBound.Bottom * size
             );
             var atlasBounds = RectangleF.FromLTRB(
-                (glyph.AtlasBound.Left + 0.5f),
-                (glyph.AtlasBound.Top + 0.5f),
-                (glyph.AtlasBound.Right + 0.5f),
-                (glyph.AtlasBound.Bottom + 0.5f)
+                glyph.AtlasBound.Left,
+                glyph.AtlasBound.Top,
+                glyph.AtlasBound.Right,
+                glyph.AtlasBound.Bottom
             );
-            Glyphs[i] = new Glyph((int)(glyph.Advance * size), planeBounds, atlasBounds);
+            Glyphs[i] = new Glyph(glyph.Advance * size, planeBounds, atlasBounds);
         }
     }
     
