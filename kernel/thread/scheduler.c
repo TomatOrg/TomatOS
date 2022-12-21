@@ -863,6 +863,13 @@ static _Atomic(uint32_t) m_number_spinning = 0;
 static _Atomic(int) m_polling_cpu = -1;
 
 /**
+ * Restart wait-for-timer when getting a non-timer IRQ 
+ */
+void scheduler_onirq() {
+    atomic_store(&m_last_poll, microtime());
+}
+
+/**
  * Interrupts the poller
  */
 static void break_poller() {
@@ -872,7 +879,7 @@ static void break_poller() {
     }
 }
 
-void  scheduler_wake_poller(int64_t when) {
+void scheduler_wake_poller(int64_t when) {
     if (atomic_load(&m_last_poll) == 0) {
         // In find_runnable we ensure that when polling the poll_until
         // field is either zero or the time to which the current poll

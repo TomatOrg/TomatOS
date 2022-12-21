@@ -3,7 +3,7 @@
 ########################################################################################################################
 
 # Should we compile with no-optimizations
-DEBUG		?= 0
+DEBUG		?= 1
 
 # Should GCC be used instead of clang
 # needed for some debug utilities
@@ -19,7 +19,7 @@ USE_KASAN	?= 0
 USE_PROF	?= 0
 
 # Should LTO be enabled
-USE_LTO		?= 1
+USE_LTO		?= 0
 
 OUT_DIR		:= out
 BIN_DIR		:= $(OUT_DIR)/bin
@@ -37,7 +37,7 @@ CC 			:= gcc
 LD 			:= ld.lld # FIXME: TODO: GNU ld is broken
 CFLAGS 		+= -U __linux__ # undefine linux, otherwise mimalloc uses Linux syscalls
 else
-CC 			:= ccache clang
+CC 			:= clang
 LD			:= ld.lld
 endif
 
@@ -56,7 +56,7 @@ CFLAGS 		+= -Wno-psabi
 CFLAGS 		+= -fno-omit-frame-pointer
 
 CFLAGS 		+= -D__SERIAL_TRACE__
-CFLAGS 		+= -D__GRAPHICS_TRACE__
+#CFLAGS 		+= -D__GRAPHICS_TRACE__
 
 # ------------------
 # Set debug options

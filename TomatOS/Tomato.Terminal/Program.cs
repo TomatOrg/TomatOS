@@ -109,6 +109,7 @@ internal static class Program
                 case "ls": await CmdLs(commandArr); break;
                 case "cd": await CmdCd(commandArr); break;
                 case "cat": await CmdCat(commandArr); break;
+                case "xxd": await CmdXxd(commandArr); break;
                 default: await CmdNotFound(commandArr); break;
             }
         }
@@ -195,19 +196,48 @@ internal static class Program
             var file = await OpenFileFromString(arr[1]);
             var d = new byte[512];
             var m = new Memory<byte>(d);
-            while (true)
+            for (int off = 0;;)
             {
-                var br = await file.Read(0, m);
+                var br = await file.Read(off, m);
                 for (int i = 0; i < br; i++)
                 {
                     char c = (char)m.Span[i];
                     if (c == '\n') _terminal.InsertNewLine();
-                    else _terminal.Insert($"{c}");
+                    else _terminal.InsertChar(c);
                 }
+                off += br;
                 if (br != 512) break;
             }
             _terminal.InsertNewLine();
         }
+        
+        async Task CmdXxd(string[] arr)
+        {
+            if (arr.Length != 2)
+            {
+                _terminal.Insert("ERROR: wrong syntax for \"xxd\".");
+                _terminal.InsertNewLine();
+                return;
+            }
+            var file = await OpenFileFromString(arr[1]);
+            var d = new byte[512];
+            var m = new Memory<byte>(d);
+            for (int off = 0;; ) {
+                var br = await file.Read(off, m);
+                for (int i = 0; i < br; i++)
+                {
+                    ushort c = m.Span[i];
+                    if ((i % 2) == 0) _terminal.Insert(" ");
+                    if ((i % 16) == 0) _terminal.InsertNewLine();
+                    _terminal.Insert($"{c:x2}");
+                }
+                off += br;
+                
+                if (br != 512) break;
+            }
+            _terminal.InsertNewLine();
+        }
+        
         Task CmdNotFound(string[] arr)
         {
             _terminal.Insert("ERROR: command not found");

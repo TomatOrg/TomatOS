@@ -16,6 +16,7 @@
 #include "arch/intrin.h"
 #include "sync/irq_spinlock.h"
 #include "arch/idt.h"
+#include "util/except.h"
 
 /**
  * The root physical address of the kernel phys table
@@ -539,7 +540,7 @@ INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool
         // we are good, map the page
         CHECK_AND_RETHROW(vmm_alloc((void*) ALIGN_DOWN(fault_address, PAGE_SIZE), 1, MAP_WRITE | MAP_UNMAP_DIRECT));
     } else {
-        CHECK_FAIL("Invalid paging request at %p", fault_address);
+        return ERROR_CHECK_FAILED;
     }
 
 cleanup:
