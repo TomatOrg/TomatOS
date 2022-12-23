@@ -95,7 +95,7 @@ public class VirtioBlock : VirtioPci, IBlock
     }
     Task DoAsync(ulong sector, uint bytes, bool write, ulong phys)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // allocate the block IO metadata
         _blockAlloc.Allocate(out ulong address, out Memory<BlockPacket> pkt, out uint index);

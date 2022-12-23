@@ -776,7 +776,6 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
         } break;
 
         case IRQ_ALLOC_BASE ... IRQ_ALLOC_END: {
-            scheduler_onirq();
             irq_dispatch(ctx);
             lapic_eoi();
         } break;

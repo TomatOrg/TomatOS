@@ -52,6 +52,37 @@
 
 #include <stdatomic.h>
 
+/**
+ * CPU is out of work nad is actively looking for work
+ */
+static bool CPU_LOCAL m_spinning;
+
+/**
+ * Time of last poll, 0 if currently offline
+ */
+static _Atomic(int64_t) m_last_poll;
+
+/**
+ * Time to which current poll is sleeping
+ */
+static _Atomic(int64_t) m_poll_until;
+
+/**
+ * Number of spinning CPUs in the system
+ */
+static _Atomic(uint32_t) m_number_spinning = 0;
+
+/**
+ * The CPU that is currently polling
+ */
+static _Atomic(int) m_polling_cpu = -1;
+
+/**
+ * flags that the scheduler is waiting for an irq, used
+ * to handle spurious IRQ_PREEMPT
+ */
+static bool CPU_LOCAL m_waiting_for_irq;
+
 // little helper to deal with the global run queue
 typedef struct thread_queue {
     thread_t* head;
@@ -741,7 +772,10 @@ static void save_current_thread(interrupt_context_t* ctx, bool park) {
 }
 
 INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thread) {
-    if (__readcr8() >= PRIORITY_NO_PREEMPT) {
+    // consider it as non-preemptible if we are currently in a HLT
+    // after the interrupt finishes, the HLT will resume, and it will be
+    // popped off the runqueue
+    if (__readcr8() >= PRIORITY_NO_PREEMPT || m_waiting_for_irq) {
         // we should not preempt in this context, so don't
 
         thread->sched_link = NULL;
@@ -833,41 +867,7 @@ static uint32_t random_enum_position(random_enum_t* e) {
     return e->pos;
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-// Scheduler itself
-//----------------------------------------------------------------------------------------------------------------------
 
-/**
- * CPU is out of work nad is actively looking for work
- */
-static bool CPU_LOCAL m_spinning;
-
-/**
- * Time of last poll, 0 if currently offline
- */
-static _Atomic(int64_t) m_last_poll;
-
-/**
- * Time to which current poll is sleeping
- */
-static _Atomic(int64_t) m_poll_until;
-
-/**
- * Number of spinning CPUs in the system
- */
-static _Atomic(uint32_t) m_number_spinning = 0;
-
-/**
- * The CPU that is currently polling
- */
-static _Atomic(int) m_polling_cpu = -1;
-
-/**
- * Restart wait-for-timer when getting a non-timer IRQ 
- */
-void scheduler_onirq() {
-    atomic_store(&m_last_poll, microtime());
-}
 
 /**
  * Interrupts the poller
@@ -977,11 +977,6 @@ static void cpu_wake_idle() {
     atomic_fetch_sub(&m_idle_cpus_count, 1);
 }
 
-/**
- * flags that the scheduler is waiting for an irq, used
- * to handle spurious IRQ_PREEMPT
- */
-static bool CPU_LOCAL m_waiting_for_irq;
 
 static thread_t* find_runnable() {
     thread_t* thread = NULL;
