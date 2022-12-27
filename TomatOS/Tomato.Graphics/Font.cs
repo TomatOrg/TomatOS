@@ -21,10 +21,10 @@ public struct Glyph
         var planeX = x + PlaneBounds.X;
         var planeY = y + PlaneBounds.Y;
 
-        int xStartPx = (int)(planeX + 10000) - 10000;
-        int yStartPx = (int)(planeY + 10000) - 10000;
-        int xEndPx = (int)(planeX + PlaneBounds.Width + 0.99f + 10000) - 10000;
-        int yEndPx = (int)(planeY + PlaneBounds.Height + 0.99f + 10000) - 10000;
+        int xStartPx = (int)(planeX + 1000) - 1000;
+        int yStartPx = (int)(planeY + 1000) - 1000;
+        int xEndPx = (int)(planeX + PlaneBounds.Width + 1 + 1000) - 1000;
+        int yEndPx = (int)(planeY + PlaneBounds.Height + 1 + 1000) - 1000;
         
         return Rectangle.FromLTRB(xStartPx, yStartPx, xEndPx, yEndPx);
     }
@@ -38,11 +38,11 @@ public class Font
     public Typeface Typeface { get; }
     
     // the calculated metrics
-    public int LineHeight { get; }
-    public int Ascender { get; }
-    public int Descender { get; }
-    public int UnderlineY { get; }
-    public int UnderlineThickness { get; }
+    public float LineHeight { get; }
+    public float Ascender { get; }
+    public float Descender { get; }
+    public float UnderlineY { get; }
+    public float UnderlineThickness { get; }
     
     // the first and last char
     public char First { get; }
@@ -63,11 +63,11 @@ public class Font
         Last = typeface.Atlas.Last;
 
         // calculate the metrics
-        LineHeight = (int)(typeface.Metrics.LineHeight * size);
-        Ascender = (int)(typeface.Metrics.Ascender * size);
-        Descender = (int)(typeface.Metrics.Descender * size);
-        UnderlineY = (int)(typeface.Metrics.UnderlineY * size);
-        UnderlineThickness = (int)(typeface.Metrics.UnderlineThickness * size);
+        LineHeight = typeface.Metrics.LineHeight * size;
+        Ascender = typeface.Metrics.Ascender * size;
+        Descender = typeface.Metrics.Descender * size;
+        UnderlineY = typeface.Metrics.UnderlineY * size;
+        UnderlineThickness = typeface.Metrics.UnderlineThickness * size;
 
         // calculate the glyphs
         var glyphs = typeface.Glyphs.Span;

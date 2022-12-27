@@ -28,6 +28,7 @@ sudo cp -rv limine/limine.sys out/build/test_image/boot/
 sudo cp -rv \
   out/bin/tomatos.elf \
   artifacts/limine.cfg \
+  lib/tinydotnet/lib/utf8-utf16-converter/tester/test-cases/two-way/bible.utf8.txt \
   lib/tinydotnet/corelib/Corelib/bin/Release/net6.0/Corelib.dll \
   TomatOS/Tomato.Hal/bin/Release/net6.0/Tomato.Hal.dll \
   TomatOS/Tomato.Graphics/bin/Release/net6.0/Tomato.Graphics.dll \
