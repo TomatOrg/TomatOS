@@ -46,11 +46,11 @@ void lapic_set_wakeup();
 void lapic_set_preempt();
 
 /**
- * Set the deadline in microseconds since now
+ * Set the deadline in ticks since now
  */
-void lapic_set_timeout(uint64_t microseconds);
+void lapic_set_timeout(uint64_t ticks);
 
 /**
  * Set the exact deadline and not an offset
  */
-void lapic_set_deadline(uint64_t microseconds);
+void lapic_set_deadline(uint64_t ticks);

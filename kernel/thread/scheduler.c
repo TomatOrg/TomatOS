@@ -40,6 +40,7 @@
 #include "irq/irq.h"
 #include "mem/stack.h"
 #include "arch/gdt.h"
+#include "time/tick.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -677,7 +678,7 @@ static int32_t CPU_LOCAL m_scheduler_tick;
 //----------------------------------------------------------------------------------------------------------------------
 
 static void scheduler_set_deadline() {
-    lapic_set_timeout(10 * 1000);
+    lapic_set_timeout(10 * TICKS_PER_MILLISECOND);
 }
 
 static void scheduler_cancel_deadline() {
@@ -1118,7 +1119,7 @@ static thread_t* find_runnable() {
             ASSERT(!m_spinning);
 
             // refresh now
-            now = microtime();
+            now = get_tick();
             int64_t delay = -1;
             if (poll_until != 0) {
                 delay = poll_until - now;
@@ -1129,30 +1130,30 @@ static thread_t* find_runnable() {
 
             // TODO: we don't have a polling system yet
             // decide how much to sleep
-            int32_t wait_us;
+            int32_t wait_ms;
             if (delay < 0) {
                 // block indefinitely
-                wait_us = -1;
+                wait_ms = -1;
             } else if (delay == 0) {
                 // no blocking
                 // TODO: not really helping
-                wait_us = 0;
+                wait_ms = 0;
             } else if (delay < 1000) {
                 // the delay is smaller than 1ms, round up
-                wait_us = 1;
-            } else if (delay < 1000000000000) {
+                wait_ms = 1;
+            } else if (delay < 1000000000000000) {
                 // turn the
-                wait_us = (int32_t)(delay / 1000);
+                wait_ms = (int32_t)(delay / 1000000);
             } else {
                 // An arbitrary cap on how long to wait for a timer.
                 // 1e9 ms == ~11.5 days
-                wait_us = 1000000000;
+                wait_ms = 1000000000;
             }
 
             // TODO: what we wanna do in reality is have a poll
             //       that has a timeout of wait_us, but for now
             //       we are just gonna sleep for that time
-            if (wait_us > 0) {
+            if (wait_ms > 0) {
                 // we want to sleep, so sleep for the given amount of
                 // time or when an interrupt happens, we will keep at
                 // a normal priority because we want to be waiting for
@@ -1163,7 +1164,7 @@ static thread_t* find_runnable() {
                 // cause a stack change, and we want it after the given amount of
                 // time
                 lapic_set_wakeup();
-                lapic_set_timeout(wait_us);
+                lapic_set_timeout(wait_ms * TICKS_PER_MILLISECOND);
 
                 m_waiting_for_irq = true;
                 __asm__ ("sti; hlt; cli");
@@ -1389,7 +1390,7 @@ err_t init_scheduler() {
     random_order_reset(get_cpu_count());
 
     // set the last poll
-    atomic_store(&m_last_poll, microtime());
+    atomic_store(&m_last_poll, get_tick());
 
     m_run_queues = malloc(get_cpu_count() * sizeof(local_run_queue_t));
     CHECK(m_run_queues != NULL);

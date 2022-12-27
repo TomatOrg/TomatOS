@@ -34,6 +34,7 @@
 #include "thread/waitable.h"
 #include "thread/timer.h"
 #include "time/tsc.h"
+#include "time/tick.h"
 
 #include <thread/scheduler.h>
 
@@ -192,7 +193,7 @@ bool semaphore_acquire(semaphore_t* semaphore, bool lifo, int64_t timeout) {
             };
             timer->arg = &ctx;
             timer->func = (timer_func_t) semaphore_acquire_timeout;
-            timer->when = (int64_t) microtime() + timeout;
+            timer->when = (int64_t) get_tick() + timeout;
             timer_start(timer);
         }
 

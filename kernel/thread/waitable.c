@@ -4,6 +4,7 @@
 #include "time/tsc.h"
 #include "util/fastrand.h"
 #include "time/delay.h"
+#include "time/tick.h"
 
 #include <mem/malloc.h>
 
@@ -562,7 +563,7 @@ static void send_timer(waitable_t* waitable, uintptr_t now) {
     release_waitable(waitable);
 }
 
-waitable_t* after(int64_t microseconds) {
+waitable_t* after(int64_t ticks_timeout) {
     // create the waitable
     waitable_t* waitable = create_waitable(1);
     if (waitable == NULL) return NULL;
@@ -575,7 +576,7 @@ waitable_t* after(int64_t microseconds) {
     }
 
     // setup the timer
-    timer->when = (int64_t)microtime() + microseconds;
+    timer->when = (int64_t)get_tick() + ticks_timeout;
     timer->func = (timer_func_t)send_timer;
     timer->arg = put_waitable(waitable);
 

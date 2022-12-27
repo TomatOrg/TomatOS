@@ -36,6 +36,7 @@
 #include "cpu_local.h"
 #include "util/stb_ds.h"
 #include "time/tsc.h"
+#include "time/tick.h"
 
 #include <mem/malloc.h>
 
@@ -908,7 +909,7 @@ INTERRUPT void check_timers(int cpu, int64_t* out_now, int64_t* poll_until, bool
     }
 
     if (now == 0) {
-        now = (int64_t)microtime();
+        now = (int64_t)get_tick();
         *out_now = now;
     }
 

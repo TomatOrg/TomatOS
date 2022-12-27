@@ -54,7 +54,7 @@ typedef struct timer {
 
  	// Timer wakes up at when, and then at when+period, ... (period > 0 only)
 	// each time calling func(arg, now) in the timer thread, so func must be
-	// a well-behaved function and not block. Values are in microsecond
+	// a well-behaved function and not block. Values are in ticks
 	//
 	// when must be positive on an active timer.
     int64_t when;

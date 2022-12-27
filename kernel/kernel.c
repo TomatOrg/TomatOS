@@ -3,6 +3,7 @@
 #include "runtime/dotnet/internal_calls.h"
 #include "mem/tlsf.h"
 #include "debug/term.h"
+#include "time/tick.h"
 
 #include <limine.h>
 
@@ -165,6 +166,7 @@ cleanup:
     while (!atomic_load_explicit(&m_start_scheduler, memory_order_relaxed)) {
         __builtin_ia32_pause();
     }
+    sync_tick();
 
     // start scheduling!
     TRACE("\tCPU #%d", info->lapic_id);
@@ -375,7 +377,7 @@ void _start(void) {
     // initialize misc kernel utilities
     CHECK_AND_RETHROW(init_acpi());
     CHECK_AND_RETHROW(init_delay());
-    CHECK_AND_RETHROW(init_rsc());
+    CHECK_AND_RETHROW(init_tsc());
 
     //
     // Do SMP startup
@@ -452,6 +454,7 @@ void _start(void) {
 
     TRACE("Starting up the scheduler");
     atomic_store_explicit(&m_start_scheduler, true, memory_order_release);
+    sync_tick();
     TRACE("\tCPU #%d - BSP", get_apic_id());
 
     atomic_fetch_add(&m_startup_count, 1);

@@ -10,6 +10,7 @@
 #include <debug/debug.h>
 #include <thread/scheduler.h>
 #include <time/tsc.h>
+#include "time/tick.h"
 
 #define NOINSTRUMENT __attribute__((no_instrument_function))
 
@@ -34,6 +35,7 @@ void profiler_start() {
 #endif
     start_time = microtime();
 }
+
 void profiler_stop() {
 #ifdef __PROF__
     if (!m_global_instrument_enable) return;

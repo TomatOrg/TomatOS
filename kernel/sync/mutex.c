@@ -33,6 +33,7 @@
 #include "mutex.h"
 #include "thread/waitable.h"
 #include "time/delay.h"
+#include "time/tick.h"
 
 #include <thread/scheduler.h>
 #include <util/except.h>
@@ -55,7 +56,7 @@ typedef enum mutex_state {
 #define STARVATION_THRESHOLD_US 1000
 
 static void mutex_lock_slow(mutex_t* mutex) {
-    int64_t wait_start_time = 0;
+    uint64_t wait_start_time = 0;
     bool starving = false;
     bool awoke = false;
     int iter = 0;
@@ -319,7 +320,7 @@ static void test_mutex_fairness() {
     t->save_state.rsi = (uintptr_t) put_waitable(done);
     scheduler_ready_thread(t);
 
-    waitable_t* ws[] = { done, after(10 * MICROSECONDS_PER_SECOND) };
+    waitable_t* ws[] = { done, after(10 * TICKS_PER_SECOND) };
     selected_waitable_t selected = waitable_select(ws, 0, 2, true);
     ASSERT(selected.index == 0 && "can't acquire Mutex in 10 seconds");
 

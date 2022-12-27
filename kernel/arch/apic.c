@@ -6,6 +6,7 @@
 #include "cpuid.h"
 #include "irq/irq.h"
 #include "thread/cpu_local.h"
+#include "time/tick.h"
 
 #include <util/defs.h>
 #include <mem/mem.h>
@@ -290,11 +291,10 @@ void lapic_set_preempt() {
     _mm_mfence();
 }
 
-void lapic_set_timeout(uint64_t microseconds) {
-    __writemsr(MSR_IA32_TSC_DEADLINE, __builtin_ia32_rdtsc() + microseconds * get_tsc_freq());
+void lapic_set_timeout(uint64_t ticks) {
+    __writemsr(MSR_IA32_TSC_DEADLINE, (get_total_tick() + ticks) * get_tsc_freq());
 }
 
-void lapic_set_deadline(uint64_t microseconds) {
-    __writemsr(MSR_IA32_TSC_DEADLINE, microseconds * get_tsc_freq());
-
+void lapic_set_deadline(uint64_t ticks) {
+    __writemsr(MSR_IA32_TSC_DEADLINE, ticks * get_tsc_freq());
 }

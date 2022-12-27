@@ -79,6 +79,6 @@ selected_waitable_t waitable_select(waitable_t** waitables, int send_count, int 
  * Create a waitable that will get triggered after the specified
  * amount of time has passed
  */
-waitable_t* after(int64_t microseconds);
+waitable_t* after(int64_t ticks_timeout);
 
 void waitable_self_test();
