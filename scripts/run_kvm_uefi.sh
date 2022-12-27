@@ -9,7 +9,7 @@ qemu-system-x86_64 \
   --enable-kvm \
   -cpu host,+invtsc,+tsc-deadline \
   -smp 1 \
-  -bios /usr/share/ovmf/x64/OVMF_CODE.fd \
+  -bios /usr/share/ovmf/bios.bin \
   -m 2G \
   -s \
   -no-reboot \

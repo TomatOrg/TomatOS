@@ -39,8 +39,8 @@
 #include "mem/mem.h"
 #include "irq/irq.h"
 #include "mem/stack.h"
-#include "arch/gdt.h"
 #include "time/tick.h"
+#include "arch/gdt.h"
 
 #include <sync/spinlock.h>
 #include <util/fastrand.h>
@@ -52,6 +52,28 @@
 #include <kernel.h>
 
 #include <stdatomic.h>
+
+// True if CPU is looking for work
+// (ie it's waiting for an interrupt)
+static bool CPU_LOCAL m_spinning;
+
+// Time of last poll, 0 if in one
+static _Atomic(int64_t) m_last_poll;
+
+// End time of the current poll
+static _Atomic(int64_t) m_poll_until;
+
+// CPUs waiting for work
+static _Atomic(uint32_t) m_number_spinning = 0;
+
+// CPU that's currently waiting
+static _Atomic(int) m_polling_cpu = -1;
+
+/**
+ * flags that the scheduler is waiting for an irq, used
+ * to handle spurious IRQ_PREEMPT
+ */
+static bool CPU_LOCAL m_waiting_for_irq;
 
 // little helper to deal with the global run queue
 typedef struct thread_queue {
@@ -742,7 +764,10 @@ static void save_current_thread(interrupt_context_t* ctx, bool park) {
 }
 
 INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thread) {
-    if (__readcr8() >= PRIORITY_NO_PREEMPT) {
+    // consider it as non-preemptible if we are currently in a HLT
+    // after the interrupt finishes, the HLT will resume, and it will be
+    // popped off the runqueue
+    if (__readcr8() >= PRIORITY_NO_PREEMPT || m_waiting_for_irq) {
         // we should not preempt in this context, so don't
 
         thread->sched_link = NULL;
@@ -834,34 +859,7 @@ static uint32_t random_enum_position(random_enum_t* e) {
     return e->pos;
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-// Scheduler itself
-//----------------------------------------------------------------------------------------------------------------------
 
-/**
- * CPU is out of work nad is actively looking for work
- */
-static bool CPU_LOCAL m_spinning;
-
-/**
- * Time of last poll, 0 if currently offline
- */
-static _Atomic(int64_t) m_last_poll;
-
-/**
- * Time to which current poll is sleeping
- */
-static _Atomic(int64_t) m_poll_until;
-
-/**
- * Number of spinning CPUs in the system
- */
-static _Atomic(uint32_t) m_number_spinning = 0;
-
-/**
- * The CPU that is currently polling
- */
-static _Atomic(int) m_polling_cpu = -1;
 
 /**
  * Interrupts the poller
@@ -873,7 +871,7 @@ static void break_poller() {
     }
 }
 
-void  scheduler_wake_poller(int64_t when) {
+void scheduler_wake_poller(int64_t when) {
     if (atomic_load(&m_last_poll) == 0) {
         // In find_runnable we ensure that when polling the poll_until
         // field is either zero or the time to which the current poll
@@ -971,11 +969,6 @@ static void cpu_wake_idle() {
     atomic_fetch_sub(&m_idle_cpus_count, 1);
 }
 
-/**
- * flags that the scheduler is waiting for an irq, used
- * to handle spurious IRQ_PREEMPT
- */
-static bool CPU_LOCAL m_waiting_for_irq;
 
 static thread_t* find_runnable() {
     thread_t* thread = NULL;
