@@ -72,7 +72,6 @@ public class VirtioBlock : VirtioPci, IBlock
             // get
             var head = _queueInfo.Used.Ring.Span[_queueInfo.LastSeenUsed % _queueInfo.Size].Id;
             ref var pkt = ref _blockPackets[head];
-            ref var blkPkt = ref _blockAlloc[pkt.PacketIdx].Span[0];
 
             // process
             pkt.Tcs.SetResult();
@@ -81,8 +80,8 @@ public class VirtioBlock : VirtioPci, IBlock
             _blockAlloc.Free(pkt.PacketIdx);
 
             // free virtio-related bookkeeping
-            // NOTE: this also increases LastSeenUsed
             _queueInfo.FreeChain(head);
+            _queueInfo.LastSeenUsed++;
         }
     }
 
@@ -107,20 +106,22 @@ public class VirtioBlock : VirtioPci, IBlock
         {
             var head = _queueInfo.GetNewDescriptor();
             _blockPackets[head] = new PacketInfo(index, tcs);
+
             var h = head;
             _queueInfo.Descriptors.Span[h].Phys = address;
             _queueInfo.Descriptors.Span[h].Len = 16;
-            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext;
+            _queueInfo.Descriptors.Span[h].Flags = 0;
 
             h = _queueInfo.GetNext(h);
             _queueInfo.Descriptors.Span[h].Phys = phys;
             _queueInfo.Descriptors.Span[h].Len = bytes;
-            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.HasNext | (write ? 0 : QueueInfo.Descriptor.Flag.Write);
+            _queueInfo.Descriptors.Span[h].Flags = write ? 0 : QueueInfo.Descriptor.Flag.Write;
 
             h = _queueInfo.GetNext(h);
             _queueInfo.Descriptors.Span[h].Phys = address + 16;
             _queueInfo.Descriptors.Span[h].Len = 1;
             _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.Write;
+
             _queueInfo.PlaceHeadOnAvail(head);
             _queueInfo.Notify();
         }

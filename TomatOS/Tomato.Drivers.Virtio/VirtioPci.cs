@@ -35,6 +35,7 @@ public abstract class VirtioPci
         readonly public UsedRing Used;
 
         ushort FirstFree;
+        ushort LastFree;
         public volatile ushort LastSeenUsed;
 
         // Optimization endorsed by the spec: instead of updating Avail.DescIdx each time, batch and do a single notification at the end
@@ -77,6 +78,7 @@ public abstract class VirtioPci
 
             // initialize bookkeeping fields
             FirstFree = 0;
+            LastFree = (ushort)(Size - 1);
             LastSeenUsed = 0;
             AddedHeads = 0;
         }
@@ -91,6 +93,16 @@ public abstract class VirtioPci
             return oldFirstFree;
         }
 
+        /// <summary>
+        /// Get a new descriptor and link it as the next one in the current chain
+        /// </summary>
+        public ushort GetNext(ushort curr)
+        {
+            var next = GetNewDescriptor();
+            Descriptors.Span[curr].NextDescIdx = next;
+            Descriptors.Span[curr].Flags |= Descriptor.Flag.HasNext;
+            return next;
+        }
 
         /// <summary>
         /// Place descriptor chain head on the avail ring, but don't notify
@@ -99,16 +111,6 @@ public abstract class VirtioPci
         {
             Avail.Ring.Span[(Avail.DescIdx.Value + AddedHeads) % Size] = head;
             AddedHeads++;
-        }
-
-        /// <summary>
-        /// Get a new descriptor and link it as the next one in the current chain
-        /// </summary>
-        public ushort GetNext(ushort curr)
-        {
-            var next = GetNewDescriptor();
-            Descriptors.Span[curr].NextDescIdx = next;
-            return next;
         }
 
         /// <summary>
@@ -126,15 +128,11 @@ public abstract class VirtioPci
         /// </summary>
         public void FreeChain(ushort head)
         {
-            var desc = head;
-            while ((int)(Descriptors.Span[desc].Flags & Descriptor.Flag.HasNext) > 0)
-            {
-                desc = Descriptors.Span[desc].NextDescIdx;
-            }
-            Descriptors.Span[desc].Flags = Descriptor.Flag.HasNext;
-            Descriptors.Span[desc].NextDescIdx = FirstFree;
-            FirstFree = desc;
-            LastSeenUsed++;
+            Descriptors.Span[LastFree].Flags = Descriptor.Flag.HasNext;
+            Descriptors.Span[LastFree].NextDescIdx = head;
+            ushort tail = head;
+            while ((Descriptors.Span[tail].Flags & Descriptor.Flag.HasNext) != 0) tail = Descriptors.Span[tail].NextDescIdx;
+            LastFree = tail;
         }
 
         /// <summary>
@@ -174,7 +172,7 @@ public abstract class VirtioPci
             {
                 Flags = r.CreateField<ushort>(0);
                 DescIdx = r.CreateField<ushort>(2);
-                Ring = r.CreateMemory<ushort>(4, size / 2);
+                Ring = r.CreateMemory<ushort>(4, size);
             }
         }
 
@@ -192,7 +190,7 @@ public abstract class VirtioPci
             {
                 Flags = r.CreateField<ushort>(0);
                 DescIdx = r.CreateField<ushort>(2);
-                Ring = r.CreateMemory<UsedElement>(4, size / 8);
+                Ring = r.CreateMemory<UsedElement>(4, size);
             }
 
             [StructLayout(LayoutKind.Sequential)]
