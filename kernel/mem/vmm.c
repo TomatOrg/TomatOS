@@ -520,7 +520,10 @@ cleanup:
 INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present) {
     err_t err = NO_ERROR;
 
-    if (KERNEL_HEAP_START <= fault_address && fault_address < KERNEL_HEAP_END) {
+    if (
+        (KERNEL_HEAP_START <= fault_address && fault_address < KERNEL_HEAP_END) ||
+        (KERNEL_LOW_MEM_HEAP_START <= fault_address && fault_address < KERNEL_LOW_MEM_HEAP_END)
+    ) {
         // make sure this happens only for non-present page
         CHECK(!present);
 

@@ -8,6 +8,11 @@
 // size of a single phys
 #define PAGE_SIZE                       (SIZE_4KB)
 
+// the low memory heap is used to allocate pointers that fit in uint32 for space saving
+#define KERNEL_LOW_MEM_HEAP_SIZE        (SIZE_2GB)
+#define KERNEL_LOW_MEM_HEAP_START       (BASE_2GB)
+#define KERNEL_LOW_MEM_HEAP_END         ((uint64_t)KERNEL_LOW_MEM_HEAP_START + KERNEL_LOW_MEM_HEAP_SIZE)
+
 // The start of the higher half
 #define HIGHER_HALF_START               (0xffff800000000000ull)
 
@@ -18,18 +23,11 @@
 #define DIRECT_MAP_START                (HIGHER_HALF_START)
 #define DIRECT_MAP_END                  (HIGHER_HALF_START + DIRECT_MAP_SIZE)
 
-// the buddy tree used for the physical allocator of the kernel
-// This only needs ~64MB but we will give it twice as much just in case
-#define BUDDY_TREE_SIZE                 (SIZE_128MB)
-#define BUDDY_TREE_START                (DIRECT_MAP_END + SIZE_1GB)
-#define BUDDY_TREE_END                  (BUDDY_TREE_START + BUDDY_TREE_SIZE)
-STATIC_ASSERT(DIRECT_MAP_END < BUDDY_TREE_START);
-
 // The stack pool area, have enough for 64k running threads....
 #define STACK_POOL_SIZE                 ((SIZE_1MB * 3ull) * SIZE_64KB)
 #define STACK_POOL_START                (DIRECT_MAP_END + SIZE_64GB)
 #define STACK_POOL_END                  (STACK_POOL_START + STACK_POOL_SIZE)
-STATIC_ASSERT(BUDDY_TREE_END < STACK_POOL_START);
+STATIC_ASSERT(DIRECT_MAP_END < STACK_POOL_START);
 
 // The virtual area used for the GC objects, we give it a nice 32TB cause why not
 #define OBJECT_HEAP_START               (0xffff810000000000ull)

@@ -23,3 +23,7 @@ void free(void* ptr);
             ptr = NULL; \
         } \
     } while (0)
+
+void* lowmem_malloc(size_t size) __attribute__((alloc_size(1)));
+
+void lowmem_free(void* ptr);

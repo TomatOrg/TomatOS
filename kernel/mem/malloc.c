@@ -7,24 +7,44 @@
 #include <sync/irq_spinlock.h>
 #include <util/string.h>
 
+// kernel heap
 static tlsf_t* m_tlsf;
-
 static mutex_t m_tlsf_mutex = INIT_MUTEX();
+
+// low memory heap
+static tlsf_t* m_lowmem_tlsf;
+static mutex_t m_lowmem_tlsf_mutex = INIT_MUTEX();
 
 err_t init_malloc() {
     err_t err = NO_ERROR;
 
-    // Allocate memory for the allocator
-    void* tlsf_mem = palloc(tlsf_size());
-    CHECK(tlsf_mem != NULL);
+    {
+        // Allocate memory for the allocator
+        void* tlsf_mem = palloc(tlsf_size());
+        CHECK(tlsf_mem != NULL);
 
-    // Init the allocator
-    m_tlsf = tlsf_create(tlsf_mem);
-    CHECK(m_tlsf != NULL);
+        // Init the allocator
+        m_tlsf = tlsf_create(tlsf_mem);
+        CHECK(m_tlsf != NULL);
 
-    // Add the pool itself
-    tlsf_pool_t* pool = tlsf_add_pool(m_tlsf, (void*)KERNEL_HEAP_START, KERNEL_HEAP_SIZE);
-    CHECK(pool != NULL);
+        // Add the pool itself
+        tlsf_pool_t* pool = tlsf_add_pool(m_tlsf, (void*)KERNEL_HEAP_START, KERNEL_HEAP_SIZE);
+        CHECK(pool != NULL);
+    }
+
+    {
+        // Allocate memory for the low memory allocator
+        void* lowmem_tlsf_mem = palloc(tlsf_size());
+        CHECK(lowmem_tlsf_mem != NULL);
+
+        // Init the allocator
+        m_lowmem_tlsf = tlsf_create(lowmem_tlsf_mem);
+        CHECK(m_lowmem_tlsf != NULL);
+
+        // Add the pool itself
+        tlsf_pool_t* lowmem_pool = tlsf_add_pool(m_lowmem_tlsf, (void*)KERNEL_LOW_MEM_HEAP_START, KERNEL_LOW_MEM_HEAP_SIZE);
+        CHECK(lowmem_pool != NULL);
+    }
 
 cleanup:
     return err;
@@ -85,8 +105,10 @@ void* realloc(void* ptr, size_t size) {
     ptr = tlsf_realloc(m_tlsf, ptr, size);
 
 #ifndef DNDEBUG
-    tlsf_track_allocation(ptr, __builtin_return_address(0));
-    tlsf_track_free(ptr, 0);
+    if (ptr != NULL) {
+        tlsf_track_allocation(ptr, __builtin_return_address(0));
+        tlsf_track_free(ptr, 0);
+    }
 #endif
 
     mutex_unlock(&m_tlsf_mutex);
@@ -101,4 +123,32 @@ void free(void* ptr) {
     tlsf_free(m_tlsf, ptr);
 
     mutex_unlock(&m_tlsf_mutex);
+}
+
+void* lowmem_malloc(size_t size) {
+    mutex_lock(&m_lowmem_tlsf_mutex);
+
+    void* ptr = tlsf_memalign(m_lowmem_tlsf, 16, size);
+
+#ifndef DNDEBUG
+    tlsf_track_allocation(ptr, __builtin_return_address(0));
+    tlsf_track_free(ptr, 0);
+#endif
+
+    mutex_unlock(&m_lowmem_tlsf_mutex);
+
+    if (ptr != NULL) {
+        memset(ptr, 0, size);
+    }
+
+    return ptr;
+}
+
+void lowmem_free(void* ptr) {
+    mutex_lock(&m_lowmem_tlsf_mutex);
+
+    if (ptr) tlsf_track_free(ptr, __builtin_return_address(0));
+    tlsf_free(m_lowmem_tlsf, ptr);
+
+    mutex_unlock(&m_lowmem_tlsf_mutex);
 }
