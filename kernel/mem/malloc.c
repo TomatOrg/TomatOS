@@ -2,13 +2,14 @@
 
 #include "tlsf.h"
 #include "mem.h"
+#include "sync/mutex.h"
 
 #include <sync/irq_spinlock.h>
 #include <util/string.h>
 
 static tlsf_t* m_tlsf;
 
-static irq_spinlock_t m_tlsf_lock = INIT_IRQ_SPINLOCK();
+static mutex_t m_tlsf_mutex = INIT_MUTEX();
 
 err_t init_malloc() {
     err_t err = NO_ERROR;
@@ -31,23 +32,28 @@ cleanup:
 
 void check_malloc() {
     if (m_tlsf != NULL) {
-        irq_spinlock_lock(&m_tlsf_lock);
+        mutex_lock(&m_tlsf_mutex);
         tlsf_check(m_tlsf);
-        irq_spinlock_unlock(&m_tlsf_lock);
+        mutex_unlock(&m_tlsf_mutex);
     }
 }
 
 void* malloc(size_t size) {
-    irq_spinlock_lock(&m_tlsf_lock);
+    mutex_lock(&m_tlsf_mutex);
+
     void* ptr = tlsf_memalign(m_tlsf, 16, size);
+
 #ifndef DNDEBUG
     tlsf_track_allocation(ptr, __builtin_return_address(0));
     tlsf_track_free(ptr, 0);
-#endif    
-    irq_spinlock_unlock(&m_tlsf_lock);
+#endif
+
+    mutex_unlock(&m_tlsf_mutex);
+
     if (ptr != NULL) {
         memset(ptr, 0, size);
     }
+
     return ptr;
 }
 
@@ -56,13 +62,17 @@ void* malloc_aligned(size_t size, size_t alignment) {
         alignment = 16;
     }
 
-    irq_spinlock_lock(&m_tlsf_lock);
+    mutex_lock(&m_tlsf_mutex);
+
     void* ptr = tlsf_memalign(m_tlsf, alignment, size);
+
 #ifndef DNDEBUG
     tlsf_track_allocation(ptr, __builtin_return_address(0));
     tlsf_track_free(ptr, 0);
-#endif    
-    irq_spinlock_unlock(&m_tlsf_lock);
+#endif
+
+    mutex_unlock(&m_tlsf_mutex);
+
     if (ptr != NULL) {
         memset(ptr, 0, size);
     }
@@ -70,19 +80,25 @@ void* malloc_aligned(size_t size, size_t alignment) {
 }
 
 void* realloc(void* ptr, size_t size) {
-    irq_spinlock_lock(&m_tlsf_lock);
+    mutex_lock(&m_tlsf_mutex);
+
     ptr = tlsf_realloc(m_tlsf, ptr, size);
+
 #ifndef DNDEBUG
     tlsf_track_allocation(ptr, __builtin_return_address(0));
     tlsf_track_free(ptr, 0);
-#endif    
-    irq_spinlock_unlock(&m_tlsf_lock);
+#endif
+
+    mutex_unlock(&m_tlsf_mutex);
+
     return ptr;
 }
 
 void free(void* ptr) {
-    irq_spinlock_lock(&m_tlsf_lock);
+    mutex_lock(&m_tlsf_mutex);
+
     if (ptr) tlsf_track_free(ptr, __builtin_return_address(0));
     tlsf_free(m_tlsf, ptr);
-    irq_spinlock_unlock(&m_tlsf_lock);
+
+    mutex_unlock(&m_tlsf_mutex);
 }
