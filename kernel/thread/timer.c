@@ -37,6 +37,7 @@
 #include "util/stb_ds.h"
 #include "time/tsc.h"
 #include "time/tick.h"
+#include "sync/irq_spinlock.h"
 
 #include <mem/malloc.h>
 
@@ -650,10 +651,30 @@ INTERRUPT static void clear_deleted_timers(timers_t* timers) {
 // Timer management
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+//
+// Global waiting thread cache
+//
+static irq_spinlock_t m_timer_lock;
+static timer_t* m_timer_cache;
+
 timer_t* create_timer() {
-    timer_t* timer = malloc(sizeof(timer_t));
+    timer_t* timer = NULL;
+
+    // try to get from the cache
+    irq_spinlock_lock(&m_timer_lock);
+    if (m_timer_cache != NULL) {
+        timer = m_timer_cache;
+        m_timer_cache = timer->timers;
+        memset(timer, 0, sizeof(*timer));
+    }
+    irq_spinlock_unlock(&m_timer_lock);
+
     if (timer == NULL) {
-        return timer;
+        // nothing in cache, allocate a new one
+        timer = malloc(sizeof(timer_t));
+        if (timer == NULL) {
+            return timer;
+        }
     }
 
     timer->timers = NULL;
@@ -884,8 +905,15 @@ INTERRUPT void release_timer(timer_t* timer) {
             status == TIMER_NO_STATUS
         );
 
-        // this was the last ref, delete
-        free(timer);
+        // this was the last ref, put this in the cache
+        // for later use, we don't free because we might be in
+        // an irq context, so its easier to just put everything
+        // in a cache for reuse, and we can reclaim it later
+        // if needed
+        irq_spinlock_lock(&m_timer_lock);
+        timer->timers = m_timer_cache;
+        m_timer_cache = timer;
+        irq_spinlock_unlock(&m_timer_lock);
     }
 }
 

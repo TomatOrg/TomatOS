@@ -50,6 +50,7 @@ typedef enum timer_status {
 
 typedef struct timer {
     // If this timer is on a heap, which timers heap it is on.
+    // If this timer is free it points to the next free timer
     void* timers;
 
  	// Timer wakes up at when, and then at when+period, ... (period > 0 only)
