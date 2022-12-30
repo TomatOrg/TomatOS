@@ -82,6 +82,31 @@ internal static class Program
         _terminal.InsertNewLine();
 
         Task.Run(Shell);
+
+        var hog1 = (new Thread(CPUHog1));
+        var hog2 = (new Thread(CPUHog2));
+        hog1.Name = "Hog 1";
+        hog2.Name = "Hog 2";
+        hog1.Start();
+        hog2.Start();
+    }
+
+    static long dump;
+    static void CPUHog1() {
+        long i = 1;
+        while (true) {
+            Volatile.Write(ref dump, ((long)(1 << 63)) / i);
+            i++;
+            if ((i % 10000000) == 0) Debug.Print($"work 1");
+        }
+    }
+    static void CPUHog2() {
+        long i = 1;
+        while (true) {
+            Volatile.Write(ref dump, ((long)(1 << 63)) / i);
+            i++;
+            if ((i % 20000000) == 0) Debug.Print($"work 2");
+        }
     }
 
     private static async Task Shell()

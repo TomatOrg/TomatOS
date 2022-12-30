@@ -86,8 +86,8 @@ void irq_dispatch(interrupt_context_t* ctx) {
         WARN("irq: got IRQ #%d while no thread is waiting, invalid mask function?", ctx->int_num);
     }
 
-    // schedule the thread right now
-    scheduler_schedule_thread(ctx, instance->waiting_thread);
+    // mark the thread as ready
+    scheduler_ready_thread(instance->waiting_thread);
 
     // no one is waiting on this anymore
     instance->waiting_thread = NULL;

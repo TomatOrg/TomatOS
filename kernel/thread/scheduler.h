@@ -8,6 +8,17 @@
 
 #include <stdbool.h>
 
+/*
+ * The sliding window size (in milliseconds), used by sleeptime and runtime calculation
+ * Lower values make the scheduler react more quickly at large changes
+ * but that comes at the cost of bursty processes being penalized
+ * FreeBSD has determined that 5 seconds is a good value when accounting for the burst activity
+ * of large graphical programs like browsers and word processors
+ * (for example, you don't want the browser to get demoted to a batch process when loading a page).
+ * (in FreeBSD, it's called SCHED_SLP_RUN_MAX)
+ */
+#define SCHEDULER_SLIDING_WINDOW_MS 5000
+
 /**
  * Helper method, check if the thread should spin in the given
  * iteration in a row. Used by the mutex

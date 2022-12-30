@@ -17,7 +17,7 @@ static void commit_bump(uintptr_t ptr, size_t size) {
     if (size != 0) {
         void *p = palloc(size);
         CHECK(p != NULL);
-        CHECK_AND_RETHROW(vmm_map(DIRECT_TO_PHYS(p), (void*)ptr, size / PAGE_SIZE, MAP_WRITE | ((size == SIZE_2MB) ? MAP_LARGE : 0)));
+        CHECK_AND_RETHROW(vmm_map(DIRECT_TO_PHYS(p), (void*)ptr, size / PAGE_SIZE, MAP_WRITE));
     }
     cleanup:
     if (IS_ERROR(err)) {

@@ -30,10 +30,42 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+
+/*-
+ * Code taken and modified from FreeBSD's ULE scheduler.
+ *
+ * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
+ *
+ * Copyright (c) 2002-2007, Jeffrey Roberson <jeff@freebsd.org>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice unmodified, this list of conditions, and the following
+ *    disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+ * IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ * IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
+ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ * NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
 #include "scheduler.h"
 
 #include "cpu_local.h"
 #include "timer.h"
+#include "util/defs.h"
 #include "waitable.h"
 #include "sync/irq_spinlock.h"
 #include "mem/mem.h"
@@ -52,94 +84,27 @@
 
 #include <stdatomic.h>
 
-/**
- * CPU is out of work nad is actively looking for work
- */
-static bool CPU_LOCAL m_spinning;
+// Range of the score() function
+// Keep it 0-100 to match FreeBSD's
+#define SCORE_RANGE_MAX 100
 
-/**
- * Time of last poll, 0 if currently offline
- */
+
+// CPU is out of work and is actively looking for work
+static bool CPU_LOCAL m_spinning;
+// Time of last poll, 0 if currently offline
 static _Atomic(int64_t) m_last_poll;
 
-/**
- * Time to which current poll is sleeping
- */
+// Time to which current poll is sleeping
 static _Atomic(int64_t) m_poll_until;
 
-/**
- * Number of spinning CPUs in the system
- */
+// Number of spinning CPUs in the system
 static _Atomic(uint32_t) m_number_spinning = 0;
 
-/**
- * The CPU that is currently polling
- */
+// The CPU that's currently polling
 static _Atomic(int) m_polling_cpu = -1;
 
-/**
- * flags that the scheduler is waiting for an irq, used
- * to handle spurious IRQ_PREEMPT
- */
+// Is the current CPU waiting in a HLT?
 static bool CPU_LOCAL m_waiting_for_irq;
-
-// little helper to deal with the global run queue
-typedef struct thread_queue {
-    thread_t* head;
-    thread_t* tail;
-} thread_queue_t;
-
-/**
- * Adds all the threads in q2 to the tail of the queue. After this q2 must
- * not be used.
- *
- * @param q     [IN] The main queue
- * @param q2    [IN] The queue to empty
- */
-INTERRUPT static void thread_queue_push_back_all(thread_queue_t* q, thread_queue_t* q2) {
-    if (q2->tail == NULL) {
-        return;
-    }
-
-    q2->tail->sched_link = NULL;
-    if (q->tail != NULL) {
-        q->tail->sched_link = q2->head;
-    } else {
-        q->head = q2->head;
-    }
-    q->tail = q2->tail;
-}
-
-INTERRUPT static void thread_queue_push_back(thread_queue_t* q, thread_t* thread) {
-    thread->sched_link = NULL;
-    if (q->tail != NULL) {
-        q->tail->sched_link = thread;
-    } else {
-        q->head = thread;
-    }
-    q->tail = thread;
-}
-
-INTERRUPT static thread_t* thread_queue_pop(thread_queue_t* q) {
-    thread_t* thread = q->head;
-    if (thread != NULL) {
-        q->head = thread->sched_link;
-        if (q->head == NULL) {
-            q->tail = NULL;
-        }
-    }
-    return thread;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Global run queue
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#define RUN_QUEUE_LEN 256
-
-// The global run queue
-static thread_queue_t m_global_run_queue;
-static int32_t m_global_run_queue_size;
 
 // The idle cpus
 static _Atomic(size_t) m_idle_cpus[256 / (sizeof(size_t) * 8)];
@@ -147,75 +112,6 @@ static _Atomic(uint32_t) m_idle_cpus_count;
 
 // spinlock to protect the scheduler internal stuff
 static irq_spinlock_t m_scheduler_lock = INIT_IRQ_SPINLOCK();
-
-/**
- * Put a batch of runnable threads on the global runnable queue.
- *
- * @remark
- * The scheduler spinlock must be help while calling this function
- *
- * @param batch [IN] The thread batch to put
- * @param n     [IN] The number of threads in the batch
- */
-INTERRUPT static void global_run_queue_put_batch(thread_queue_t* batch, int32_t n) {
-    thread_queue_push_back_all(&m_global_run_queue, batch);
-    m_global_run_queue_size += n;
-    batch->tail = NULL;
-    batch->head = NULL;
-}
-
-/**
- * Put a thread on the global runnable queue.
- *
- * @remark
- * The scheduler spinlock must be help while calling this function
- *
- * @param thread [IN] The thread to put
- */
-INTERRUPT static void global_run_queue_put(thread_t* thread) {
-    thread_queue_push_back(&m_global_run_queue, thread);
-    m_global_run_queue_size++;
-}
-
-static void run_queue_put(thread_t* thread, bool next);
-
-/**
- * Get a thread from the global run queue
- */
-INTERRUPT static thread_t* global_run_queue_get(int max) {
-    if (m_global_run_queue_size == 0) {
-        return NULL;
-    }
-
-    int n = m_global_run_queue_size / get_cpu_count() + 1;
-    if (n > m_global_run_queue_size) {
-        n = m_global_run_queue_size;
-    }
-
-    if (max > 0 && n > max) {
-        n = max;
-    }
-
-    if (n > RUN_QUEUE_LEN / 2) {
-        n = RUN_QUEUE_LEN / 2;
-    }
-
-    // we are going to take n items
-    m_global_run_queue_size -= n;
-
-    // take the initial one
-    thread_t* thread = thread_queue_pop(&m_global_run_queue);
-    n--;
-
-    // take the rest
-    for (; n > 0; n--) {
-        thread_t* thread1 = thread_queue_pop(&m_global_run_queue);
-        run_queue_put(thread1, false);
-    }
-
-    // return the initial one
-    return thread;
-}
 
 INTERRUPT static void lock_scheduler() {
     irq_spinlock_lock(&m_scheduler_lock);
@@ -257,258 +153,532 @@ INTERRUPT static void wake_cpu() {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Local run queue
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+typedef struct runq_head {
+    thread_t *first, **last;
+} runq_head_t;
 
-typedef struct local_run_queue {
-    _Atomic(uint32_t) head;
-    _Atomic(uint32_t) tail;
-    thread_t* queue[RUN_QUEUE_LEN];
-    _Atomic(thread_t*) next;
-} local_run_queue_t;
+typedef struct runq {
+    runq_head_t queues[64];
+    uint64_t bits;
+} runq_t;
 
-static local_run_queue_t* m_run_queues;
+typedef struct threadqueue_t {
+    spinlock_t lock;
+    runq_t realtime;
+    runq_t timeshare;
+    runq_t idle;
+    uint8_t idx, ridx;
+    int load;
+    int lowpri;
+    bool owepreempt;
+} threadqueue_t;
+
+#define SRQ_PREEMPTED 1
+#define SRQ_BORROWING 2
+
+
+#define	RQ_NQS		(64)		/* Number of run queues. */
+#define	RQ_PPQ		(4)		/* Priorities per queue. */
+
+#define	PRIO_MIN	-20
+#define	PRIO_MAX	20
+#define	SCHED_PRI_NRESV		(PRIO_MAX - PRIO_MIN)
+#define	SCHED_PRI_NHALF		(SCHED_PRI_NRESV / 2)
+#define	SCHED_PRI_MIN		(PRI_MIN_BATCH + SCHED_PRI_NHALF)
+
+#define	PRI_MIN_TIMESHARE	(88)
+#define	PRI_MAX_TIMESHARE	(PRI_MIN_IDLE - 1)
+#define	PRI_MIN_IDLE		(224)
+
+#define	PRI_TIMESHARE_RANGE	(PRI_MAX_TIMESHARE - PRI_MIN_TIMESHARE + 1)
+#define	PRI_INTERACT_RANGE	((PRI_TIMESHARE_RANGE - SCHED_PRI_NRESV) / 2)
+#define	PRI_BATCH_RANGE		(PRI_TIMESHARE_RANGE - PRI_INTERACT_RANGE)
+
+#define	PRI_MIN_INTERACT	PRI_MIN_TIMESHARE
+#define	PRI_MAX_INTERACT	(PRI_MIN_TIMESHARE + PRI_INTERACT_RANGE - 1)
+#define	PRI_MIN_BATCH		(PRI_MIN_TIMESHARE + PRI_INTERACT_RANGE)
+#define	PRI_MAX_BATCH		PRI_MAX_TIMESHARE
+
+#define	SCHED_INTERACT_MAX	(100)
+#define	SCHED_INTERACT_HALF	(SCHED_INTERACT_MAX / 2)
+#define	SCHED_INTERACT_THRESH	(30)
+#define	SCHED_INTERACT	SCHED_INTERACT_THRESH
+#define	PRI_MAX			(255)		/* Lowest priority. */
+
+#define	PRI_MAX_IDLE		(PRI_MAX)
+
+static threadqueue_t* m_run_queues;
 
 __attribute__((const))
-INTERRUPT static local_run_queue_t* get_run_queue() {
+INTERRUPT static threadqueue_t* get_run_queue() {
     return &m_run_queues[get_cpu_id()];
 }
 
 __attribute__((const))
-INTERRUPT static local_run_queue_t* get_run_queue_of(int cpu_id) {
+INTERRUPT static threadqueue_t* get_run_queue_of(int cpu_id) {
     ASSERT(cpu_id < get_cpu_count());
     return &m_run_queues[cpu_id];
 }
 
-/**
- * Slow path for run queue, called when we failed to add items to the local run queue,
- * so we are going to put away some of our threads to the global run queue instead
- *
- * @param thread            [IN] The thread we want to run
- * @param head              [IN] The head when we tried to insert
- * @param tail              [IN] The tail when we tried to insert
- *
- * @param run_queue_head    [IN] Absolute address of the run_queue, already resolved
- *                               by caller so pass it to us instead of needing to recalculate it
+#define TDS_RUNQ 1
+
+#define	TD_SET_STATE(td, s)	atomic_store((_Atomic(uint32_t)*) (&(td)->state), s)
+#define	TD_SET_RUNQ(td)		TD_SET_STATE(td, TDS_RUNQ)
+
+bool runq_head_empty(runq_head_t* rqh) {
+    return rqh->first == NULL;
+}
+
+void runq_head_insh(runq_head_t* rqh, thread_t* td) {
+    if ((td->next_in_bucket = rqh->first) != NULL) {
+        rqh->first->prev_in_bucket = &td->next_in_bucket;
+    } else {
+        rqh->last = &td->next_in_bucket;
+    }
+    rqh->first = td;
+    td->prev_in_bucket = &rqh->first;
+}
+void runq_head_inst(runq_head_t* rqh, thread_t* td) {
+    td->next_in_bucket = NULL;
+    td->prev_in_bucket = rqh->last;
+    *rqh->last = td;
+    rqh->last = &td->next_in_bucket;
+}
+void runq_head_remove(runq_head_t* rqh, thread_t* td) {
+    if (td->next_in_bucket != NULL) {
+        td->next_in_bucket->prev_in_bucket = td->prev_in_bucket;
+    } else {
+        rqh->last = td->prev_in_bucket;
+    }
+    *td->prev_in_bucket = td->next_in_bucket;
+}
+
+static void runq_clrbit(runq_t *rq, int pri)
+{
+	rq->bits &= ~(1ul << pri);
+}
+
+static void runq_setbit(runq_t *rq, int pri)
+{
+	rq->bits |= (1ul << pri);
+}
+
+
+void runq_add(runq_t* rq, thread_t* td, int flags)
+{
+	int pri = td->priority / RQ_PPQ;
+	td->rqindex = pri;
+	runq_setbit(rq, pri);
+	runq_head_t* rqh = &rq->queues[pri];
+	//CTR4(KTR_RUNQ, "runq_add: td=%p pri=%d %d rqh=%p",
+	//    td, td->td_priority, pri, rqh);
+	if (flags & SRQ_PREEMPTED) {
+		runq_head_insh(rqh, td);
+	} else {
+		runq_head_inst(rqh, td);
+	}
+}
+
+void runq_add_pri(runq_t* rq, thread_t* td, uint8_t pri, int flags)
+{
+	ASSERT(pri < RQ_NQS); // ("runq_add_pri: %d out of range", pri));
+	td->rqindex = pri;
+	runq_setbit(rq, pri);
+	runq_head_t* rqh = &rq->queues[pri];
+	//CTR4(KTR_RUNQ, "runq_add_pri: td=%p pri=%d idx=%d rqh=%p",
+	//    td, td->td_priority, pri, rqh);
+	if (flags & SRQ_PREEMPTED) {
+		runq_head_insh(rqh, td);
+	} else {
+		runq_head_inst(rqh, td);
+	}
+}
+
+
+void runq_remove_idx(runq_t* rq, thread_t* td, uint8_t *idx)
+{
+	//KASSERT(td->td_flags & TDF_INMEM,
+	//	("runq_remove_idx: thread swapped out"));
+	uint8_t pri = td->rqindex;
+    ASSERT(pri < RQ_NQS); // , ("runq_remove_idx: Invalid index %d\n", pri));
+	runq_head_t* rqh = &rq->queues[pri];
+	//CTR4(KTR_RUNQ, "runq_remove_idx: td=%p, pri=%d %d rqh=%p",
+	//    td, td->td_priority, pri, rqh);
+	runq_head_remove(rqh, td);
+	if (runq_head_empty(rqh)) {
+		//CTR0(KTR_RUNQ, "runq_remove_idx: empty");
+		runq_clrbit(rq, pri);
+		if (idx != NULL && *idx == pri)
+			*idx = (pri + 1) % RQ_NQS;
+	}
+}
+
+void runq_remove(struct runq *rq, struct thread *td)
+{
+	runq_remove_idx(rq, td, NULL);
+}
+
+
+static void tdq_runq_add(threadqueue_t* rq, thread_t* td, int flags)
+{
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	//THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+
+	uint8_t pri = td->priority;
+	TD_SET_RUNQ(td);
+
+	if (pri < PRI_MIN_BATCH) {
+		td->rq = &rq->realtime;
+	} else if (pri <= PRI_MAX_BATCH) {
+		td->rq = &rq->timeshare;
+		/*
+		 * This queue contains only priorities between MIN and MAX
+		 * batch.  Use the whole queue to represent these values.
+		 */
+        ASSERT(pri <= PRI_MAX_BATCH && pri >= PRI_MIN_BATCH); //	("Invalid priority %d on timeshare runq", pri));
+		if ((flags & (SRQ_BORROWING|SRQ_PREEMPTED)) == 0) {
+			pri = RQ_NQS * (pri - PRI_MIN_BATCH) / PRI_BATCH_RANGE;
+			pri = (pri + rq->idx) % RQ_NQS;
+			/*
+			 * This effectively shortens the queue by one so we
+			 * can have a one slot difference between idx and
+			 * ridx while we wait for threads to drain.
+			 */
+			if (rq->ridx != rq->idx && pri == rq->ridx)
+				pri = (uint8_t)(pri - 1) % RQ_NQS;
+		} else {
+			pri = rq->ridx;
+        }
+
+        runq_add_pri(td->rq, td, pri, flags);
+		return;
+	} else {
+		td->rq = &rq->idle;
+    }
+    runq_add(td->rq, td, flags);
+}
+
+static int
+runq_findbit(runq_t *rq)
+{
+	// TODO: optimize
+    for (int i = 0; i < 64; i++) {
+        int idx = i;
+        if (rq->bits & (1ul << idx)) return idx;
+    }
+    return -1;
+}
+
+static int
+runq_findbit_from(runq_t *rq, uint8_t pri)
+{
+	// TODO: optimize
+    for (int i = 0; i < 64; i++) {
+        int idx = (i + pri) % 64;
+        if (rq->bits & (1ul << idx)) return idx;
+    }
+    return -1;
+}
+
+
+thread_t*
+runq_choose(runq_t *rq)
+{
+	int pri;
+	while ((pri = runq_findbit(rq)) != -1) {
+		runq_head_t* rqh = &rq->queues[pri];
+		thread_t* td = rqh->first;
+		ASSERT(td != NULL); // ("runq_choose: no thread on busy queue"));
+		//CTR3(KTR_RUNQ,
+		//    "runq_choose: pri=%d thread=%p rqh=%p", pri, td, rqh);
+		return (td);
+	}
+	//CTR1(KTR_RUNQ, "runq_choose: idlethread pri=%d", pri);
+
+	return (NULL);
+}
+
+thread_t*
+runq_choose_from(runq_t *rq, uint8_t idx)
+{
+	int pri;
+	if ((pri = runq_findbit_from(rq, idx)) != -1) {
+		runq_head_t* rqh = &rq->queues[pri];
+		thread_t* td = rqh->first;
+		ASSERT(td != NULL); //, ("runq_choose: no thread on busy queue"));
+		//CTR4(KTR_RUNQ,
+		//    "runq_choose_from: pri=%d thread=%p idx=%d rqh=%p",
+		//    pri, td, td->td_rqindex, rqh);
+		return (td);
+	}
+	//CTR1(KTR_RUNQ, "runq_choose_from: idlethread pri=%d", pri);
+
+	return (NULL);
+}
+
+static void tdq_runq_rem(threadqueue_t* rq, thread_t* td)
+{
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	//THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+	ASSERT(td->rq != NULL);
+	//    ("tdq_runq_remove: thread %p null ts_runq", td));
+	
+    /*if (ts->ts_flags & TSF_XFERABLE) {
+		tdq->tdq_transferable--;
+		ts->ts_flags &= ~TSF_XFERABLE;
+	}*/
+	if (td->rq == &rq->timeshare) {
+		if (rq->idx != rq->ridx)
+			runq_remove_idx(td->rq, td, &rq->ridx);
+		else
+			runq_remove_idx(td->rq, td, NULL);
+	} else
+		runq_remove(td->rq, td);
+}
+
+
+/*
+ * Load is maintained for all threads RUNNING and ON_RUNQ.  Add the load
+ * for this thread to the referenced thread queue.
  */
-INTERRUPT static bool run_queue_put_slow(thread_t* thread, uint32_t head, uint32_t tail) {
-    local_run_queue_t* rq = get_run_queue();
-    thread_t* batch[RUN_QUEUE_LEN / 2 + 1];
+static void tdq_load_add(threadqueue_t* rq, thread_t* td)
+{
 
-    // First grab a batch from the local queue
-    int32_t n = tail - head;
-    n = n / 2;
-
-    for (int i = 0; i < n; i++) {
-        batch[i] = rq->queue[(head + i) % RUN_QUEUE_LEN];
-    }
-
-    if (!atomic_compare_exchange_strong_explicit(&rq->head, &head, head + n, memory_order_release, memory_order_relaxed)) {
-        return false;
-    }
-
-    batch[n] = thread;
-
-    // Link the threads
-    for (int i = 0; i < n; i++) {
-        batch[i]->sched_link = batch[i + 1];
-    }
-
-    thread_queue_t queue = {
-        .head = batch[0],
-        .tail = batch[n]
-    };
-
-    // now put the batch on the global queue
-    lock_scheduler();
-    global_run_queue_put_batch(&queue, n + 1);
-    unlock_scheduler();
-
-    return true;
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	//THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+	rq->load++;
+	//if ((td->flags & TDF_NOLOAD) == 0)
+	//	rq->sysload++;
+	//KTR_COUNTER0(KTR_SCHED, "load", tdq->tdq_loadname, tdq->tdq_load);
+	//SDT_PROBE2(sched, , , load__change, (int)TDQ_ID(tdq), tdq->tdq_load);
 }
 
-/**
- * Tried to put a thread on the local runnable queue.
- *
- * If the local run queue is full the thread will be put to the global queue.
- *
- * @remark
- * If next is true, this will always be put in the current run queue next, kicking out
- * whatever that was in there, potentially putting it in the global run queue
- *
- * @param thread        [IN] The thread to queue
- * @param next          [IN] Should the thread be put in the head or tail of the runnable queue
+/*
+ * Remove the load from a thread that is transitioning to a sleep state or
+ * exiting.
  */
-INTERRUPT static void run_queue_put(thread_t* thread, bool next) {
-    local_run_queue_t* rq = get_run_queue();
+static void
+tdq_load_rem(threadqueue_t* rq, thread_t* td)
+{
 
-    // we want this thread to run next
-    if (next) {
-        // try to change the old thread to the new one
-        thread_t* old_next = rq->next;
-        while (!atomic_compare_exchange_strong(&rq->next, &old_next, thread));
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	//THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+	//KASSERT(tdq->tdq_load != 0,
+	//    ("tdq_load_rem: Removing with 0 load on queue %d", TDQ_ID(tdq)));
 
-        // no thread was supposed to run next, just return
-        if (old_next == NULL) {
-            return;
-        }
-
-        // Kick the old next to the regular run queue, continue
-        // with normal logic
-        thread = old_next;
-    }
-
-    // we need the absolute addresses for these for atomic accesses
-    uint32_t head, tail;
-
-    do {
-        // start with a fast path
-        head = atomic_load_explicit(&rq->head, memory_order_acquire);
-        tail = rq->tail;
-        if (tail - head < RUN_QUEUE_LEN) {
-            rq->queue[tail % RUN_QUEUE_LEN] = thread;
-            atomic_store_explicit(&rq->tail, tail + 1, memory_order_release);
-            return;
-        }
-
-        // if we failed with fast path try the slow path
-        if (run_queue_put_slow(thread, head, tail)) {
-            return;
-        }
-
-        // if failed both try again
-    } while (true);
+	rq->load--;
+	//if ((td->td_flags & TDF_NOLOAD) == 0)
+	//	tdq->tdq_sysload--;
+	//KTR_COUNTER0(KTR_SCHED, "load", tdq->tdq_loadname, tdq->tdq_load);
+	//SDT_PROBE2(sched, , , load__change, (int)TDQ_ID(tdq), tdq->tdq_load);
 }
 
-/**
- * Get a thread from the local runnable queue.
- */
-INTERRUPT static thread_t* run_queue_get() {
-    local_run_queue_t* rq = get_run_queue();
+static int
+tdq_add(threadqueue_t* rq, thread_t* td, int flags)
+{
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	//THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+	//KASSERT((td->td_inhibitors == 0),
+	//    ("sched_add: trying to run inhibited thread"));
+	//KASSERT((TD_CAN_RUN(td) || TD_IS_RUNNING(td)),
+	//    ("sched_add: bad thread state"));
+	//KASSERT(td->td_flags & TDF_INMEM,
+	//    ("sched_add: thread swapped out"));
 
-    // If there's a run next, it's the next thread to run.
-    thread_t* next = rq->next;
-
-    // If the run next is not NULL and the CAS fails, it could only have been stolen by another cpu,
-    // because other cpus can race to set run next to NULL, but only the current cpu can set it.
-    // Hence, there's no need to retry this CAS if it falls.
-    thread_t* temp_next = next;
-    if (next != NULL && atomic_compare_exchange_strong(&rq->next, &temp_next, NULL)) {
-        return next;
-    }
-
-    while (true) {
-        uint32_t head = atomic_load_explicit(&rq->head, memory_order_acquire);
-        uint32_t tail = rq->tail;
-        if (tail == head) {
-            return NULL;
-        }
-        thread_t* thread = rq->queue[head % RUN_QUEUE_LEN];
-        if (atomic_compare_exchange_strong_explicit(&rq->head, &head, head + 1, memory_order_release, memory_order_relaxed)) {
-            return thread;
-        }
-    }
+	int lowpri = rq->lowpri;
+	if (td->priority < lowpri)
+		rq->lowpri = td->priority;
+	tdq_runq_add(rq, td, flags);
+	tdq_load_add(rq, td);
+	return lowpri;
 }
 
-INTERRUPT static bool run_queue_empty(int cpu) {
-    // Defend against a race where
-    //  1) cpu has thread in run_next but run_queue_head == run_queue_tail
-    //  2) run_queue_put on cpu kicks thread to the run_queue
-    //  3) run_queue_get on cpu empties run_queue_next.
-    // Simply observing that run_queue_head == run_queue_tail and then observing
-    // that run_next == nil does not mean the queue is empty.
-    local_run_queue_t* rq = get_run_queue_of(cpu);
-    while (true) {
-        uint32_t head = atomic_load(&rq->head);
-        uint32_t tail = atomic_load(&rq->tail);
-        thread_t* next = atomic_load(&rq->next);
-        if (tail == atomic_load(&rq->tail)) {
-            return head == tail && next == NULL;
-        }
+static int
+sched_interact_score(struct thread *td)
+{
+	int div;
+
+	/*
+	 * The score is only needed if this is likely to be an interactive
+	 * task.  Don't go through the expense of computing it if there's
+	 * no chance.
+	 */
+	if (SCHED_INTERACT <= SCHED_INTERACT_HALF &&
+		td->runtime >= td->sleeptime)
+			return SCHED_INTERACT_HALF;
+
+	if (td->runtime > td->sleeptime) {
+		div = MAX(1, td->runtime / SCHED_INTERACT_HALF);
+		return (SCHED_INTERACT_HALF +
+		    (SCHED_INTERACT_HALF - (td->sleeptime / div)));
+	}
+	if (td->sleeptime > td->runtime) {
+		div = MAX(1, td->sleeptime / SCHED_INTERACT_HALF);
+		return (td->runtime / div);
+	}
+	/* runtime == sleeptime */
+	if (td->runtime)
+		return (SCHED_INTERACT_HALF);
+
+	/*
+	 * This can happen if sleeptime and runtime are 0.
+	 */
+	return (0);
+
+}
+void sched_priority(thread_t* td) {
+    // TODO: add nice
+    uint8_t score = MAX(0, sched_interact_score(td));
+    uint8_t pri;
+    if (score < SCHED_INTERACT) {
+        pri = PRI_MIN_INTERACT;
+        pri += (PRI_MAX_INTERACT - PRI_MIN_INTERACT + 1) * score / SCHED_INTERACT;
+        ASSERT(pri >= PRI_MIN_INTERACT && pri <= PRI_MAX_INTERACT);
+    } else {
+        pri = SCHED_PRI_MIN;
+        // TODO: timeshare priority
+        ASSERT(pri >= PRI_MIN_BATCH && pri <= PRI_MAX_BATCH);
     }
+    //sched_user_prio(td, pri);
 }
 
-/**
- * Grab items from the run queue of another cpu
- *
- * @param cpu_id            [IN] The other cpu to take from
- * @param steal_run_next    [IN] Should we attempt to take the next item
- */
-INTERRUPT static uint32_t run_queue_grab(int cpu_id, thread_t** batch, uint32_t batchHead, bool steal_run_next) {
-    local_run_queue_t* orq = get_run_queue_of(cpu_id);
 
-    while (true) {
-        // get the head and tail
-        uint32_t h = atomic_load_explicit(&orq->head, memory_order_acquire); // load-acquire, synchronize with other consumers
-        uint32_t t = atomic_load_explicit(&orq->tail, memory_order_acquire); // load-acquire, synchronize with the producer
-
-        // calculate the amount to take
-        uint32_t n = t - h;
-        n = n - n / 2;
-
-        // if there is nothing to take try to take the
-        // next thread to run
-        if (n == 0) {
-            if (steal_run_next) {
-                // Try to steal from run_queue_next
-                thread_t* next = orq->next;
-                if (next != NULL) {
-                    if (!atomic_compare_exchange_strong(&orq->next, &next, NULL)) {
-                        continue;
-                    }
-                    batch[batchHead % RUN_QUEUE_LEN] = next;
-                    return 1;
-                }
-            }
-            return 0;
-        }
-
-        // read inconsistent h and t
-        if (n > RUN_QUEUE_LEN / 2) {
-            continue;
-        }
-
-        // take the items we want
-        for (int i = 0; i < n; i++) {
-            thread_t* thread = orq->queue[(h + i) % RUN_QUEUE_LEN];
-            batch[(batchHead + i) % RUN_QUEUE_LEN] = thread;
-        }
-
-        // Try and increment the head since we taken from the queue
-        if (atomic_compare_exchange_strong_explicit(&orq->head, &h, h + n, memory_order_release, memory_order_relaxed)) {
-            return n;
-        }
-    }
+static int
+sched_pickcpu(struct thread *td, int flags)
+{
+	return 0;
 }
 
-/**
- * Steal from the run queue of another cpu
- *
- * @param cpu_id            [IN] The cpu to steal from
- * @param steal_run_next    [IN] Should we steal from the next thread
- */
-INTERRUPT static thread_t* run_queue_steal(int cpu_id, bool steal_run_next) {
-    local_run_queue_t* rq = get_run_queue();
+static threadqueue_t *
+sched_setcpu(struct thread *td, int cpu, int flags)
+{
 
-    uint32_t t = rq->tail;
-    uint32_t n = run_queue_grab(cpu_id, rq->queue, t, steal_run_next);
-    if (n == 0) {
-        // we failed to grab
-        return NULL;
-    }
-    n--;
+	//runqueue_t* rq;
+	//struct mtx *mtx;
 
-    // take the first thread
-    thread_t* thread = rq->queue[(t + n) % RUN_QUEUE_LEN];
-    if (n == 0) {
-        // we only took a single thread, no need to queue it
-        return thread;
-    }
+	//THREAD_LOCK_ASSERT(td, MA_OWNED);
+	threadqueue_t* rq = get_run_queue_of(cpu);
+	td->cpu = cpu;
+	/*
+	 * If the lock matches just return the queue.
+	 */
+	if (td->lock == &rq->lock) {
+		//KASSERT((flags & SRQ_HOLD) == 0,
+		//    ("sched_setcpu: Invalid lock for SRQ_HOLD"));
+		return rq;
+	}
 
-    uint32_t h = atomic_load_explicit(&rq->head, memory_order_acquire);
-    ASSERT(t - h + n < RUN_QUEUE_LEN);
-    atomic_store_explicit(&rq->tail, t + n, memory_order_release);
 
-    return thread;
+    // TODO:
+    // FIXME:
+	return rq;
+    /*
+	 * The hard case, migration, we need to block the thread first to
+	 * prevent order reversals with other cpus locks.
+	 */
+	/*spinlock_enter();
+	mtx = thread_lock_block(td);
+	if ((flags & SRQ_HOLD) == 0)
+		mtx_unlock_spin(mtx);
+	TDQ_LOCK(tdq);
+	thread_lock_unblock(td, TDQ_LOCKPTR(tdq));
+	spinlock_exit();
+	return (tdq);*/
 }
+
+static inline int
+sched_shouldpreempt(int pri, int cpri, int remote)
+{
+	if (pri >= cpri)
+		return 0;
+	return 1;
+}
+
+static void
+tdq_notify(threadqueue_t *rq, int lowpri)
+{
+	int cpu;
+
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	ASSERT(rq->lowpri <= lowpri);
+	//    ("tdq_notify: lowpri %d > tdq_lowpri %d", lowpri, tdq->tdq_lowpri));
+
+	if (rq->owepreempt)
+		return;
+
+	/*
+	 * Check to see if the newly added thread should preempt the one
+	 * currently running.
+	 */
+	if (!sched_shouldpreempt(rq->lowpri, lowpri, 1))
+		return;
+
+	/*
+	 * Make sure that our caller's earlier update to tdq_load is
+	 * globally visible before we read tdq_cpu_idle.  Idle thread
+	 * accesses both of them without locks, and the order is important.
+	 */
+	atomic_thread_fence(memory_order_seq_cst);
+
+	cpu = rq->idx;
+
+	/*
+	 * The run queues have been updated, so any switch on the remote CPU
+	 * will satisfy the preemption request.
+	 */
+	rq->owepreempt = 1;
+
+    // TODO: wakeup
+	lapic_send_ipi(IRQ_PREEMPT, cpu);
+}
+
+
+void
+sched_add(thread_t *td, int flags)
+{
+	int cpu, lowpri;
+
+	//KTR_STATE2(KTR_SCHED, "thread", sched_tdname(td), "runq add",
+	//    "prio:%d", td->td_priority, KTR_ATTR_LINKED,
+	//    sched_tdname(curthread));
+	//KTR_POINT1(KTR_SCHED, "thread", sched_tdname(curthread), "wokeup",
+	//    KTR_ATTR_LINKED, sched_tdname(td));
+	//SDT_PROBE4(sched, , , enqueue, td, td->td_proc, NULL, 
+	//    flags & SRQ_PREEMPTED);
+	
+    //THREAD_LOCK_ASSERT(td, MA_OWNED);
+
+	/*
+	 * Recalculate the priority before we select the target cpu or
+	 * run-queue.
+	 */
+	sched_priority(td);
+	/*
+	 * Pick the destination cpu and if it isn't ours transfer to the
+	 * target cpu.
+	 */
+	cpu = sched_pickcpu(td, flags);
+	threadqueue_t* tdq = sched_setcpu(td, cpu, flags);
+	lowpri = tdq_add(tdq, td, flags);
+	if (cpu != get_cpu_id())
+		tdq_notify(tdq, lowpri);
+	
+    //else if (!(flags & SRQ_YIELDING))
+	//	sched_setpreempt(td->td_priority);
+//
+	//if (!(flags & SRQ_HOLDTD))
+	//	thread_unlock(td);
+}
+
+
+// calculate an interactivity score (0 = most interactive, SCORE_RANGE_MAX = least interactive)
+// it uses a rough approximation of sigmoid function (except this one touches the origin!)
+// the use of such a function compresses the extremes
+// so a process that runs 1% of the time is put in the same bucket as one that runs 0.1%,
+// as the differences at the very high and very low end don't matter as much  
+
+
+
 
 bool scheduler_can_spin(int i) {
     // don't spin anymore...
@@ -522,10 +692,10 @@ bool scheduler_can_spin(int i) {
     if (m_idle_cpus_count == 0) return false;
 
     // we have stuff to run on our local run queue
-    if (!run_queue_empty(get_cpu_id())) return false;
-
+    //if (!run_(get_cpu_id())) return false;
+    return false;
     // we can spin a little :)
-    return true;
+    //return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -543,7 +713,10 @@ void scheduler_ready_thread(thread_t* thread) {
     cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
 
     // Put in the run queue
-    run_queue_put(thread, true);
+    int flags = 0;
+    bool is_still_in_timeslice = (microtime() - thread->current_run_start) < (10 * 1000);
+    if (is_still_in_timeslice) flags |= SRQ_PREEMPTED; 
+    sched_add(thread, flags);
 
     // in case someone can steal
     wake_cpu();
@@ -764,54 +937,13 @@ static void save_current_thread(interrupt_context_t* ctx, bool park) {
             cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
 
             // put in the local run queue
-            run_queue_put(current_thread, false);
+            sched_add(current_thread, 0);
         }
     } else {
         cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);
     }
 }
 
-INTERRUPT void scheduler_schedule_thread(interrupt_context_t* ctx, thread_t* thread) {
-    // consider it as non-preemptible if we are currently in a HLT
-    // after the interrupt finishes, the HLT will resume, and it will be
-    // popped off the runqueue
-    if (__readcr8() >= PRIORITY_NO_PREEMPT || m_waiting_for_irq) {
-        // we should not preempt in this context, so don't
-
-        thread->sched_link = NULL;
-
-        // Mark as runnable
-        ASSERT((get_thread_status(thread) & ~THREAD_SUSPEND) == THREAD_STATUS_WAITING);
-        cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
-
-        // Put in the run queue
-        run_queue_put(thread, true);
-
-    } else {
-        // we are in a preemptible context so we
-        // can schedule the thread right away
-
-        if (m_current_thread != NULL) {
-            // save the interrupted thread
-            save_current_thread(ctx, false);
-        } else {
-            // no thread running, meaning that the context we are
-            // destroying is the find_runnable context, so we need
-            // to restore the priority as well
-            __writecr8(PRIORITY_NORMAL);
-        }
-
-        // set the thread state as runnable as we prepare to run it
-        cas_thread_state(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
-
-        // we may come from PRIORITY_SCHEDULER_WAIT, so set it
-        // to a normal priority as we are running code now
-        __writecr8(PRIORITY_NORMAL);
-
-        // execute the new thread
-        execute(ctx, thread);
-    }
-}
 
 //----------------------------------------------------------------------------------------------------------------------
 // random order for randomizing work stealing
@@ -896,74 +1028,6 @@ void scheduler_wake_poller(int64_t when) {
     }
 }
 
-#define STEAL_TRIES 4
-
-static thread_t* steal_work(int64_t* now, int64_t* poll_until, bool* ran_timers) {
-    *ran_timers = false;
-
-    for (int i = 0; i < STEAL_TRIES; i++) {
-        // on the last round try to steal next
-        bool steal_next = i == STEAL_TRIES - 1;
-
-        for (random_enum_t e = random_order_start(fastrand()); !random_enum_done(&e); random_enum_next(&e)) {
-            // get the cpu to steal from
-            int cpu = random_enum_position(&e);
-            if (cpu == get_cpu_id()) {
-                continue;
-            }
-
-            //
-            // Steal timers from cpu. This call to check_timers is the only place
-            // where we might hld a lock on a different CPU's timers. We do this
-            // once on the last pass before checking run_next because stealing from
-            // the other CPU's run_next should be the last resort, so if there
-            // are timers to steal do that first.
-            //
-            // we only check timers on one of the stealing iterations because
-            // the time stored in now doesn't cahnge in this loop, and checking
-            // tge tuners for eacg CPU more than once with the same value of now
-            // is probably a waste of time.
-            //
-            if (steal_next && cpu_has_timers(cpu)) {
-                int64_t when = 0;
-                bool ran = false;
-                check_timers(cpu, now, &when, &ran);
-
-                if (when != 0 && (*poll_until == 0 || when < *poll_until)) {
-                    *poll_until = when;
-                }
-
-                if (ran) {
-                    // Running the timers may have made
-                    // an arbitrary number of threads ready
-                    // and added them to this CPU's local run queue.
-                    // That invalidates the assumption of run_queue_steal
-                    // that it always has room to add stolen threads. So check now
-                    // if there is a local thread to run.
-                    thread_t* thread = run_queue_get();
-                    if (thread != NULL) {
-                        return thread;
-                    }
-                    *ran_timers = true;
-                }
-            }
-
-            // Don't bother to attempt to steal if the cpu is in sleep
-            if (!mask_read(m_idle_cpus, cpu)) {
-                thread_t* thread = run_queue_steal(cpu, steal_next);
-                if (thread != NULL) {
-                    return thread;
-                }
-            }
-        }
-    }
-
-    // no threads found to steal. Regardless, running a timer may
-    // have made some threads ready that we missed. Indicate the next
-    // timer to wait for.
-    return NULL;
-}
-
 static void cpu_put_idle() {
     // clear if there are no timers
     update_cpu_timers_mask();
@@ -975,6 +1039,52 @@ static void cpu_wake_idle() {
     set_has_timers(get_cpu_id());
     mask_clear(m_idle_cpus, get_cpu_id());
     atomic_fetch_sub(&m_idle_cpus_count, 1);
+}
+
+static thread_t*
+tdq_choose(threadqueue_t* rq)
+{
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	thread_t* td = runq_choose(&rq->realtime);
+	if (td != NULL)
+		return (td);
+	td = runq_choose_from(&rq->timeshare, rq->ridx);
+	if (td != NULL) {
+		ASSERT(td->priority >= PRI_MIN_BATCH);
+		    //("tdq_choose: Invalid priority on timeshare queue %d",
+		    //td->priority));
+		return (td);
+	}
+	td = runq_choose(&rq->idle);
+	if (td != NULL) {
+		ASSERT(td->priority >= PRI_MIN_IDLE);
+		    //("tdq_choose: Invalid priority on idle queue %d",
+		    //td->td_priority));
+		return (td);
+	}
+
+	return (NULL);
+}
+
+
+// FIXME:
+thread_t*
+sched_choose(void)
+{
+	threadqueue_t* rq = get_run_queue();
+	//TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+	thread_t* td = tdq_choose(rq);
+	if (td != NULL) {
+		tdq_runq_rem(rq, td);
+		rq->lowpri = td->priority;
+	} else { 
+		rq->lowpri = PRI_MAX_IDLE;
+		return NULL;
+        // TODO:
+        //td = PCPU_GET(idlethread);
+	}
+	//rq->curthread = td;
+	return td;
 }
 
 
@@ -992,68 +1102,10 @@ static thread_t* find_runnable() {
 
         // TODO: try to schedule gc worker (do we care about doing it explicitly?)
 
-        // Check the global runnable queue once in a while to ensure fairness.
-        // Otherwise, two goroutines can completely occupy the local run queue
-        // by constantly respawning each other.
-        if ((m_scheduler_tick % 61) == 0 && m_global_run_queue_size > 0) {
-            lock_scheduler();
-            thread = global_run_queue_get(1);
-            unlock_scheduler();
-            if (thread != NULL) {
-                return thread;
-            }
-        }
-
-        // TODO: wake finalizers if needed (do we care about doing it explicitly?)
-
         // get from the local run queue
-        thread = run_queue_get();
+        thread = sched_choose();
         if (thread != NULL) {
             return thread;
-        }
-
-        // Try global run queue
-        lock_scheduler();
-        thread = global_run_queue_get(0);
-        unlock_scheduler();
-        if (thread != NULL) {
-            return thread;
-        }
-
-        // TODO: polling
-
-        //
-        // Steal work from other cpus.
-        //
-        // limit the number of spinning cpus to half the number of busy cpus.
-        // This is necessary to prevent excessive CPU consumption when
-        // cpu count > 1 but the kernel parallelism is low.
-        //
-        if (m_spinning || 2 * atomic_load(&m_number_spinning) < get_cpu_count() - atomic_load(&m_idle_cpus_count)) {
-            if (!m_spinning) {
-                m_spinning = true;
-                atomic_fetch_add(&m_number_spinning, 1);
-            }
-
-            // try to steal some work
-            bool new_work = false;
-            int64_t when = 0;
-            thread = steal_work(&now, &when, &new_work);
-            if (thread != NULL) {
-                // Successfully stole.
-                return thread;
-            }
-
-            if (new_work) {
-                // There may be new timer or GC work, restart
-                // to discover
-                continue;
-            }
-
-            if (when != 0 && (poll_until == 0 || when < poll_until)) {
-                // Earlier timer to wait for.
-                poll_until = when;
-            }
         }
 
         //
@@ -1062,13 +1114,6 @@ static thread_t* find_runnable() {
 
         // prepare to enter idle
         lock_scheduler();
-
-        // try to get global work one last time
-        if (m_global_run_queue_size != 0) {
-            thread = global_run_queue_get(0);
-            unlock_scheduler();
-            return thread;
-        }
 
         // we are now idle
         cpu_put_idle();
@@ -1080,24 +1125,6 @@ static thread_t* find_runnable() {
         if (m_spinning) {
             m_spinning = false;
             ASSERT (atomic_fetch_sub(&m_number_spinning, 1) > 0);
-
-            // Check all runqueues once again.
-            bool should_attempt_steal = false;
-            for (int cpu = 0; cpu < get_cpu_count(); cpu++) {
-                if (mask_read(m_idle_cpus, cpu) && !run_queue_empty(cpu)) {
-                    lock_scheduler();
-                    cpu_wake_idle();
-                    unlock_scheduler();
-                    should_attempt_steal = true;
-                    break;
-                }
-            }
-
-            if (should_attempt_steal) {
-                m_spinning = true;
-                atomic_fetch_add(&m_number_spinning, 1);
-                continue;
-            }
 
             //
             // check for timer creation or expiry concurrently with
@@ -1288,6 +1315,15 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t* ctx) {
     // save the current thread, don't park it
     save_current_thread(ctx, false);
 
+    // TODO: run the load balancer
+
+    // advance the insert index
+    threadqueue_t *rq = get_run_queue();
+    if (rq->idx == rq->ridx) {
+        rq->idx = (rq->idx + 1) % 16;
+        if (rq->timeshare.queues[rq->ridx].first == NULL) rq->ridx = rq->idx;
+    }
+
     // now schedule a new thread
     set_schedule_thread(ctx);
 }
@@ -1393,8 +1429,20 @@ err_t init_scheduler() {
     // set the last poll
     atomic_store(&m_last_poll, microtime());
 
-    m_run_queues = malloc(get_cpu_count() * sizeof(local_run_queue_t));
+    m_run_queues = malloc(get_cpu_count() * sizeof(threadqueue_t));
     CHECK(m_run_queues != NULL);
+    
+    // TODO: not rely on malloc zeroing
+    for (int i = 0; i < get_cpu_count(); i++) {
+        for (int j = 0; j < 64; j++) {
+            m_run_queues[i].realtime.queues[j].first = NULL;
+            m_run_queues[i].realtime.queues[j].last = &m_run_queues[i].realtime.queues[j].first;
+            m_run_queues[i].timeshare.queues[j].first = NULL;
+            m_run_queues[i].timeshare.queues[j].last = &m_run_queues[i].timeshare.queues[j].first;
+            m_run_queues[i].idle.queues[j].first = NULL;
+            m_run_queues[i].idle.queues[j].last = &m_run_queues[i].idle.queues[j].first;
+        }
+    }
 
     // and set the scheduler stack
     CHECK_AND_RETHROW(init_scheduler_per_core());

@@ -144,6 +144,31 @@ thread_status_t get_thread_status(thread_t* thread) {
     return atomic_load(&thread->status);
 }
 
+static void thread_update_times(thread_t* thread, int delta_runtime, int delta_sleeptime) {
+    thread->runtime += delta_runtime;
+    thread->sleeptime += delta_sleeptime;
+
+    int sum = thread->runtime + thread->sleeptime;
+    if (sum < SCHEDULER_SLIDING_WINDOW_MS) return;
+    if (sum > SCHEDULER_SLIDING_WINDOW_MS * 2) {
+        if (thread->runtime > thread->sleeptime) {
+            thread->runtime = SCHEDULER_SLIDING_WINDOW_MS;
+            thread->sleeptime = 1;
+        } else {
+            thread->runtime = 1;
+            thread->sleeptime = SCHEDULER_SLIDING_WINDOW_MS;
+        }
+        return;
+    }
+    if (sum > (SCHEDULER_SLIDING_WINDOW_MS / 5) * 6) {
+        thread->runtime /= 2;
+        thread->sleeptime /= 2;
+        return;
+    }
+    thread->runtime = (thread->runtime / 5) * 4;
+    thread->sleeptime = (thread->sleeptime / 5) * 4;
+}
+
 void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new) {
     // sanity
     ASSERT((old & THREAD_SUSPEND) == 0);
@@ -162,6 +187,23 @@ void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new
         for (int x = 0; x < 10 && thread->status != old; x++) {
             __builtin_ia32_pause();
         }
+    }
+    if (old == THREAD_STATUS_RUNNING) {
+        int diff = (microtime() - thread->current_run_start);
+        thread_update_times(thread, diff / 1000, 0);
+    } else if (old == THREAD_STATUS_WAITING) {
+        int diff = (microtime() - thread->current_sleep_start);
+        thread_update_times(thread, 0, diff / 1000);
+    }
+
+    if (new == THREAD_STATUS_RUNNING) {
+        thread->current_run_start = microtime();
+    } else if (new == THREAD_STATUS_WAITING) {
+        thread->current_sleep_start = microtime();
+    }
+
+    if (old == THREAD_STATUS_RUNNING && new == THREAD_STATUS_RUNNABLE) {
+        thread->current_run_end = microtime();
     }
 }
 

@@ -130,7 +130,6 @@ public class Terminal
             var pb = g.GetIntegerPlaneBounds(_cursorX, 0);
 
             // clear where the old character was
-;
             lock (_deferredList) _deferredList.Add(new Cell(ch, _cursorX, _currentLine, true));
         }
     }

@@ -187,6 +187,31 @@ typedef struct thread {
 
     // are we participating in a select and did someone win the race?
     _Atomic(uint32_t) select_done;
+
+    // microtime() of the start of the current run and sleep
+    // this accounts from when the tasl is marked runnable to when it starts sleeping
+    // (so that excludes the RUNNABLE->RUNNING) delay
+    // and likewise for the sleep, it only counts the voluntary sleep time (timers, waitables, semaphore/mutex)
+    // and not the time when the task was not running due to preemption  
+    long current_run_start;
+    long current_sleep_start;
+    long current_run_end;
+    
+    // the time spent where the process was runnable and in voluntary sleep
+    // only the last 5 seconds are kept, look at SCHEDULER_SLIDING_WINDOW_MS for an explanation
+    int runtime;
+    int sleeptime;
+    
+    uint8_t priority;
+    void* rq;
+    int rqindex;
+    uint32_t state;
+    int cpu;
+
+    spinlock_t* lock; // this points to a threadqueue lock
+    // intrusive linked list of threads in the same priority bucket
+    struct thread* next_in_bucket; 
+    struct thread** prev_in_bucket;
 } thread_t;
 
 struct waitable;
