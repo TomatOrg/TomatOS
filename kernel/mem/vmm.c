@@ -16,6 +16,7 @@
 #include "arch/intrin.h"
 #include "sync/irq_spinlock.h"
 #include "arch/idt.h"
+#include "thread/cpu_local.h"
 
 /**
  * The root physical address of the kernel phys table
@@ -31,6 +32,28 @@ static bool m_early_alloc = true;
  * The spinlock for the vmm
  */
 static irq_spinlock_t m_vmm_spinlock = INIT_IRQ_SPINLOCK();
+
+static CPU_LOCAL int m_depth = 0;
+
+static void lock_vmm() {
+    if (m_early_alloc)
+        return;
+
+    if (m_depth == 0) {
+        irq_spinlock_lock(&m_vmm_spinlock);
+    }
+
+    m_depth++;
+}
+
+static void unlock_vmm() {
+    if (m_early_alloc)
+        return;
+
+    if (--m_depth == 0) {
+        irq_spinlock_unlock(&m_vmm_spinlock);
+    }
+}
 
 /**
  * Get the name of the given stivale memory map entry type
@@ -226,9 +249,9 @@ INTERRUPT static void unmap_direct_page(uintptr_t pa) {
 }
 
 INTERRUPT void vmm_unmap_direct_page(uintptr_t pa) {
-    irq_spinlock_lock(&m_vmm_spinlock);
+    lock_vmm();
     unmap_direct_page(pa);
-    irq_spinlock_unlock(&m_vmm_spinlock);
+    unlock_vmm();
 }
 
 /**
@@ -258,7 +281,7 @@ INTERRUPT static uintptr_t vmm_alloc_page() {
     return new_phys;
 }
 
-INTERRUPT bool vmm_setup_level(void* pml_ptr, void* next_pml_ptr, size_t index) {
+INTERRUPT static bool vmm_setup_level(void* pml_ptr, void* next_pml_ptr, size_t index) {
     page_entry_t* pml = pml_ptr;
     page_entry_t* next_pml = next_pml_ptr;
 
@@ -359,19 +382,19 @@ cleanup:
 INTERRUPT err_t vmm_map(uintptr_t pa, void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
-    irq_spinlock_lock(&m_vmm_spinlock);
+    lock_vmm();
 
     CHECK_AND_RETHROW(do_map(pa, va, page_count, perms));
 
 cleanup:
-    irq_spinlock_unlock(&m_vmm_spinlock);
+    unlock_vmm();
     return err;
 }
 
 INTERRUPT err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
     err_t err = NO_ERROR;
 
-    irq_spinlock_lock(&m_vmm_spinlock);
+    lock_vmm();
 
     // large page is not valid on this, you will have to
     // unmap and map again with large page
@@ -426,7 +449,7 @@ INTERRUPT err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
 
 cleanup:
 
-    irq_spinlock_unlock(&m_vmm_spinlock);
+    unlock_vmm();
 
     return err;
 }
@@ -437,7 +460,7 @@ INTERRUPT err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms) {
 
     size_t page_size = (perms & MAP_LARGE) ? SIZE_2MB : PAGE_SIZE;
 
-    irq_spinlock_lock(&m_vmm_spinlock);
+    lock_vmm();
 
     CHECK(((uintptr_t)va % page_size) == 0);
 
@@ -449,7 +472,7 @@ INTERRUPT err_t vmm_alloc(void* va, size_t page_count, map_perm_t perms) {
 
 cleanup:
     // TODO: proper cleanup of this function
-    irq_spinlock_unlock(&m_vmm_spinlock);
+    unlock_vmm();
 
     return err;
 }
@@ -459,7 +482,7 @@ INTERRUPT bool vmm_is_mapped(uintptr_t ptr, size_t size) {
 
     size = ALIGN_UP(size, SIZE_4KB);
 
-    irq_spinlock_lock(&m_vmm_spinlock);
+    lock_vmm();
 
     // simply iterate all the indexes and free them
     size_t page_size = 0;
@@ -498,23 +521,9 @@ INTERRUPT bool vmm_is_mapped(uintptr_t ptr, size_t size) {
     fully_mapped = true;
 
 cleanup:
-    irq_spinlock_unlock(&m_vmm_spinlock);
+    unlock_vmm();
 
     return fully_mapped;
-
-    // make sure it is present
-    if (!PAGE_TABLE_PML4[PML4_INDEX(ptr)].present) return false;
-    if (!PAGE_TABLE_PML3[PML3_INDEX(ptr)].present) return false;
-
-    // 2mb page
-    size_t pml2_index = PML2_INDEX(ptr);
-    page_entry_2mb_t entry = PAGE_TABLE_PML2[pml2_index];
-    if (!entry.present) return false;
-    if (entry.huge_page) return true;
-
-    // 4kb page
-    if (!PAGE_TABLE_PML1[PML1_INDEX(ptr)].present) return false;
-    return true;
 }
 
 INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present) {
