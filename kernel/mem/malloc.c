@@ -9,11 +9,11 @@
 
 // kernel heap
 static tlsf_t* m_tlsf;
-static mutex_t m_tlsf_mutex = INIT_MUTEX();
+static spinlock_t m_tlsf_lock = INIT_SPINLOCK();
 
 // low memory heap
 static tlsf_t* m_lowmem_tlsf;
-static mutex_t m_lowmem_tlsf_mutex = INIT_MUTEX();
+static spinlock_t m_lowmem_tlsf_lock = INIT_SPINLOCK();
 
 err_t init_malloc() {
     err_t err = NO_ERROR;
@@ -52,14 +52,14 @@ cleanup:
 
 void check_malloc() {
     if (m_tlsf != NULL) {
-        mutex_lock(&m_tlsf_mutex);
+        spinlock_lock(&m_tlsf_lock);
         tlsf_check(m_tlsf);
-        mutex_unlock(&m_tlsf_mutex);
+        spinlock_unlock(&m_tlsf_lock);
     }
 }
 
 void* malloc(size_t size) {
-    mutex_lock(&m_tlsf_mutex);
+    spinlock_lock(&m_tlsf_lock);
 
     void* ptr = tlsf_memalign(m_tlsf, 16, size);
 
@@ -68,7 +68,7 @@ void* malloc(size_t size) {
     tlsf_track_free(ptr, 0);
 #endif
 
-    mutex_unlock(&m_tlsf_mutex);
+    spinlock_unlock(&m_tlsf_lock);
 
     if (ptr != NULL) {
         memset(ptr, 0, size);
@@ -82,7 +82,7 @@ void* malloc_aligned(size_t size, size_t alignment) {
         alignment = 16;
     }
 
-    mutex_lock(&m_tlsf_mutex);
+    spinlock_lock(&m_tlsf_lock);
 
     void* ptr = tlsf_memalign(m_tlsf, alignment, size);
 
@@ -91,7 +91,7 @@ void* malloc_aligned(size_t size, size_t alignment) {
     tlsf_track_free(ptr, 0);
 #endif
 
-    mutex_unlock(&m_tlsf_mutex);
+    spinlock_unlock(&m_tlsf_lock);
 
     if (ptr != NULL) {
         memset(ptr, 0, size);
@@ -100,7 +100,7 @@ void* malloc_aligned(size_t size, size_t alignment) {
 }
 
 void* realloc(void* ptr, size_t size) {
-    mutex_lock(&m_tlsf_mutex);
+    spinlock_lock(&m_tlsf_lock);
 
     ptr = tlsf_realloc(m_tlsf, ptr, size);
 
@@ -111,22 +111,22 @@ void* realloc(void* ptr, size_t size) {
     }
 #endif
 
-    mutex_unlock(&m_tlsf_mutex);
+    spinlock_unlock(&m_tlsf_lock);
 
     return ptr;
 }
 
 void free(void* ptr) {
-    mutex_lock(&m_tlsf_mutex);
+    spinlock_lock(&m_tlsf_lock);
 
     if (ptr) tlsf_track_free(ptr, __builtin_return_address(0));
     tlsf_free(m_tlsf, ptr);
 
-    mutex_unlock(&m_tlsf_mutex);
+    spinlock_unlock(&m_tlsf_lock);
 }
 
 void* lowmem_malloc(size_t size) {
-    mutex_lock(&m_lowmem_tlsf_mutex);
+    spinlock_lock(&m_lowmem_tlsf_lock);
 
     void* ptr = tlsf_memalign(m_lowmem_tlsf, 16, size);
 
@@ -135,7 +135,7 @@ void* lowmem_malloc(size_t size) {
     tlsf_track_free(ptr, 0);
 #endif
 
-    mutex_unlock(&m_lowmem_tlsf_mutex);
+    spinlock_unlock(&m_lowmem_tlsf_lock);
 
     if (ptr != NULL) {
         memset(ptr, 0, size);
@@ -145,10 +145,10 @@ void* lowmem_malloc(size_t size) {
 }
 
 void lowmem_free(void* ptr) {
-    mutex_lock(&m_lowmem_tlsf_mutex);
+    spinlock_lock(&m_lowmem_tlsf_lock);
 
     if (ptr) tlsf_track_free(ptr, __builtin_return_address(0));
     tlsf_free(m_lowmem_tlsf, ptr);
 
-    mutex_unlock(&m_lowmem_tlsf_mutex);
+    spinlock_unlock(&m_lowmem_tlsf_lock);
 }
