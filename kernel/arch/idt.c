@@ -354,6 +354,10 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     // stack trace
     ERROR("Stack trace:");
     size_t* base_ptr = (size_t*)ctx->rbp;
+
+    int depth = 0;
+    uintptr_t last_ret = 0;
+
     while (true) {
         if (!vmm_is_mapped((uintptr_t)base_ptr, 1)) {
             ERROR("\t%p is unmapped!", base_ptr);
@@ -366,8 +370,19 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
             break;
         }
 
-        debug_format_symbol(ret_addr, buffer, sizeof(buffer));
-        TRACE("\t> %s (0x%p)", buffer, ret_addr);
+        if (last_ret == ret_addr) {
+            depth++;
+        } else {
+            if (depth > 1) {
+                TRACE("\t  ... repeating %d times", depth - 1);
+            }
+
+            last_ret = ret_addr;
+            depth = 1;
+
+            debug_format_symbol(ret_addr, buffer, sizeof(buffer));
+            TRACE("\t> %s (0x%p)", buffer, ret_addr);
+        }
 
         if (old_bp == 0) {
             break;
