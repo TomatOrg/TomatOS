@@ -12,5 +12,5 @@
 [submodule "lib/mimalloc"]
 	path = lib/mimalloc
 	url = git@github.com:microsoft/mimalloc.git
-	branch = dev
+	branch = master
 	shallow = true

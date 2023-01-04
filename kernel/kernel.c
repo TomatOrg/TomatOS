@@ -235,7 +235,6 @@ static void kernel_startup() {
 
     // Initialize the runtime
     CHECK_AND_RETHROW(init_gc());
-    CHECK_AND_RETHROW(init_heap());
     CHECK_AND_RETHROW(init_jit());
     CHECK_AND_RETHROW(init_kernel_internal_calls());
 

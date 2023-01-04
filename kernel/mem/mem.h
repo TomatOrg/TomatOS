@@ -29,10 +29,11 @@
 #define STACK_POOL_END                  (STACK_POOL_START + STACK_POOL_SIZE)
 STATIC_ASSERT(DIRECT_MAP_END < STACK_POOL_START);
 
-// The virtual area used for the GC objects, we give it a nice 32TB cause why not
-#define OBJECT_HEAP_START               (0xffff810000000000ull)
-#define OBJECT_HEAP_END                 (0xffff810000000000ull + SIZE_1TB * 32)
-STATIC_ASSERT(STACK_POOL_END < OBJECT_HEAP_START);
+// The virtual area used for the GC objects (mimalloc heaps)
+// OBJECT_HEAP_END coincides with MI_MAX_ADDRESS, which is currently 20TB
+// We put it a bit high in the lower half since 2-4GB is used by the lowmem allocator.
+#define OBJECT_HEAP_START               (SIZE_1TB)
+#define OBJECT_HEAP_END                 (SIZE_1TB * 20)
 
 // This is the area the recursive paging exist on
 #define RECURSIVE_PAGING_SIZE           (SIZE_512GB)

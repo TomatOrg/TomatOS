@@ -14,10 +14,12 @@ static mutex_t m_bump_mutex = INIT_MUTEX();
 
 static void commit_bump(uintptr_t ptr, size_t size) {
     err_t err = NO_ERROR;
-    if (size != 0) {
-        void *p = palloc(size);
+    for (int i = 0; i < size; i += 4096) {
+        void *p = palloc(4096);
         CHECK(p != NULL);
-        CHECK_AND_RETHROW(vmm_map(DIRECT_TO_PHYS(p), (void*)ptr, size / PAGE_SIZE, MAP_WRITE | ((size == SIZE_2MB) ? MAP_LARGE : 0)));
+        if (!vmm_is_mapped(ptr+i, 4096)) {
+            CHECK_AND_RETHROW(vmm_map(DIRECT_TO_PHYS(p), (void*)(ptr+i), 1, MAP_WRITE));
+        }
     }
     cleanup:
     if (IS_ERROR(err)) {
@@ -38,7 +40,7 @@ bool _mi_os_commit(void* p, size_t size, bool* is_zero, void* stats) {
             commit_bump(start, size);
         }
     } 
-    if (is_zero != NULL) *is_zero = true;
+    if (is_zero != NULL) *is_zero = false;
     return true;
 }
 void* _mi_os_alloc_aligned(size_t size, size_t alignment, bool commit, bool* large, void* tld_stats) {
@@ -65,9 +67,16 @@ void _mi_stats_done() {}
 void mi_stats_print(void* out) {}
 
 void _mi_verbose_message(const char* fmt, ...) {}
-void _mi_warning_message(const char* fmt, ...) {}
-void _mi_error_message(int err, const char* fmt, ...) {}
-void _mi_assert_fail(const char* assertion, const char* fname, unsigned int line, const char* func) {}
+void _mi_warning_message(const char* fmt, ...) {
+    printf("%s\n", fmt);
+}
+void _mi_error_message(int err, const char* fmt, ...) {
+    printf("mimalloc error: %s\n", fmt);
+}
+void _mi_assert_fail(const char* assertion, const char* fname, unsigned int line, const char* func) {
+    ERROR("Assert `%s` failed at %s (%s:%d)", assertion, fname, func, line);
+    ASSERT(false);
+}
 void _mi_fputs(void* out, void* arg, const char* prefix, const char* message) {}
 
 bool mi_option_is_enabled(int option) { return false; }
@@ -107,10 +116,38 @@ void  _mi_os_free_huge_pages(void* p, size_t size, void* stats) {
 }
 void* _mi_os_alloc(size_t size, void* tld_stats) {
     bool large;
-    return _mi_os_alloc_aligned(size, 4096, false, &large, NULL);
+    // follow SysV: 16 bytes alignment is required for data accessed via SSE2 aligned moves  
+    return _mi_os_alloc_aligned(size, 16, true, &large, NULL);
 }
 
 void _mi_os_free_ex(void* p, size_t size, bool was_committed, void* tld_stats) {}
+
+void _mi_os_free_aligned(void* p, size_t size, size_t alignment, size_t align_offset, bool was_committed, void* tld_stats) {
+  const size_t extra = ALIGN_UP(align_offset, alignment) - align_offset;
+  void* start = (uint8_t*)p - extra;
+  _mi_os_free_ex(start, size + extra, was_committed, tld_stats);
+}
+void* _mi_os_alloc_aligned_offset(size_t size, size_t alignment, size_t offset, bool commit, bool* large, void* tld_stats) {
+  ASSERT(offset <= size);
+  ASSERT((alignment % _mi_os_page_size()) == 0);
+  if (offset == 0) {
+    // regular aligned allocation
+    return _mi_os_alloc_aligned(size, alignment, commit, large, tld_stats);
+  }
+  else {
+    // overallocate to align at an offset
+    const size_t extra = ALIGN_UP(offset, alignment) - offset;
+    const size_t oversize = size + extra;
+    void* start = _mi_os_alloc_aligned(oversize, alignment, commit, large, tld_stats);
+    if (start == NULL) return NULL;
+    void* p = (uint8_t*)start + extra;
+    // decommit the overallocation at the start
+    if (commit && extra > _mi_os_page_size()) {
+      _mi_os_decommit(start, extra, tld_stats);
+    }
+    return p;
+  }
+}
 
 void _mi_os_free(void* p, size_t size, void* stats) {}
 

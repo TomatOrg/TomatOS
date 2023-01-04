@@ -18,17 +18,15 @@
 #include <mimalloc.h>
 #include <mimalloc-internal.h>
 
-static mi_heap_t* m_heap;
-
-err_t init_heap() {
-    m_heap = mi_heap_new();
-    return NO_ERROR;
-}
 
 void heap_dump_mapping() {}
 
 System_Object heap_alloc(size_t size, int color) {
-    System_Object object = (System_Object) mi_heap_zalloc(m_heap, size);
+    mi_heap_t** heap = (mi_heap_t**)&(get_current_thread()->heap);
+    if (*heap == NULL) {
+        *heap = mi_heap_new();
+    }
+    System_Object object = (System_Object) mi_heap_zalloc(*heap, size);
     object->color = color;
     return object;
 }
@@ -54,16 +52,28 @@ System_Object heap_find(uintptr_t p) {
     ASSERT(!"heap find called");
 }
 
+// work around an overzealous assert in mimalloc
+// it checks that the element count before and after the traversal matches
+// but this is at odd with most TDN heap walks (which allocate objects), and especially the GC 
 static bool heap_visitor(const mi_heap_t* heap, const mi_heap_area_t* area, void* block, size_t block_size, void* arg) {
     if (!block) return true;
-    object_callback_t callback = arg;
+    System_Object** arr = arg;
     System_Object o = block;
-    callback(o);
+    arrpush(*arr, o);
     return true;
 }
 
 void heap_iterate_objects(object_callback_t callback) {
-    mi_heap_visit_blocks(m_heap, true, heap_visitor, callback);
+    for (int j = 0; j < arrlen(g_all_threads); j++) {
+        System_Object* arr = NULL;
+        mi_heap_t* heap = g_all_threads[j]->heap;
+        if (heap == NULL) continue;
+        mi_heap_visit_blocks(heap, true, heap_visitor, &arr);
+        for (int i = 0; i < arrlen(arr); i++) {
+            if (callback) callback(arr[i]);
+        }
+        arrfree(arr);
+    }
 }
 
 // TODO: actually only iterate through dirty objects

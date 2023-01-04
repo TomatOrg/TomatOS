@@ -187,6 +187,9 @@ typedef struct thread {
 
     // are we participating in a select and did someone win the race?
     _Atomic(uint32_t) select_done;
+
+    // mimalloc heap
+    void* heap;
 } thread_t;
 
 struct waitable;

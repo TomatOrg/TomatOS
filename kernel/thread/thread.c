@@ -350,12 +350,6 @@ retry:
         goto cleanup;
     }
     m_free_threads_count--;
-
-    // clear the TLS area for the new thread
-    // super important, the tcb itself must not be cleared, the gc
-    // relies on the values to be consistent!
-    memset((void*)((uintptr_t)thread->tcb - m_tls_size), 0, m_tls_size);
-    memcpy(thread->tcb, m_tls_file, m_tls_filesz);
     
 cleanup:
     scheduler_preempt_enable();
@@ -413,6 +407,19 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     // that means that the caller should not actually release the thread on its own, but only
     // if he plans to continue using it after the thread_ready
     thread->ref_count = 1;
+
+    // clean up thread-local data
+
+    // clear the thread control block for the new thread
+    // we need to re-do it even if the thread was obtained from the freelist
+    // as the TLS data might've changed
+    // NOTE: the TLS data is stored at negative offsets from FS_BASE (set to thread->tcb)
+    // and at positive offset there is the thread_control_block_t structure
+    // super important, the tcb itself must not be cleared, the gc
+    // relies on the values to be consistent!
+    uint8_t* tcb_bottom = (uint8_t*)thread->tcb - m_tls_size;
+    memset(tcb_bottom, 0, m_tls_size);
+    memcpy(tcb_bottom, m_tls_file, m_tls_filesz);
 
     // Reset the thread save state:
     //  - set the rip as the thread entry

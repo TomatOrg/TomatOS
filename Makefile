@@ -100,7 +100,7 @@ ifeq ($(USE_GCC),0)
 endif
 	CFLAGS  += -D__KASAN__
 	CFLAGS  += -fsanitize=kernel-address
-	CFLAGS  += -fasan-shadow-offset=0xdfffe00000000000
+	CFLAGS  += -fasan-shadow-offset=0
 endif
 
 ifeq ($(USE_PROF),1)
@@ -148,22 +148,23 @@ CFLAGS 		+= -Ilib/tinydotnet/src
 #-----------------------------------------------------------------------------------------------------------------------
 # mimalloc
 #-----------------------------------------------------------------------------------------------------------------------
-	
-SRCS 		+= lib/mimalloc/src/bitmap.c
-SRCS 		+= lib/mimalloc/src/arena.c
-SRCS 		+= lib/mimalloc/src/segment.c
-SRCS 		+= lib/mimalloc/src/page.c
-SRCS 		+= lib/mimalloc/src/alloc.c
-SRCS 		+= lib/mimalloc/src/alloc-aligned.c
-SRCS 		+= lib/mimalloc/src/heap.c
-SRCS 		+= lib/mimalloc/src/random.c
-SRCS 		+= lib/mimalloc/src/region.c
-SRCS 		+= lib/mimalloc/src/init.c
+SRCS		+= lib/mimalloc/src/random.c
+SRCS		+= lib/mimalloc/src/bitmap.c
+SRCS		+= lib/mimalloc/src/arena.c
+SRCS		+= lib/mimalloc/src/segment-cache.c
+SRCS		+= lib/mimalloc/src/segment.c
+SRCS		+= lib/mimalloc/src/page.c
+SRCS		+= lib/mimalloc/src/alloc.c
+SRCS		+= lib/mimalloc/src/alloc-aligned.c
+SRCS		+= lib/mimalloc/src/heap.c
+SRCS		+= lib/mimalloc/src/init.c
+
 CFLAGS 		+= -DMADV_NORMAL
 CFLAGS 		+= -Ilib/mimalloc/src
 CFLAGS 		+= -Ilib/mimalloc/include
-CFLAGS		+= -DMI_DEBUG=0 -DMI_SECURE=1
-
+ifeq ($(DEBUG), 1)
+	CFLAGS		+= -DMI_DEBUG=4
+endif
 #-----------------------------------------------------------------------------------------------------------------------
 # utf8-utf16-converter
 #-----------------------------------------------------------------------------------------------------------------------
