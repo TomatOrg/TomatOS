@@ -38,7 +38,9 @@ public static class PciManager
 
         // try to setup the driver
         // TODO: handle exceptions
+        Debug.Print("BEFORE ACTIVATOR");
         Activator.CreateInstance(driver, device);
+        Debug.Print("AFTER ACTIVATOR");
         
         // we found a driver
         return true;
@@ -46,15 +48,22 @@ public static class PciManager
 
     private static void DispatchAllDevices()
     {
+        Debug.Print("DispatchAllDevices -- start");
         for (var i = 0; i < _devices.Count; i++)
         {
+            Debug.Print($"DispatchDevice -- {i}");
             if (!DispatchDevice(_devices[i])) 
                 continue;
-            
+ 
+            Debug.Print($"SUCCESS -- {i}");
+
             // found driver, remove the device from the list
             _devices.RemoveAt(i);
             i--;
+            
+            Debug.Print($"NEXT -- {i}");
         }
+        Debug.Print("DispatchAllDevices -- end");
     }
     
     internal static void RegisterDevice(PciDevice device)

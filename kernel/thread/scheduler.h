@@ -27,8 +27,6 @@ err_t init_scheduler();
  */
 err_t init_scheduler_per_core();
 
-void scheduler_self_test();
-
 /**
  * Wakes up the CPU sleeping in the poller if it isn't going
  * to wake up before the when argument, or it wakes an idle CPU

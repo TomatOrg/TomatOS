@@ -3,6 +3,7 @@
 
 #include <dotnet/gc/gc.h>
 
+#include <thread/scheduler.h>
 #include <thread/cpu_local.h>
 #include <thread/thread.h>
 #include <arch/intrin.h>

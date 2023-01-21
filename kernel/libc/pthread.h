@@ -5,11 +5,11 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include <sync/mutex.h>
-#include <sync/conditional.h>
+#include <sync/condition.h>
 
 // typedefs
 typedef mutex_t pthread_mutex_t;
-typedef conditional_t pthread_cond_t;
+typedef condition_t pthread_cond_t;
 typedef thread_t* pthread_t;
 
 // dummy

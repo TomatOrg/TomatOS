@@ -1,337 +1,193 @@
 /*
- * Code taken and modified from Go
+ * CODE TAKEN FROM WebKit WTF library
  *
- * Copyright (c) 2009 The Go Authors. All rights reserved.
+ * Copyright (C) 2015-2019 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
  *
- *    * Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *    * Redistributions in binary form must reproduce the above
- * copyright notice, this list of conditions and the following disclaimer
- * in the documentation and/or other materials provided with the
- * distribution.
- *    * Neither the name of Google Inc. nor the names of its
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * THIS SOFTWARE IS PROVIDED BY APPLE INC. ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL APPLE INC. OR
+ * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ * OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
 #include "mutex.h"
-#include "thread/waitable.h"
-#include "time/delay.h"
-#include "time/tick.h"
+#include "thread/scheduler.h"
 
-#include <thread/scheduler.h>
-#include <util/except.h>
-#include <time/tsc.h>
+#define IS_HELD     1
+#define HAS_PARKED  2
+#define MASK        (IS_HELD | HAS_PARKED)
 
-#include <stdatomic.h>
+#define TOKEN_DIRECT_HANDOFF        1
+#define TOKEN_BARGING_OPPORTUNITY    2
 
-#undef mutex_lock
-#undef mutex_unlock
-#undef mutex_try_lock
+// This magic number turns out to be optimal based on past JikesRVM experiments.
+#define SPIN_LIMIT 40
 
-typedef enum mutex_state {
-    MUTEX_LOCKED = 1 << 0,
-    MUTEX_WOKEN = 1 << 1,
-    MUTEX_STARVING = 1 << 2,
-} mutex_state_t;
+typedef struct compare_and_park_arg {
+    _Atomic(uint8_t)* address;
+    uint8_t expected;
+} compare_and_park_arg_t;
 
-#define MUTEX_WAITER_SHIFT 3
+static bool compare_and_park(compare_and_park_arg_t* arg) {
+    uint8_t value = atomic_load(arg->address);
+    return value == arg->expected;
+}
 
-#define STARVATION_THRESHOLD_US 1000
+static bool mutex_is_locked(mutex_t* mutex) {
+    return atomic_load_explicit(&mutex->byte, memory_order_acquire) & IS_HELD;
+}
 
 static void mutex_lock_slow(mutex_t* mutex) {
-    uint64_t wait_start_time = 0;
-    bool starving = false;
-    bool awoke = false;
-    int iter = 0;
-    int32_t old = mutex->state;
-    while (true) {
-        // Don't spin in starvation mode, ownership is handed off to waiters
-        // so we won't be able to acquire the mutex anyway.
-        if ((old & (MUTEX_LOCKED | MUTEX_STARVING)) == MUTEX_LOCKED && scheduler_can_spin(iter)) {
-            // Active spinning makes sense.
-            // Try to set mutexWoken flag to inform Unlock
-            // to not wake other blocked goroutines.
-            if (
-                !awoke && (old & MUTEX_WOKEN) == 0 && (old >> MUTEX_WAITER_SHIFT) != 0 &&
-                atomic_compare_exchange_weak(&mutex->state, &old, old | MUTEX_WOKEN)
-            ) {
-                awoke = true;
-            }
+    unsigned spin_count = 0;
 
-            // spin a little
-            for (int i = 0; i < 30; i++) {
-                __builtin_ia32_pause();
-            }
+    for (;;) {
+        uint8_t current_value = atomic_load(&mutex->byte);
 
-            iter++;
-            old = mutex->state;
+        // We allow ourselves to barge in.
+        if (!(current_value & IS_HELD)) {
+            uint8_t temp = current_value;
+            if (atomic_compare_exchange_weak(&mutex->byte, &temp, current_value | IS_HELD))
+                return;
             continue;
         }
 
-        int32_t new = old;
-
-        // Don't try to acquire starving mutex, new arriving threads must queue.
-        if ((old & MUTEX_STARVING) == 0) {
-            new |= MUTEX_LOCKED;
-        }
-        if ((old & (MUTEX_LOCKED | MUTEX_STARVING)) != 0) {
-            new += 1 << MUTEX_WAITER_SHIFT;
+        // If there is nobody parked and we haven't spun too much, we can just try to spin around.
+        if (!(current_value & HAS_PARKED) && (spin_count < SPIN_LIMIT)) {
+            spin_count++;
+            scheduler_yield();
+            continue;
         }
 
-        // The current thread switches mutex to starvation mode.
-        // But if the mutex is currently unlocked, don't do the switch.
-        // Unlock expects that starving mutex has waiters, which will not
-        // be true in this case.
-        if (starving && (old & MUTEX_LOCKED) != 0) {
-            new |= MUTEX_STARVING;
+        // Need to park. We do this by setting the parked bit first, and then parking. We spin around
+        // if the parked bit wasn't set and we failed at setting it.
+        if (!(current_value & HAS_PARKED)) {
+            uint8_t new_value = current_value | HAS_PARKED;
+            uint8_t temp = current_value;
+            if (!atomic_compare_exchange_weak(&mutex->byte, &temp, new_value))
+                continue;
+            current_value = new_value;
         }
 
-        if (awoke) {
-            // The thread has been woken from sleep,
-            // so we need to reset the flag in either case.
-            ASSERT(new & MUTEX_WOKEN && "inconsistent mutex state");
-            new &= ~MUTEX_WOKEN;
-        }
+        ASSERT(current_value & IS_HELD);
+        ASSERT(current_value & HAS_PARKED);
 
-        int32_t told = old;
-        if (atomic_compare_exchange_weak(&mutex->state, &told, new)) {
-            if ((old & (MUTEX_LOCKED | MUTEX_STARVING)) == 0) {
-                // locked the mutex with cas
-                break;
+        // We now expect the value to be IS_HELD|HAS_PARKED. So long as that's the case, we can park.
+        compare_and_park_arg_t arg = {
+            .address = &mutex->byte,
+            .expected = current_value
+        };
+        park_result_t result = park_conditionally(
+            mutex,
+            (park_validation_t)compare_and_park,
+            NULL,
+            &arg,
+            -1
+        );
+        if (result.was_unparked) {
+            switch (result.token) {
+                case TOKEN_DIRECT_HANDOFF:
+                    // The lock was never released. It was handed to us directly by the thread that did
+                    // unlock(). This means we're done!
+                    ASSERT(mutex_is_locked(mutex));
+                    return;
+
+                case TOKEN_BARGING_OPPORTUNITY:
+                    // This is the common case. The thread that called unlock() has released the lock,
+                    // and we have been woken up so that we may get an opportunity to grab the lock. But
+                    // other threads may barge, so the best that we can do is loop around and try again.
+                    break;
             }
-
-            // If we were already waiting before, queue at the front of the queue.
-            bool queue_lifo = wait_start_time != 0;
-            if (wait_start_time == 0) {
-                wait_start_time = microtime();
-            }
-            semaphore_acquire(&mutex->semaphore, queue_lifo, -1);
-            starving = starving || microtime() - wait_start_time > STARVATION_THRESHOLD_US;
-            old = mutex->state;
-            if ((old & MUTEX_STARVING) != 0) {
-                // If this thread was woken and mutex is in starvation mode,
-                // ownership was handed off to us but mutex is in somewhat
-                // inconsistent state: MUTEX_LOCKED is not set and we are still
-                // accounted as waiter. Fix that.
-                if ((old & (MUTEX_LOCKED | MUTEX_WOKEN)) != 0 || (old >> MUTEX_WAITER_SHIFT) == 0) {
-                    ASSERT(!"inconsistent mutex state");
-                }
-                int32_t delta = MUTEX_LOCKED - (1 << MUTEX_WAITER_SHIFT);
-                if (!starving || (old >> MUTEX_WAITER_SHIFT) == 1) {
-                    // Exit starvation mode.
-                    // Critical to do it here and consider wait time.
-                    // Starvation mode is so inefficient, that two goroutines
-                    // can go lock-step infinitely once they switch mutex
-                    // to starvation mode.
-                    delta -= MUTEX_STARVING;
-                }
-                atomic_fetch_add(&mutex->state, delta);
-                break;
-            }
-            awoke = true;
-            iter = 0;
-        } else {
-            // update the old value
-            old = mutex->state;
         }
+
+        // We have awoken, or we never parked because the byte value changed. Either way, we loop
+        // around and try again.
     }
+}
+
+static bool mutex_lock_fast_assuming_zero(mutex_t* mutex) {
+    uint8_t zero = 0;
+    return atomic_compare_exchange_weak_explicit(&mutex->byte, &zero, IS_HELD, memory_order_acquire, memory_order_acquire);
 }
 
 void mutex_lock(mutex_t* mutex) {
-    // Fast path: grab unlocked mutex.
-    int32_t zero = 0;
-    if (atomic_compare_exchange_weak(&mutex->state, &zero, MUTEX_LOCKED)) {
+    if (UNLIKELY(!mutex_lock_fast_assuming_zero(mutex))) {
+        mutex_lock_slow(mutex);
+    }
+}
+
+static intptr_t mutex_unpark_callback(unpark_result_t result, mutex_t* mutex) {
+    // We are the only ones that can clear either the isHeldBit or the hasParkedBit,
+    // so we should still see both bits set right now.
+    ASSERT(atomic_load(&mutex->byte) == (IS_HELD | HAS_PARKED));
+
+    if (result.did_unpark_thread && result.time_to_be_fair) {
+        // We don't unlock anything. Instead, we hand the lock to the thread that was
+        // waiting.
+        return TOKEN_DIRECT_HANDOFF;
+    }
+
+    // we don't need anything more than a simple store in here, it will take care
+    // of clearing everything, we do notify if there are probably more parked threads
+    // so that spinning won't take place
+    atomic_store(&mutex->byte, result.may_have_more_threads ? HAS_PARKED : 0);
+
+    return TOKEN_BARGING_OPPORTUNITY;
+}
+
+static void mutex_unlock_slow(mutex_t* mutex) {
+    // We could get here because the weak CAS in unlock() failed spuriously, or because there is
+    // someone parked. So, we need a CAS loop: even if right now the lock is just held, it could
+    // be held and parked if someone attempts to lock just as we are unlocking.
+    for (;;) {
+        uint8_t old_byte_value = atomic_load(&mutex->byte);
+        ASSERT(
+            old_byte_value == IS_HELD ||
+            old_byte_value == (IS_HELD | HAS_PARKED)
+        );
+
+        if (old_byte_value == IS_HELD) {
+            uint8_t temp = old_byte_value;
+            if (atomic_compare_exchange_weak(&mutex->byte, &temp, old_byte_value & ~IS_HELD))
+                return;
+            continue;
+        }
+
+        // Someone is parked. Unpark exactly one thread. We may hand the lock to that thread
+        // directly, or we will unlock the lock at the same time as we unpark to allow for barging.
+        // When we unlock, we may leave the parked bit set if there is a chance that there are still
+        // other threads parked.
+        ASSERT(old_byte_value == (IS_HELD | HAS_PARKED));
+        unpark_one(
+            mutex,
+            (unpark_callback_t)mutex_unpark_callback,
+            mutex
+        );
         return;
     }
-
-    // Slow path (outlined so that the fast path can be inlined)
-    mutex_lock_slow(mutex);
 }
 
-bool mutex_try_lock(mutex_t* mutex) {
-    int32_t old = mutex->state;
-    if ((old & (MUTEX_LOCKED | MUTEX_STARVING)) != 0) {
-        return false;
-    }
-
-    // There may be a thread waiting for the mutex, but we are
-    // running now and can try to grab the mutex before that
-    // thread wakes up.
-    if (!atomic_compare_exchange_strong(&mutex->state, &old, old | MUTEX_LOCKED)) {
-        return false;
-    }
-
-    return true;
-}
-
-bool mutex_is_locked(mutex_t* mutex) {
-    return atomic_load_explicit(&mutex->state, memory_order_relaxed) & MUTEX_LOCKED;
-}
-
-static void mutex_unlock_slow(mutex_t* mutex, int32_t new) {
-    ASSERT((new + MUTEX_LOCKED) & MUTEX_LOCKED && "unlock of unlocked mutex");
-
-    if ((new & MUTEX_STARVING) == 0) {
-        int32_t old = new;
-        while (true) {
-            // If there are no waiters or a thread has already
-            // been woken or grabbed the lock, no need to wake anyone.
-            // In starvation mode ownership is directly handed off from unlocking
-            // thread to the next waiter. We are not part of this chain,
-            // since we did not observe MUTEX_STARVING when we unlocked the mutex above.
-            // So get off the way.
-            if ((old >> MUTEX_WAITER_SHIFT) == 0 || (old & (MUTEX_LOCKED | MUTEX_WOKEN | MUTEX_STARVING)) != 0) {
-                return;
-            }
-
-            // Grab the right to wake someone.
-            new = (old - (1 << MUTEX_WAITER_SHIFT)) | MUTEX_WOKEN;
-            if (atomic_compare_exchange_weak(&mutex->state, &old, new)) {
-                semaphore_release(&mutex->semaphore, false);
-                return;
-            }
-            old = mutex->state;
-        }
-    } else {
-        // Starving mode: handoff mutex ownership to the next waiter, and yield
-        // our time slice so that the next waiter can start to run immediately.
-        // Note: MUTEX_LOCKED is not set, the waiter will set it after wakeup.
-        // But mutex is still considered locked if MUTEX_STARVING is set,
-        // so new coming threads won't acquire it.
-        semaphore_release(&mutex->semaphore, true);
-    }
+static bool mutex_unlock_fast_assuming_zero(mutex_t* mutex) {
+    uint8_t is_held = IS_HELD;
+    return atomic_compare_exchange_weak_explicit(&mutex->byte, &is_held, 0, memory_order_release, memory_order_release);
 }
 
 void mutex_unlock(mutex_t* mutex) {
-    // Fast path: drop lock bit.
-    int32_t new = atomic_fetch_sub(&mutex->state, MUTEX_LOCKED) - MUTEX_LOCKED;
-    if (new != 0) {
-        // Outlined slow path to allow inlining the fast path.
-        // To hide unlockSlow during tracing we skip one extra frame when tracing GoUnblock.
-        mutex_unlock_slow(mutex, new);
+    if (UNLIKELY(!mutex_unlock_fast_assuming_zero(mutex))) {
+        mutex_unlock_slow(mutex);
     }
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Self test
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-static void hammer_mutex(mutex_t* m, int loops, waitable_t* wdone) {
-    for (int i = 0; i < loops; i++) {
-        if (i % 3 == 0) {
-            if (mutex_try_lock(m)) {
-                mutex_unlock(m);
-            }
-            continue;
-        }
-        mutex_lock(m);
-        mutex_unlock(m);
-    }
-    waitable_send(wdone, true);
-    release_waitable(wdone);
-}
-
-static void test_mutex() {
-    TRACE("\t\tTest mutex");
-
-    mutex_t m = { 0 };
-    mutex_lock(&m);
-    ASSERT(!mutex_try_lock(&m) && "mutex_try_lock succeeded with mutex locked");
-    mutex_unlock(&m);
-    ASSERT(mutex_try_lock(&m) && "mutex_try_lock failed with mutex unlocked");
-    mutex_unlock(&m);
-
-    waitable_t* w = create_waitable(0);
-
-    for (int i = 0; i < 10; i++) {
-        thread_t* t = create_thread((void*)hammer_mutex, NULL, "test-%d", i);
-        t->save_state.rdi = (uintptr_t)&m;
-        t->save_state.rsi = 1000;
-        t->save_state.rdx = (uintptr_t) put_waitable(w);
-        scheduler_ready_thread(t);
-    }
-
-    for (int i = 0; i < 10; i++) {
-        ASSERT(waitable_wait(w, true) == WAITABLE_SUCCESS);
-    }
-
-    waitable_close(w);
-    release_waitable(w);
-}
-
-static void mutex_self_test_lock_for_long(mutex_t* mu, waitable_t* stop) {
-    while (true) {
-        mutex_lock(mu);
-        microdelay(100);
-        mutex_unlock(mu);
-
-        waitable_t* ws[] = { stop };
-        selected_waitable_t selected = waitable_select(ws, 0, 1, false);
-        if (selected.index == 0) {
-            release_waitable(stop);
-            return;
-        }
-    }
-}
-
-static void mutex_self_test_sleep_lock(mutex_t* mu, waitable_t* done) {
-    for (int i = 0; i < 10; i++) {
-        microdelay(100);
-        mutex_lock(mu);
-        mutex_unlock(mu);
-    }
-
-    ASSERT(waitable_send(done, true));
-    release_waitable(done);
-}
-
-static void test_mutex_fairness() {
-    TRACE("\t\tTest mutex fairness");
-
-    mutex_t mu = { 0 };
-    waitable_t* stop = create_waitable(0);
-
-    thread_t* t = create_thread((void*)mutex_self_test_lock_for_long, NULL, "test1");
-    t->save_state.rdi = (uintptr_t)&mu;
-    t->save_state.rsi = (uintptr_t) put_waitable(stop);
-    scheduler_ready_thread(t);
-
-    waitable_t* done = create_waitable(1);
-
-    t = create_thread((void*)mutex_self_test_sleep_lock, NULL, "test2");
-    t->save_state.rdi = (uintptr_t)&mu;
-    t->save_state.rsi = (uintptr_t) put_waitable(done);
-    scheduler_ready_thread(t);
-
-    waitable_t* ws[] = { done, after(10 * TICKS_PER_SECOND) };
-    selected_waitable_t selected = waitable_select(ws, 0, 2, true);
-    ASSERT(selected.index == 0 && "can't acquire Mutex in 10 seconds");
-
-    waitable_close(stop);
-    release_waitable(stop);
-
-    release_waitable(done);
-}
-
-void mutex_self_test() {
-    TRACE("\tMutex self-test");
-    test_mutex();
-    test_mutex_fairness();
 }

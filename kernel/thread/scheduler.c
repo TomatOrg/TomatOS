@@ -34,7 +34,6 @@
 
 #include "cpu_local.h"
 #include "timer.h"
-#include "waitable.h"
 #include "sync/irq_spinlock.h"
 #include "mem/mem.h"
 #include "irq/irq.h"
@@ -1312,6 +1311,9 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t* ctx) {
         // change the status to dead
         cas_thread_state(current_thread, THREAD_STATUS_RUNNING, THREAD_STATUS_DEAD);
 
+        // the thread is dead, can decrease the count right now
+        atomic_fetch_sub(&g_thread_count, 1);
+
         // don't keep the managed thread alive anymore
         current_thread->tcb->managed_thread = NULL;
 
@@ -1403,39 +1405,4 @@ err_t init_scheduler_per_core() {
 
 cleanup:
     return err;
-}
-
-static void scheduler_do_thing(_Atomic(uint32_t)* x, int p, waitable_t* done) {
-    for (int i = 0; i < 3; i++) {
-        uint32_t expected = get_cpu_count() * i + p;
-        while (atomic_load(x) != expected);
-        atomic_store(x, expected + 1);
-    }
-    waitable_send(done, true);
-}
-
-void scheduler_self_test() {
-    TRACE("\tScheduler self-test");
-
-    int N = 10;
-    int P = get_cpu_count();
-
-    for (int try = 0; try < N; try++) {
-        waitable_t* done = create_waitable(0);
-
-        int x = 0;
-        for (int p = 0; p < P; p++) {
-            thread_t* t = create_thread((void*)scheduler_do_thing, NULL, "test-%d", p);
-            t->save_state.rdi = (uintptr_t)&x;
-            t->save_state.rsi = p;
-            t->save_state.rdx = (uintptr_t)done;
-            scheduler_ready_thread(t);
-        }
-
-        for (int p = 0; p < P; p++) {
-            waitable_wait(done, true);
-        }
-
-        release_waitable(done);
-    }
 }

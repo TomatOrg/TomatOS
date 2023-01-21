@@ -1,7 +1,9 @@
 #pragma once
 
+#include <util/except.h>
+#include <arch/idt.h>
 
-#include "thread/waitable.h"
+#include <stdint.h>
 
 typedef enum priority {
     /**
@@ -61,6 +63,12 @@ typedef enum irq {
      * Startup the scheduler
      */
     IRQ_DROP     = 0xF2,
+
+    /**
+     * Creates a trace of all the regs
+     * and the stack at the calling point
+     */
+    IRQ_TRACE    = 0xF3,
 
     /**
      * Spurious interrupt, have it the highest to

@@ -62,6 +62,7 @@ public class VirtioBlock : VirtioPci, IBlock
         (new Thread(IrqWaiterThread)).Start();
         Debug.Print("VirtioBlock: Device registered");
         BlockManager.RegisterBlock(this);
+        Debug.Print("WE ARE DONE WITH THE BLOCK");
     }
 
     void Process()

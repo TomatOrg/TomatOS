@@ -1,19 +1,19 @@
 #pragma once
 
 #include "mutex.h"
+#include "condition.h"
 
 typedef struct rwmutex {
     mutex_t mutex;
-    semaphore_t writer_sem;
-    semaphore_t reader_sem;
-    _Atomic(int32_t) reader_count;
-    _Atomic(int32_t) reader_wait;
+    condition_t condition;
+
+    bool is_write_locked;
+    unsigned num_readers;
+    unsigned num_waiting_writers;
 } rwmutex_t;
 
-void rwmutex_rlock(rwmutex_t* rw);
+void rwmutex_read_lock(rwmutex_t* rwmutex);
+void rwmutex_read_unlock(rwmutex_t* rwmutex);
 
-void rwmutex_runlock(rwmutex_t* rw);
-
-void rwmutex_lock(rwmutex_t* rw);
-
-void rwmutex_unlock(rwmutex_t* rw);
+void rwmutex_write_lock(rwmutex_t* rwmutex);
+void rwmutex_write_unlock(rwmutex_t* rwmutex);

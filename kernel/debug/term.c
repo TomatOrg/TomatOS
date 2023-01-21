@@ -28,7 +28,7 @@ void term_init(uint32_t* framebuffer, size_t width, size_t height, size_t pitch)
 
 extern uint8_t font_data[];
 
-static void term_print_char_at(char c, int x, int y) {
+static void term_print_char_at(unsigned char c, int x, int y) {
 	size_t font_off = (size_t)c * ((font_height * font_width) / 8);
 	size_t fb_off = x + y * m_framebuffer_pitch;
 

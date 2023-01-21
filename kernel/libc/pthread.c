@@ -59,16 +59,16 @@ int pthread_cond_destroy(pthread_cond_t *cond) {
 }
 
 int pthread_cond_wait(pthread_cond_t *restrict cond, pthread_mutex_t *restrict mutex) {
-    conditional_wait(cond, mutex);
+    condition_wait(cond, mutex, -1);
     return 0;
 }
 
 int pthread_cond_signal(pthread_cond_t *cond) {
-    conditional_signal(cond);
+    condition_notify_one(cond);
     return 0;
 }
 
 int pthread_cond_broadcast(pthread_cond_t *cond) {
-    conditional_broadcast(cond);
+    condition_notify_all(cond);
     return 0;
 }

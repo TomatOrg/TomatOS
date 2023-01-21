@@ -139,11 +139,14 @@ typedef struct thread_control_block {
     void* managed_thread;
 } thread_control_block_t;
 
-typedef struct waiting_thread waiting_thread_t;
-
 typedef struct thread {
-    // the thread name
+    // the thread name, keep at zero so when
+    // printing a name of a null thread it will
+    // NULL
     char name[64];
+
+    // unique id for the thread
+    uint16_t id;
 
     // ref count
     atomic_size_t ref_count;
@@ -176,40 +179,28 @@ typedef struct thread {
     struct thread* sched_link;
 
     //
-    // Waitable
+    // Related to parking lot
     //
 
-    // the waiting thread structure that caused the thread to wakeup
-    waiting_thread_t* waker;
+    // the sync block we are waiting on
+    const void* address;
 
-    // list of waiting threads structures that point to this thread
-    waiting_thread_t* waiting;
+    // unpark token
+    intptr_t token;
 
-    // are we participating in a select and did someone win the race?
-    _Atomic(uint32_t) select_done;
+    // lock used for synchronizing the parking
+    spinlock_t parking_lock;
+
+    // used for the wait queue in parking lot
+    struct thread* next_in_queue;
+
+    //
+    // Other
+    //
 
     // mimalloc heap
     void* heap;
 } thread_t;
-
-struct waitable;
-
-struct waiting_thread {
-    thread_t* thread;
-
-    // only used in the cache
-    waiting_thread_t* next;
-    waiting_thread_t* prev;
-
-    uint32_t ticket;
-
-    waiting_thread_t* wait_link;
-    waiting_thread_t* wait_tail;
-
-    bool is_select;
-    bool success;
-    struct waitable* waitable;
-};
 
 /**
  * For thread-locals
@@ -221,22 +212,6 @@ struct waiting_thread {
 // * a new thread is created, must be called under the thread lock
 // */
 //extern thread_control_block_t m_default_tcb;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Waiting thread item
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/**
- * Acquire a new waiting thread descriptor
- */
-waiting_thread_t* acquire_waiting_thread();
-
-/**
- * Release a waiting thread descriptor
- *
- * @param wt    [IN] The WT descriptor
- */
-void release_waiting_thread(waiting_thread_t* wt);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Thread creation and destruction
@@ -282,6 +257,11 @@ void reclaim_free_threads();
  * All the threads in the system are part of this array
  */
 extern thread_t** g_all_threads;
+
+/**
+ * A counter for how many threads we have
+ */
+extern atomic_int g_thread_count;
 
 void lock_all_threads();
 

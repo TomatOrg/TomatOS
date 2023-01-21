@@ -38,7 +38,7 @@
 #include <util/string.h>
 #include <util/stb_ds.h>
 
-#include <sync/mutex.h>
+#include <sync/word_lock.h>
 
 #include <time/tsc.h>
 
@@ -56,89 +56,7 @@
 #include "arch/intrin.h"
 #include "dotnet/jit/jit.h"
 #include "arch/gdt.h"
-
-
-//
-// Global waiting thread cache
-//
-static spinlock_t m_global_wt_lock;
-static waiting_thread_t* m_global_wt_cache;
-
-//
-// Per-cpu waiting thread cache
-//
-static waiting_thread_t* CPU_LOCAL m_wt_cache[128];
-static uint8_t CPU_LOCAL m_wt_cache_len = 0;
-
-waiting_thread_t* acquire_waiting_thread() {
-    // we disable interrupts in here so we can do stuff
-    // atomically on the current core
-    scheduler_preempt_disable();
-
-    // check if we have any local cached
-    if (m_wt_cache_len == 0) {
-
-        // try to get a bunch from the central cache, maximum to half the size
-        // of the local cache
-        spinlock_lock(&m_global_wt_lock);
-        while ((m_wt_cache_len < ARRAY_LEN(m_wt_cache) / 2) && m_global_wt_cache != NULL) {
-            waiting_thread_t* wt = m_global_wt_cache;
-            m_global_wt_cache = wt->next;
-            wt->next = NULL;
-            m_wt_cache[m_wt_cache_len++] = wt;
-        }
-        spinlock_unlock(&m_global_wt_lock);
-
-        if (m_wt_cache_len == 0) {
-            // central cache is empty, allocate a new one
-            m_wt_cache[m_wt_cache_len++] = malloc(sizeof(waiting_thread_t));
-        }
-    }
-
-    // pop one
-    waiting_thread_t* wt = m_wt_cache[--m_wt_cache_len];
-    m_wt_cache[m_wt_cache_len] = NULL;
-
-    scheduler_preempt_enable();
-
-    return wt;
-}
-
-void release_waiting_thread(waiting_thread_t* wt) {
-    // clear the context before doing anything else with it
-    memset(wt, 0, sizeof(*wt));
-
-    // we disable interrupts in here so we can do stuff
-    // atomically on the current core
-    scheduler_preempt_disable();
-
-    if (m_wt_cache_len == ARRAY_LEN(m_wt_cache)) {
-        // Transfer half of the local cache to the central cache
-        waiting_thread_t* first = NULL;
-        waiting_thread_t* last = NULL;
-
-        while (m_wt_cache_len > ARRAY_LEN(m_wt_cache) / 2) {
-            waiting_thread_t* p = m_wt_cache[--m_wt_cache_len];
-            m_wt_cache[m_wt_cache_len] = NULL;
-            if (first == NULL) {
-                first = p;
-            } else {
-                last->next = p;
-            }
-            last = p;
-        }
-
-        spinlock_lock(&m_global_wt_lock);
-        last->next = m_global_wt_cache;
-        m_global_wt_cache = last;
-        spinlock_unlock(&m_global_wt_lock);
-    }
-
-    // put into the local cache
-    m_wt_cache[m_wt_cache_len++] = wt;
-
-    scheduler_preempt_enable();
-}
+#include "sync/parking_lot.h"
 
 thread_status_t get_thread_status(thread_t* thread) {
     return atomic_load(&thread->status);
@@ -298,7 +216,7 @@ static thread_t* thread_list_pop(thread_list_t* list) {
 }
 
 // all the threads in the system
-static mutex_t m_all_threads_lock = { 0 };
+static word_lock_t m_all_threads_lock = {0 };
 thread_t** g_all_threads = NULL;
 
 static void add_to_all_threads(thread_t* thread) {
@@ -356,12 +274,24 @@ cleanup:
     return thread;
 }
 
+/**
+ * Used to generate new thread ids
+ */
+static atomic_int m_thread_id_gen = 1;
+
 static thread_t* alloc_thread() {
     err_t err = NO_ERROR;
+
+    int thread_id = atomic_fetch_add(&m_thread_id_gen, 1);
+    CHECK(thread_id <= UINT16_MAX);
 
     thread_t* thread = malloc(sizeof(thread_t));
     CHECK(thread != NULL);
 
+    // set the id
+    thread->id = thread_id;
+
+    // allocate a new stack
     thread->stack_top = alloc_stack();
     CHECK(thread->stack_top != NULL);
 
@@ -387,6 +317,8 @@ cleanup:
     return thread;
 }
 
+atomic_int g_thread_count = 0;
+
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     thread_t* thread = get_free_thread();
     if (thread == NULL) {
@@ -397,6 +329,11 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
         cas_thread_state(thread, THREAD_STATUS_IDLE, THREAD_STATUS_DEAD);
         add_to_all_threads(thread);
     }
+
+    // increment the thread count and let
+    // parking lot know it happened
+    int thread_count = atomic_fetch_add(&g_thread_count, 1) + 1;
+    parking_lot_rehash(thread_count);
 
     va_list ap;
     va_start(ap, fmt);
@@ -450,11 +387,11 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
 }
 
 void lock_all_threads() {
-    mutex_lock(&m_all_threads_lock);
+    word_lock_lock(&m_all_threads_lock);
 }
 
 void unlock_all_threads() {
-    mutex_unlock(&m_all_threads_lock);
+    word_lock_unlock(&m_all_threads_lock);
 }
 
 void thread_exit() {

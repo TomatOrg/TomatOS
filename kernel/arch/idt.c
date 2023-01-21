@@ -807,6 +807,56 @@ void common_interrupt_handler(interrupt_context_t* ctx) {
             scheduler_on_drop(ctx);
         } break;
 
+        case IRQ_TRACE: {
+            // print the opcode for nicer debugging
+            char buffer[256] = { 0 };
+            debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
+            TRACE("Thread name: %s", get_current_thread()->name);
+            ERROR("Code: %s", buffer);
+            ERROR("Stack trace:");
+            size_t* base_ptr = (size_t*)ctx->rbp;
+
+            int depth = 0;
+            uintptr_t last_ret = 0;
+
+            while (true) {
+                if (!vmm_is_mapped((uintptr_t)base_ptr, 1)) {
+                    ERROR("\t%p is unmapped!", base_ptr);
+                    break;
+                }
+
+                size_t old_bp = base_ptr[0];
+                size_t ret_addr = base_ptr[1];
+                if (ret_addr == 0) {
+                    break;
+                }
+
+                if (last_ret == ret_addr) {
+                    depth++;
+                } else {
+                    if (depth > 1) {
+                        TRACE("\t  ... repeating %d times", depth - 1);
+                    }
+
+                    last_ret = ret_addr;
+                    depth = 1;
+
+                    debug_format_symbol(ret_addr, buffer, sizeof(buffer));
+                    TRACE("\t> %s (0x%p)", buffer, ret_addr);
+                }
+
+                if (old_bp == 0) {
+                    break;
+                } else if (old_bp <= (size_t)base_ptr) {
+                    WARN("\tGoes back to %p", old_bp);
+                    break;
+                }
+                base_ptr = (size_t*)old_bp;
+            }
+
+            ERROR("");
+        } break;
+
         case IRQ_SPURIOUS: {
             WARN("Got spurious interrupt!");
         } break;

@@ -27,15 +27,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <stdatomic.h>
-#include "parking_lot.h"
+#include <stdint.h>
 
-typedef struct mutex {
-    _Atomic(uint8_t) byte;
-} mutex_t;
+typedef struct word_lock {
+    _Atomic(uintptr_t) lock;
+} word_lock_t;
 
-#define INIT_MUTEX() ((mutex_t){ .byte = 0 })
+void word_lock_lock(word_lock_t* mutex);
 
-void mutex_lock(mutex_t* mutex);
-
-void mutex_unlock(mutex_t* mutex);
+void word_lock_unlock(word_lock_t* mutex);

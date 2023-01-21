@@ -1,5 +1,4 @@
 #include "kernel.h"
-#include "thread/waitable.h"
 #include "runtime/dotnet/internal_calls.h"
 #include "mem/tlsf.h"
 #include "debug/term.h"
@@ -185,18 +184,6 @@ cleanup:
  */
 static struct limine_file* m_assemblies = NULL;
 
-/**
- * Can be used to run self testing, not called by default
- */
-static inline void self_test() {
-    TRACE("Running self-test");
-    waitable_self_test();
-    scheduler_self_test();
-    semaphore_self_test();
-    mutex_self_test();
-    TRACE("self-test finished");
-}
-
 static void kernel_startup() {
     err_t err = NO_ERROR;
 
@@ -226,10 +213,6 @@ static void kernel_startup() {
     g_limine_rsdp.response = NULL;
     g_limine_kernel_address.response = NULL;
     g_limine_framebuffer.response = NULL;
-
-    // uncomment if you want to debug some stuff and
-    // make sure that the kernel passes self-tests
-//    self_test();
 
     TRACE("Entered kernel thread!");
 
