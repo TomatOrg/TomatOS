@@ -45,15 +45,6 @@ static void condition_before_sleep(condition_arg_t* arg) {
 }
 
 bool condition_wait(condition_t* condition, mutex_t* mutex, intptr_t timeout) {
-    if ((void*)condition < (void*)0xffff800000000000) {
-        TRACE("condition_wait(%p, %p, %d)", condition, mutex, timeout);
-        __asm__ volatile (
-                "int %0"
-                :
-                : "i"(IRQ_TRACE)
-                : "memory");
-    }
-
     condition_arg_t arg = {
         .condition = condition,
         .mutex = mutex
@@ -83,15 +74,6 @@ static intptr_t condition_wake_one(unpark_result_t result, condition_wake_one_ar
 }
 
 bool condition_notify_one(condition_t* condition) {
-    if ((void*)condition < (void*)0xffff800000000000) {
-        TRACE("condition_notify_one(%p)", condition);
-        __asm__ volatile (
-                "int %0"
-                :
-                : "i"(IRQ_TRACE)
-                : "memory");
-    }
-
     if (!atomic_load(&condition->has_waiters)) {
         // At this exact instant, there is nobody waiting on this condition. The way to visualize
         // this is that if unparkOne() ran to completion without obstructions at this moment, it
@@ -111,15 +93,6 @@ bool condition_notify_one(condition_t* condition) {
 }
 
 void condition_notify_all(condition_t* condition) {
-    if ((void*)condition < (void*)0xffff800000000000) {
-        TRACE("condition_notify_all(%p)", condition);
-        __asm__ volatile (
-                "int %0"
-                :
-                : "i"(IRQ_TRACE)
-                : "memory");
-    }
-
     if (!atomic_load(&condition->has_waiters)) {
         // See above.
         return;

@@ -280,7 +280,7 @@ public class Terminal
             var timeInFrame = time % 16;
             var sleepFor = 16 - timeInFrame;
             if (sleepFor < 8) sleepFor += 16; // wait a frame more (halving framerate) if we used more than 50% of frame time
-            Debug.Write($"{time}\n");
+            // Debug.Write($"{time}\n");
             Thread.Sleep((int)sleepFor);
         }
     }

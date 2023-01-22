@@ -84,15 +84,11 @@ public static class BlockManager
     /// </summary>
     private static async Task ProcessBlock(IBlock block)
     {
-        Debug.Print("1");
-        
         // check for GPT
         if (await Gpt.IsGpt(block))
         {
-            Debug.Print("2");
             await foreach (var part in Gpt.IteratePartitions(block))
             {
-                Debug.Print("3");
                 await DispatchBlock(part);
             }
         }
@@ -100,11 +96,8 @@ public static class BlockManager
         else
         {
             // process the block as un-partitioned
-            Debug.Print("4");
             await DispatchBlock(block);
         }
-        
-        Debug.Print("5");
     }
 
     /// <summary>
@@ -141,14 +134,8 @@ public static class BlockManager
     {
         lock (_drivers)
         {
-            Debug.Print("BEFORE");
-            var task = ProcessBlock(block);
-            Debug.Print("BEFORE WAIT");
-            task.Wait();
-            Debug.Print("AFTER");
+            ProcessBlock(block).Wait();
         }
-        
-        Debug.Print("WE ARE DONE WITH THE BLOCK");
     }
 
 }

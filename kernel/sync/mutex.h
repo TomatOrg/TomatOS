@@ -38,4 +38,6 @@ typedef struct mutex {
 
 void mutex_lock(mutex_t* mutex);
 
+bool mutex_is_locked(mutex_t* mutex);
+
 void mutex_unlock(mutex_t* mutex);
