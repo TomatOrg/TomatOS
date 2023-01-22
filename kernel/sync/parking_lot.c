@@ -33,6 +33,13 @@
 #include <thread/scheduler.h>
 #include <thread/timer.h>
 
+#if 0
+    #define PL_TRACE(fmt, ...) TRACE(fmt, ## __VA_ARGS__)
+#else
+    #define PL_TRACE(...)
+#endif
+
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // hashtable bucket handling
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -55,7 +62,7 @@ static void bucket_enqueue(bucket_t* bucket, thread_t* data) {
     ASSERT(data->next_in_queue == NULL);
 
     if (bucket->queue_tail != NULL) {
-        bucket->queue_head->next_in_queue = data;
+        bucket->queue_tail->next_in_queue = data;
         bucket->queue_tail = data;
         return;
     }
@@ -129,12 +136,14 @@ static void bucket_dequeue_generic(bucket_t* bucket, park_dequeue_t dequeue, voi
 
     while (should_continue) {
         thread_t* current = *current_ptr;
+        PL_TRACE("%s: got thread %s", get_current_thread()->name, current->name);
         if (current == NULL)
             break;
 
         dequeue_result_t result = dequeue(current, time_to_be_fair, ctx);
         switch (result) {
             case IGNORE:
+                PL_TRACE("%s: current_ptr = %p, *current_ptr = %s", get_current_thread()->name, current_ptr, (*current_ptr)->name);
                 previous = current;
                 current_ptr = &(*current_ptr)->next_in_queue;
                 break;
@@ -143,6 +152,7 @@ static void bucket_dequeue_generic(bucket_t* bucket, park_dequeue_t dequeue, voi
                 should_continue = false;
                 // fallthrough
             case REMOVE_AND_CONTINUE:
+                PL_TRACE("%s: dequeueing %s from %p", get_current_thread()->name, current->name, bucket);
                 if (current == bucket->queue_tail)
                     bucket->queue_tail = previous;
                 did_dequeue = true;
@@ -536,6 +546,8 @@ static bool park_enqueue(const void* address, thread_t* me, park_validation_t va
             break;
         }
 
+        PL_TRACE("%s: enqueueing onto bucket %p with index %d for address %p with has %d",
+                 get_current_thread()->name, bucket, index, address, hash);
         word_lock_lock(&bucket->lock);
 
         if (atomic_load(&m_hashtable) != my_hashtable) {
@@ -545,6 +557,8 @@ static bool park_enqueue(const void* address, thread_t* me, park_validation_t va
 
         bool queued = false;
         if (validation(ctx)) {
+            PL_TRACE("%s: proceeding to enqueue %s",
+                     get_current_thread()->name, me->name);
             me->address = address;
             bucket_enqueue(bucket, me);
             queued = true;
@@ -591,6 +605,8 @@ park_result_t park_conditionally(
 ) {
     thread_t* me = get_current_thread();
     me->token = 0;
+
+    PL_TRACE("%s: parking", me->name);
 
     // Guard against someone calling parkConditionally() recursively from beforeSleep().
     ASSERT(me->address == NULL);
