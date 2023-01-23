@@ -578,9 +578,13 @@ static bool park_enqueue(const void* address, thread_t* me, park_validation_t va
  * The timer callback, wakes up the given thread from a timeout
  */
 static void wakeup_thread(thread_t* thread, uintptr_t now) {
-    spinlock_lock(&thread->parking_lock);
-    scheduler_ready_thread(thread);
-    spinlock_unlock(&thread->parking_lock);
+    // if we fail to lock it means that we already woke up from something
+    // else and the timer is probably about to be stopped, so don't try
+    // to start it up
+    if (spinlock_try_lock(&thread->parking_lock)) {
+        scheduler_ready_thread(thread);
+        spinlock_unlock(&thread->parking_lock);
+    }
 }
 
 typedef struct arg {
@@ -639,11 +643,16 @@ park_result_t park_conditionally(
     }
     ASSERT(me->address == NULL || me->address == address);
     bool did_get_dequeued = me->address == NULL;
+
+    // we need to stop the timer before we unlock so we won't
+    // try to wakeup the thread again from within the timer
+    if (timer != NULL) {
+        timer_stop(timer);
+    }
     spinlock_unlock(&me->parking_lock);
 
     // release the timer
     if (timer != NULL) {
-        timer_stop(timer);
         SAFE_RELEASE_TIMER(timer);
     }
 
