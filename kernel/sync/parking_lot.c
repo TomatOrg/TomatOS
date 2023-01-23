@@ -743,7 +743,12 @@ void unpark_all(const void* address) {
 
         spinlock_lock(&thread->parking_lock);
         thread->address = NULL;
-        scheduler_ready_thread(thread);
+
+        // it is perfectly valid for the thread to not be waiting at this point if it got a timeout
+        // but we got in time to dequeue it
+        if (thread->status == THREAD_STATUS_WAITING) {
+            scheduler_ready_thread(thread);
+        }
         spinlock_unlock(&thread->parking_lock);
 
         release_thread(thread);
@@ -812,7 +817,12 @@ void unpark_one(
 
     spinlock_lock(&thread->parking_lock);
     thread->address = NULL;
-    scheduler_ready_thread(thread);
+
+    // it is perfectly valid for the thread to not be waiting at this point if it got a timeout
+    // but we got in time to dequeue it
+    if (thread->status == THREAD_STATUS_WAITING) {
+        scheduler_ready_thread(thread);
+    }
     spinlock_unlock(&thread->parking_lock);
 
     // At this point, the threadData may die
