@@ -424,12 +424,6 @@ void _start(void) {
     }
 
     TRACE("Kernel init done");
-
-    // create the kernel start thread
-    thread_t* thread = create_thread(kernel_startup, NULL, "kernel/startup");
-    CHECK(thread != NULL);
-    scheduler_ready_thread(thread);
-
     // we are going to use this counter again to know when all
     // cpus exited the bootlaoder supplied stack
     m_startup_count = 0;
@@ -440,8 +434,18 @@ void _start(void) {
     TRACE("\tCPU #%d - BSP", get_apic_id());
 
     atomic_fetch_add(&m_startup_count, 1);
+
+
+    // create the kernel start thread
+    thread_t* thread = create_thread(kernel_startup, NULL, "kernel/startup");
+    CHECK(thread != NULL);
+    scheduler_ready_thread(thread);
+    
+    
     scheduler_startup();
 
+
+    while(1); 
 cleanup:
     if (IS_ERROR(err)) {
         ERROR("Error in kernel initializing!");

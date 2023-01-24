@@ -48,7 +48,7 @@ static bool compare_and_park(compare_and_park_arg_t* arg) {
     return value == arg->expected;
 }
 
-static bool mutex_is_locked(mutex_t* mutex) {
+bool mutex_is_locked(mutex_t* mutex) {
     return atomic_load_explicit(&mutex->byte, memory_order_acquire) & IS_HELD;
 }
 
@@ -183,7 +183,7 @@ static void mutex_unlock_slow(mutex_t* mutex) {
 
 static bool mutex_unlock_fast_assuming_zero(mutex_t* mutex) {
     uint8_t is_held = IS_HELD;
-    return atomic_compare_exchange_weak_explicit(&mutex->byte, &is_held, 0, memory_order_release, memory_order_release);
+    return atomic_compare_exchange_weak_explicit(&mutex->byte, &is_held, 0, memory_order_seq_cst, memory_order_seq_cst);
 }
 
 void mutex_unlock(mutex_t* mutex) {

@@ -7,6 +7,7 @@
 #include "apic.h"
 #include "msr.h"
 #include "irq/irq.h"
+#include "thread/thread.h"
 
 #include <sync/irq_spinlock.h>
 #include <thread/scheduler.h>
@@ -360,7 +361,6 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
 
     while (true) {
         if (!vmm_is_mapped((uintptr_t)base_ptr, 1)) {
-            ERROR("\t%p is unmapped!", base_ptr);
             break;
         }
 
@@ -780,8 +780,8 @@ __attribute__((used)) INTERRUPT
 void common_interrupt_handler(interrupt_context_t* ctx) {
     switch (ctx->int_num) {
         case IRQ_PREEMPT: {
-            scheduler_on_schedule(ctx);
             lapic_eoi();
+            scheduler_on_schedule(ctx);
         } break;
 
         // TODO: we don't need to save the full register context,

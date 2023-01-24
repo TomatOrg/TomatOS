@@ -320,7 +320,8 @@ cleanup:
 atomic_int g_thread_count = 0;
 
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
-    thread_t* thread = get_free_thread();
+    // TODO: FIXME: recycle threads
+    thread_t* thread = NULL;
     if (thread == NULL) {
         thread = alloc_thread();
         if (thread == NULL) {
@@ -356,7 +357,7 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     // relies on the values to be consistent!
     uint8_t* tcb_bottom = (uint8_t*)thread->tcb - m_tls_size;
     memset(tcb_bottom, 0, m_tls_size);
-    memcpy(tcb_bottom, m_tls_file, m_tls_filesz);
+    if (m_tls_filesz) memcpy(tcb_bottom, m_tls_file, m_tls_filesz); // make ubsan happy about non-null pointer
 
     // Reset the thread save state:
     //  - set the rip as the thread entry
@@ -383,6 +384,10 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     // set the state as waiting
     cas_thread_state(thread, THREAD_STATUS_DEAD, THREAD_STATUS_WAITING);
 
+
+    void sched_new_thread(thread_t* thread);
+    sched_new_thread(thread);
+
     return thread;
 }
 
@@ -398,6 +403,7 @@ void thread_exit() {
     // simply signal the scheduler to drop the current thread, it will
     // release the thread properly on its on
     scheduler_drop_current();
+    while(1);
 }
 
 thread_t* put_thread(thread_t* thread) {

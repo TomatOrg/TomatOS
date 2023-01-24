@@ -200,6 +200,63 @@ typedef struct thread {
 
     // mimalloc heap
     void* heap;
+    // microtime() of the start of the current run and sleep
+    // this accounts from when the tasl is marked runnable to when it starts sleeping
+    // (so that excludes the RUNNABLE->RUNNING) delay
+    // and likewise for the sleep, it only counts the voluntary sleep time (timers, waitables, semaphore/mutex)
+    // and not the time when the task was not running due to preemption  
+    
+    
+    void	*ts_runq;	/* Run-queue we're queued on. */
+	short		ts_flags;	/* TSF_* flags. */
+	int		ts_cpu;		/* CPU that we have affinity for. */
+	int		ts_rltick;	/* Real last tick, for affinity. */
+	int		ts_slice;	/* Ticks of slice remaining. */
+	unsigned int		ts_slptime;	/* Number of ticks we vol. slept */
+	unsigned 		ts_runtime;	/* Number of ticks we were running */
+	int		ts_ltick;	/* Last tick that we were running on */
+	int		ts_ftick;	/* First tick that we were running on */
+	int		ts_ticks;	/* Tick count */
+
+    
+    // the time spent where the process was runnable and in voluntary sleep
+    // only the last 5 seconds are kept, look at SCHEDULER_SLIDING_WINDOW_MS for an explanation
+    int runtime;
+    int incruntime;
+    int pri_class;
+    int base_ithread_pri;
+    int slice;
+    int base_pri;
+    // idk
+    int ticks;
+    int ltick;
+    int ftick;
+    int rltick;
+    int slptick;
+    int critnest;
+    int swvoltick;
+    int swinvoltick;
+    uint32_t inhibitors;
+    int lastcpu;
+    int oncpu;
+    uint8_t priority;
+    int spinlock_count;
+    uint32_t flags;
+    int rqindex;
+    uint32_t state;
+    //int cpu;
+    int user_pri;
+    int base_user_pri;
+    int lend_user_pri;
+    
+    int owepreempt;
+    bool spinlock_status;
+    int sched_ast;
+
+    spinlock_t* lock; // this points to a threadqueue lock
+    // intrusive linked list of threads in the same priority bucket
+    struct thread* next_in_bucket; 
+    struct thread** prev_in_bucket;
 } thread_t;
 
 /**

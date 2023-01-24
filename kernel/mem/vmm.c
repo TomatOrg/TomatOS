@@ -342,7 +342,8 @@ INTERRUPT static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_per
                 .present            = 1,
                 .frame              = pa >> 21,
                 .writeable          = (perms & MAP_WRITE) ? 1 : 0,
-                .no_execute         = (perms & MAP_EXEC) ? 0 : 1,
+                //.no_execute         = (perms & MAP_EXEC) ? 0 : 1,
+                .no_execute         = 0,
                 .huge_page          = 1,
                 .pat2               = (cachingmode >> 2) & 1,
                 .pat1               = (cachingmode >> 1) & 1,
@@ -357,7 +358,8 @@ INTERRUPT static err_t do_map(uintptr_t pa, void* va, size_t page_count, map_per
                 .present            = 1,
                 .frame              = pa >> 12,
                 .writeable          = (perms & MAP_WRITE) ? 1 : 0,
-                .no_execute         = (perms & MAP_EXEC) ? 0 : 1,
+                //.no_execute         = (perms & MAP_EXEC) ? 0 : 1,
+                .no_execute         = 0,
                 .pat2               = (cachingmode >> 2) & 1,
                 .pat1               = (cachingmode >> 1) & 1,
                 .pat0               = (cachingmode >> 0) & 1
@@ -419,7 +421,8 @@ INTERRUPT err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
             CHECK(((uintptr_t)va % page_size) == 0);
 
             PAGE_TABLE_PML2[pml2i].writeable = (perms & MAP_WRITE) ? 1 : 0;
-            PAGE_TABLE_PML2[pml2i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+            //PAGE_TABLE_PML2[pml2i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+            PAGE_TABLE_PML2[pml2i].no_execute = 0;
 
             // unmap if needed
             if (perms & MAP_UNMAP_DIRECT) {
@@ -434,7 +437,8 @@ INTERRUPT err_t vmm_set_perms(void* va, size_t page_count, map_perm_t perms) {
             // make sure the page is mapped and change the write/exec perms
             CHECK(PAGE_TABLE_PML1[pml1i].present);
             PAGE_TABLE_PML1[pml1i].writeable = (perms & MAP_WRITE) ? 1 : 0;
-            PAGE_TABLE_PML1[pml1i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+            //PAGE_TABLE_PML1[pml1i].no_execute = (perms & MAP_EXEC) ? 0 : 1;
+            PAGE_TABLE_PML1[pml1i].no_execute = 0;
 
             // unmap if needed
             if (perms & MAP_UNMAP_DIRECT) {
