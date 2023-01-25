@@ -172,9 +172,6 @@ typedef struct thread {
     // transition to THREAD_STATUS_PREEMPTED on preemption, otherwise just deschedule
     bool preempt_stop;
 
-    // The current status of the thread
-    _Atomic(thread_status_t) status;
-
     // Link for the scheduler
     struct thread* sched_link;
 
@@ -200,60 +197,44 @@ typedef struct thread {
 
     // mimalloc heap
     void* heap;
-    // microtime() of the start of the current run and sleep
-    // this accounts from when the tasl is marked runnable to when it starts sleeping
-    // (so that excludes the RUNNABLE->RUNNING) delay
-    // and likewise for the sleep, it only counts the voluntary sleep time (timers, waitables, semaphore/mutex)
-    // and not the time when the task was not running due to preemption  
     
+    void *runq;	/* Run-queue we're queued on. */
+    short ts_flags;	/* TSF_* flags. */
+    int cpu;		/* CPU that we have affinity for. */
+    int rltick;	/* Real last tick, for affinity. */
+    int slice;	/* Ticks of slice remaining. */
+    unsigned int slptime;	/* Number of ticks we vol. slept */
+    unsigned runtime;	/* Number of ticks we were running */
+    int ltick;	/* Last tick that we were running on */
+    int ftick;	/* First tick that we were running on */
+    int ticks;	/* Tick count */
     
-    void	*ts_runq;	/* Run-queue we're queued on. */
-	short		ts_flags;	/* TSF_* flags. */
-	int		ts_cpu;		/* CPU that we have affinity for. */
-	int		ts_rltick;	/* Real last tick, for affinity. */
-	int		ts_slice;	/* Ticks of slice remaining. */
-	unsigned int		ts_slptime;	/* Number of ticks we vol. slept */
-	unsigned 		ts_runtime;	/* Number of ticks we were running */
-	int		ts_ltick;	/* Last tick that we were running on */
-	int		ts_ftick;	/* First tick that we were running on */
-	int		ts_ticks;	/* Tick count */
-
-    
-    // the time spent where the process was runnable and in voluntary sleep
-    // only the last 5 seconds are kept, look at SCHEDULER_SLIDING_WINDOW_MS for an explanation
-    int runtime;
-    int incruntime;
-    int pri_class;
+    int incruntime; /* Cpu ticks to transfer to proc. */
+    int pri_class; /* Scheduling class. */
     int base_ithread_pri;
-    int slice;
-    int base_pri;
-    // idk
-    int ticks;
-    int ltick;
-    int ftick;
-    int rltick;
-    int slptick;
-    int critnest;
-    int swvoltick;
-    int swinvoltick;
-    uint32_t inhibitors;
-    int lastcpu;
-    int oncpu;
-    uint8_t priority;
+    int base_pri; /* Thread base kernel priority. */
+    int slptick; /* Time at sleep. */
+    int critnest; /* Critical section nest level. */
+    int swvoltick; /* Time at last SW_VOL switch. */
+    int swinvoltick; /* Time at last SW_INVOL switch. */
+    uint32_t inhibitors; /* Why can not run. */
+    int lastcpu; /* Last cpu we were on. */
+    int oncpu; /* Which cpu we are on. */
+    uint8_t priority; /* Thread active priority. */
     int spinlock_count;
     uint32_t flags;
-    int rqindex;
+    int rqindex; /* Run queue index. */
     uint32_t state;
-    //int cpu;
-    int user_pri;
+    int user_pri; /* User pri from estcpu and nice. */
     int base_user_pri;
     int lend_user_pri;
     
-    int owepreempt;
+    int owepreempt; /*  Preempt on last critical_exit */
     bool spinlock_status;
     int sched_ast;
 
     spinlock_t* lock; // this points to a threadqueue lock
+
     // intrusive linked list of threads in the same priority bucket
     struct thread* next_in_bucket; 
     struct thread** prev_in_bucket;
@@ -324,29 +305,13 @@ void lock_all_threads();
 
 void unlock_all_threads();
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Thread status
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
 /**
- * Get the status of a thread atomically
+ * Get the status of a thread atomically.
+ * This has to convert between the scheduler internal format and the C# compatible one.
  *
  * @param thread    [IN] The target thread
  */
 thread_status_t get_thread_status(thread_t* thread);
-
-/**
- * Compare and swap the thread state atomically
- *
- * @remark
- * This will suspend until the thread status is equals to old and only then try to
- * set it to new, if that fails it will continue to try until it has a success.
- *
- * @param thread    [IN] The target thread
- * @param old       [IN] The old status
- * @param new       [IN] The new status
- */
-void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new);
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Thread context

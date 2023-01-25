@@ -183,7 +183,7 @@ static void mutex_unlock_slow(mutex_t* mutex) {
 
 static bool mutex_unlock_fast_assuming_zero(mutex_t* mutex) {
     uint8_t is_held = IS_HELD;
-    return atomic_compare_exchange_weak_explicit(&mutex->byte, &is_held, 0, memory_order_seq_cst, memory_order_seq_cst);
+    return atomic_compare_exchange_weak_explicit(&mutex->byte, &is_held, 0, memory_order_release, memory_order_release);
 }
 
 void mutex_unlock(mutex_t* mutex) {

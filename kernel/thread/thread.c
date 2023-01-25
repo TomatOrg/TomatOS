@@ -58,29 +58,14 @@
 #include "arch/gdt.h"
 #include "sync/parking_lot.h"
 
+// TODO: remove the conversion and use a single format
 thread_status_t get_thread_status(thread_t* thread) {
-    return atomic_load(&thread->status);
-}
-
-void cas_thread_state(thread_t* thread, thread_status_t old, thread_status_t new) {
-    // sanity
-    ASSERT((old & THREAD_SUSPEND) == 0);
-    ASSERT((new & THREAD_SUSPEND) == 0);
-    ASSERT(old != new);
-
-    // loop if status is in a suspend state giving the GC
-    // time to finish and change the state to old val
-    thread_status_t old_value = old;
-    for (int i = 0; !atomic_compare_exchange_weak(&thread->status, &old_value, new); i++, old_value = old) {
-        if (old == THREAD_STATUS_WAITING && thread->status == THREAD_STATUS_RUNNABLE) {
-            ASSERT(!"Waiting for THREAD_STATUS_WAITING but is THREAD_STATUS_RUNNABLE");
-        }
-
-        // pause for max of 10 times polling for status
-        for (int x = 0; x < 10 && thread->status != old; x++) {
-            __builtin_ia32_pause();
-        }
-    }
+    unsigned int state = thread->state;
+    if (state == TDS_RUNNING) return THREAD_STATUS_RUNNING;
+    if (state == TDS_RUNQ || state == TDS_CAN_RUN) return THREAD_STATUS_RUNNABLE;
+    if (state == TDS_INHIBITED) return THREAD_STATUS_WAITING;
+    if (state == TDS_INACTIVE) return THREAD_STATUS_IDLE;
+    __builtin_unreachable();
 }
 
 static void save_fx_state(thread_fx_save_state_t* state) {
@@ -320,14 +305,12 @@ cleanup:
 atomic_int g_thread_count = 0;
 
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
-    // TODO: FIXME: recycle threads
-    thread_t* thread = NULL;
+    thread_t* thread = get_free_thread();
     if (thread == NULL) {
         thread = alloc_thread();
         if (thread == NULL) {
             return NULL;
         }
-        cas_thread_state(thread, THREAD_STATUS_IDLE, THREAD_STATUS_DEAD);
         add_to_all_threads(thread);
     }
 
@@ -381,11 +364,6 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     thread->save_state.fx_save_state.fcw = BIT0 | BIT1 | BIT2 | BIT3 | BIT4 | BIT5 | BIT8 | BIT9;
     thread->save_state.fx_save_state.mxcsr = 0b1111110000000;
 
-    // set the state as waiting
-    cas_thread_state(thread, THREAD_STATUS_DEAD, THREAD_STATUS_WAITING);
-
-
-    void sched_new_thread(thread_t* thread);
     sched_new_thread(thread);
 
     return thread;
@@ -403,7 +381,7 @@ void thread_exit() {
     // simply signal the scheduler to drop the current thread, it will
     // release the thread properly on its on
     scheduler_drop_current();
-    while(1);
+    __builtin_unreachable();
 }
 
 thread_t* put_thread(thread_t* thread) {
@@ -413,9 +391,6 @@ thread_t* put_thread(thread_t* thread) {
 
 void release_thread(thread_t* thread) {
     if (atomic_fetch_sub(&thread->ref_count, 1) == 1) {
-        // the last ref should only come after the thread is dead
-        ASSERT(thread->status == THREAD_STATUS_DEAD);
-
         thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
 
         // free the thread locals of this thread as we don't need them anymore

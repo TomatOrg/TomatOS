@@ -444,8 +444,6 @@ void _start(void) {
     
     scheduler_startup();
 
-
-    while(1); 
 cleanup:
     if (IS_ERROR(err)) {
         ERROR("Error in kernel initializing!");

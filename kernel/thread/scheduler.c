@@ -122,11 +122,11 @@
 #define SCHED_TICK_TARG (hz * SCHED_TICK_SECS)
 #define SCHED_TICK_MAX (SCHED_TICK_TARG + hz)
 #define SCHED_TICK_SHIFT 10
-#define SCHED_TICK_HZ(ts) ((ts)->ts_ticks >> SCHED_TICK_SHIFT)
-#define SCHED_TICK_TOTAL(ts) (MAX((ts)->ts_ltick - (ts)->ts_ftick, hz))
+#define SCHED_TICK_HZ(ts) ((ts)->ticks >> SCHED_TICK_SHIFT)
+#define SCHED_TICK_TOTAL(ts) (MAX((ts)->ltick - (ts)->ftick, hz))
 #define SCHED_SLP_RUN_MAX ((hz * 5) << SCHED_TICK_SHIFT)
 
-#define SCHED_AFFINITY(ts, t) ((ts)->ts_rltick > ticks - ((t)*affinity))
+#define SCHED_AFFINITY(ts, t) ((ts)->rltick > ticks - ((t)*affinity))
 
 #define SCHED_SLICE_DEFAULT_DIVISOR 10 /* ~94 ms, 12 stathz ticks. */
 #define SCHED_SLICE_MIN_DIVISOR 6      /* DEFAULT/MIN = ~16 ms. */
@@ -242,6 +242,10 @@
 #define cpu_ticks() get_tick()
 #define curthread ((thread_t *)m_curthread)
 
+#define THREAD_LOCK_ASSERT(td, a) ASSERT(td->lock->locked)
+#define THREAD_LOCK_BLOCKED_ASSERT(td, a) if (td->lock != &blocked_lock) ASSERT(td->lock->locked);
+#define THREAD_LOCKPTR_ASSERT(td, l) ASSERT(td->lock == l);
+
 typedef struct runq_head {
     thread_t *first, **last;
 } runq_head_t;
@@ -267,14 +271,6 @@ typedef struct threadqueue {
     int switchcnt;
     int cpu_idle;
 } threadqueue_t;
-
-enum td_states {
-    TDS_INACTIVE = 0x0,
-    TDS_INHIBITED,
-    TDS_CAN_RUN,
-    TDS_RUNQ,
-    TDS_RUNNING
-} td_state; /* (t) thread state */
 
 static spinlock_t blocked_lock;
 static CPU_LOCAL uintptr_t m_curthread;
@@ -388,8 +384,6 @@ INTERRUPT void spinlock_exit(void) {
 }
 
 INTERRUPT void cpu_switch(thread_t *old, thread_t *new, spinlock_t *mtx) {
-    // printf("from %s to %s\n", old->name, new->name);
-
     ASSERT(frame != 0);
     interrupt_context_t *ctx = (void *)frame;
     frame = 0;
@@ -409,7 +403,6 @@ INTERRUPT void cpu_switch(thread_t *old, thread_t *new, spinlock_t *mtx) {
     new->oncpu = get_cpu_id();
 
     restore_thread_context(new, ctx);
-    restore_interrupt_context(ctx);
 }
 
 INTERRUPT static threadqueue_t *get_run_queue() {
@@ -564,7 +557,7 @@ INTERRUPT static inline void thread_unblock_switch(thread_t *td,
 INTERRUPT static void tdq_runq_add(threadqueue_t *tdq, thread_t *td,
                                    int flags) {
     TDQ_LOCK_ASSERT(tdq);
-    // THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
 
     uint8_t pri = td->priority;
     TD_SET_RUNQ(td);
@@ -575,9 +568,9 @@ INTERRUPT static void tdq_runq_add(threadqueue_t *tdq, thread_t *td,
     }*/
 
     if (pri < PRI_MIN_BATCH) {
-        td->ts_runq = &tdq->realtime;
+        td->runq = &tdq->realtime;
     } else if (pri <= PRI_MAX_BATCH) {
-        td->ts_runq = &tdq->timeshare;
+        td->runq = &tdq->timeshare;
         /*
          * This queue contains only priorities between MIN and MAX
          * batch.  Use the whole queue to represent these values.
@@ -598,35 +591,35 @@ INTERRUPT static void tdq_runq_add(threadqueue_t *tdq, thread_t *td,
             pri = tdq->ridx;
         }
 
-        runq_add_pri(td->ts_runq, td, pri, flags);
+        runq_add_pri(td->runq, td, pri, flags);
         return;
     } else {
-        td->ts_runq = &tdq->idle;
+        td->runq = &tdq->idle;
     }
-    runq_add(td->ts_runq, td, flags);
+    runq_add(td->runq, td, flags);
 }
 
 INTERRUPT static void tdq_runq_rem(threadqueue_t *tdq, thread_t *td) {
     TDQ_LOCK_ASSERT(tdq);
-    // THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
-    ASSERT(td->ts_runq != NULL, "tdq_runq_remove: thread %p null ts_runq", td);
+    THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+    ASSERT(td->runq != NULL, "tdq_runq_remove: thread %p null runq", td);
     /*if (td->ts_flags & TSF_XFERABLE) {
             tdq->transferable--;
             td->ts_flags &= ~TSF_XFERABLE;
     }*/
 
-    if (td->ts_runq == &tdq->timeshare) {
+    if (td->runq == &tdq->timeshare) {
         if (tdq->idx != tdq->ridx)
-            runq_remove_idx(td->ts_runq, td, &tdq->ridx);
+            runq_remove_idx(td->runq, td, &tdq->ridx);
         else
-            runq_remove_idx(td->ts_runq, td, NULL);
+            runq_remove_idx(td->runq, td, NULL);
     } else
-        runq_remove(td->ts_runq, td);
+        runq_remove(td->runq, td);
 }
 
 INTERRUPT static void tdq_load_add(threadqueue_t *tdq, thread_t *td) {
     TDQ_LOCK_ASSERT(tdq);
-    // THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
     tdq->load++;
     if ((td->flags & TDF_NOLOAD) == 0)
         tdq->sysload++;
@@ -634,7 +627,7 @@ INTERRUPT static void tdq_load_add(threadqueue_t *tdq, thread_t *td) {
 
 INTERRUPT static void tdq_load_rem(threadqueue_t *tdq, thread_t *td) {
     TDQ_LOCK_ASSERT(tdq);
-    // THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
     ASSERT(tdq->load != 0);
 
     tdq->load--;
@@ -667,7 +660,7 @@ static inline int td_slice(thread_t *td, threadqueue_t *tdq) {
 INTERRUPT static void tdq_setlowpri(threadqueue_t *tdq, thread_t *ctd) {
     thread_t *td;
 
-    // TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+    TDQ_LOCK_ASSERT(tdq);
     if (ctd == NULL)
         ctd = tdq->tdq_curthread;
     td = tdq_choose(tdq);
@@ -719,7 +712,7 @@ INTERRUPT static void tdq_notify(threadqueue_t *tdq, int lowpri) {
 INTERRUPT static thread_t *tdq_choose(threadqueue_t *tdq) {
     thread_t *td;
 
-    // TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+    TDQ_LOCK_ASSERT(tdq);
     td = runq_choose(&tdq->realtime);
     if (td != NULL)
         return (td);
@@ -743,12 +736,10 @@ INTERRUPT static thread_t *tdq_choose(threadqueue_t *tdq) {
 INTERRUPT static int tdq_add(threadqueue_t *tdq, thread_t *td, int flags) {
     int lowpri;
 
-    // TDQ_LOCK_ASSERT(tdq, MA_OWNED);
-    // THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
+    TDQ_LOCK_ASSERT(tdq);
+    THREAD_LOCK_BLOCKED_ASSERT(td, MA_OWNED);
     ASSERT(td->inhibitors == 0, "sched_add: trying to run inhibited thread");
     ASSERT(TD_CAN_RUN(td) || TD_IS_RUNNING(td), "sched_add: bad thread state");
-    // KASSERT(td->flags & TDF_INMEM,
-    //     ("sched_add: thread swapped out"));
 
     lowpri = tdq->lowpri;
     if (td->priority < lowpri)
@@ -764,9 +755,9 @@ INTERRUPT static inline threadqueue_t *sched_setcpu(thread_t *td, int cpu,
     threadqueue_t *tdq;
     spinlock_t *mtx;
 
-    ////THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     tdq = get_run_queue_of(cpu);
-    td->ts_cpu = cpu;
+    td->cpu = cpu;
     /*
      * If the lock matches just return the queue.
      */
@@ -799,24 +790,24 @@ INTERRUPT static int sched_interact_score(thread_t *td) {
      * no chance.
      */
     if (SCHED_INTERACT_THRESH <= SCHED_INTERACT_HALF &&
-        td->ts_runtime >= td->ts_slptime)
+        td->runtime >= td->slptime)
         return (SCHED_INTERACT_HALF);
 
-    if (td->ts_runtime > td->ts_slptime) {
-        div = MAX(1, td->ts_runtime / SCHED_INTERACT_HALF);
+    if (td->runtime > td->slptime) {
+        div = MAX(1, td->runtime / SCHED_INTERACT_HALF);
         return (SCHED_INTERACT_HALF +
-                (SCHED_INTERACT_HALF - (td->ts_slptime / div)));
+                (SCHED_INTERACT_HALF - (td->slptime / div)));
     }
-    if (td->ts_slptime > td->ts_runtime) {
-        div = MAX(1, td->ts_slptime / SCHED_INTERACT_HALF);
-        return (td->ts_runtime / div);
+    if (td->slptime > td->runtime) {
+        div = MAX(1, td->slptime / SCHED_INTERACT_HALF);
+        return (td->runtime / div);
     }
-    /* ts_runtime == ts_slptime */
-    if (td->ts_runtime)
+    /* runtime == slptime */
+    if (td->runtime)
         return (SCHED_INTERACT_HALF);
 
     /*
-     * This can happen if ts_slptime and ts_runtime are 0.
+     * This can happen if slptime and runtime are 0.
      */
     return (0);
 }
@@ -830,7 +821,7 @@ static int sched_pickcpu(thread_t *td, int flags) {
      * Don't migrate a running thread from sched_switch().
      */
     if (flags & SRQ_OURSELF)
-        return (td->ts_cpu);
+        return (td->cpu);
     /*
      * Prefer to run interrupt threads on the processors that generate
      * the interrupt.
@@ -840,10 +831,10 @@ static int sched_pickcpu(thread_t *td, int flags) {
         if (tdq->lowpri >= PRI_MIN_IDLE) {
             return (self);
         }
-        td->ts_cpu = self;
+        td->cpu = self;
         goto llc;
     } else {
-        tdq = get_run_queue_of(td->ts_cpu);
+        tdq = get_run_queue_of(td->cpu);
     }
     /*
      * If the thread can run on the last cpu and the affinity has not
@@ -851,7 +842,7 @@ static int sched_pickcpu(thread_t *td, int flags) {
      */
     if (atomic_load_char(&tdq->lowpri) >= PRI_MIN_IDLE &&
         SCHED_AFFINITY(td, 2)) {
-        return td->ts_cpu;
+        return td->cpu;
     }
 
 llc:
@@ -947,7 +938,7 @@ INTERRUPT static void sched_priority(thread_t *td) {
                score);
     } else {
         pri = SCHED_PRI_MIN;
-        if (td->ts_ticks)
+        if (td->ticks)
             pri += MIN(SCHED_PRI_TICKS(td), SCHED_PRI_RANGE - 1);
         // TODO: pri += SCHED_PRI_NICE(td->proc->p_nice);
         ASSERT(pri >= PRI_MIN_BATCH && pri <= PRI_MAX_BATCH);
@@ -960,7 +951,7 @@ INTERRUPT static void sched_priority(thread_t *td) {
 INTERRUPT static void sched_interact_update(thread_t *td) {
     uint32_t sum;
 
-    sum = td->ts_runtime + td->ts_slptime;
+    sum = td->runtime + td->slptime;
     if (sum < SCHED_SLP_RUN_MAX)
         return;
     /*
@@ -969,12 +960,12 @@ INTERRUPT static void sched_interact_update(thread_t *td) {
      * 2) We have added an unusual amount of sleep time from sched_sleep().
      */
     if (sum > SCHED_SLP_RUN_MAX * 2) {
-        if (td->ts_runtime > td->ts_slptime) {
-            td->ts_runtime = SCHED_SLP_RUN_MAX;
-            td->ts_slptime = 1;
+        if (td->runtime > td->slptime) {
+            td->runtime = SCHED_SLP_RUN_MAX;
+            td->slptime = 1;
         } else {
-            td->ts_slptime = SCHED_SLP_RUN_MAX;
-            td->ts_runtime = 1;
+            td->slptime = SCHED_SLP_RUN_MAX;
+            td->runtime = 1;
         }
         return;
     }
@@ -984,12 +975,12 @@ INTERRUPT static void sched_interact_update(thread_t *td) {
      * us into the range of [4/5 * SCHED_INTERACT_MAX, SCHED_INTERACT_MAX]
      */
     if (sum > (SCHED_SLP_RUN_MAX / 5) * 6) {
-        td->ts_runtime /= 2;
-        td->ts_slptime /= 2;
+        td->runtime /= 2;
+        td->slptime /= 2;
         return;
     }
-    td->ts_runtime = (td->ts_runtime / 5) * 4;
-    td->ts_slptime = (td->ts_slptime / 5) * 4;
+    td->runtime = (td->runtime / 5) * 4;
+    td->slptime = (td->slptime / 5) * 4;
 }
 
 INTERRUPT static void sched_pctcpu_update(thread_t *td, int run) {
@@ -999,24 +990,24 @@ INTERRUPT static void sched_pctcpu_update(thread_t *td, int run) {
      * The signed difference may be negative if the thread hasn't run for
      * over half of the ticks rollover period.
      */
-    if ((uint32_t)(t - td->ts_ltick) >= SCHED_TICK_TARG) {
-        td->ts_ticks = 0;
-        td->ts_ftick = t - SCHED_TICK_TARG;
-    } else if (t - td->ts_ftick >= SCHED_TICK_MAX) {
-        td->ts_ticks = (td->ts_ticks / (td->ts_ltick - td->ts_ftick)) *
-                       (td->ts_ltick - (t - SCHED_TICK_TARG));
-        td->ts_ftick = t - SCHED_TICK_TARG;
+    if ((uint32_t)(t - td->ltick) >= SCHED_TICK_TARG) {
+        td->ticks = 0;
+        td->ftick = t - SCHED_TICK_TARG;
+    } else if (t - td->ftick >= SCHED_TICK_MAX) {
+        td->ticks = (td->ticks / (td->ltick - td->ftick)) *
+                       (td->ltick - (t - SCHED_TICK_TARG));
+        td->ftick = t - SCHED_TICK_TARG;
     }
     if (run)
-        td->ts_ticks += (t - td->ts_ltick) << SCHED_TICK_SHIFT;
-    td->ts_ltick = t;
+        td->ticks += (t - td->ltick) << SCHED_TICK_SHIFT;
+    td->ltick = t;
 }
 
 INTERRUPT static void sched_thread_priority(thread_t *td, uint8_t prio) {
     threadqueue_t *tdq;
     int oldpri;
 
-    ////THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     if (td->priority == prio)
         return;
     /*
@@ -1036,7 +1027,7 @@ INTERRUPT static void sched_thread_priority(thread_t *td, uint8_t prio) {
      * information so other cpus are aware of our current priority.
      */
     if (TD_IS_RUNNING(td)) {
-        tdq = get_run_queue_of(td->ts_cpu);
+        tdq = get_run_queue_of(td->cpu);
         oldpri = td->priority;
         td->priority = prio;
         if (prio < tdq->lowpri)
@@ -1080,18 +1071,10 @@ INTERRUPT void sched_prio(thread_t *td, uint8_t prio) {
 
     /* Change the real priority. */
     sched_thread_priority(td, prio);
-
-    ///*
-    // * If the thread is on a turnstile, then let the turnstile update
-    // * its state.
-    // */
-    // if (TD_ON_LOCK(td) && oldprio != prio)
-    //	turnstile_adjust(td, oldprio);
 }
 
 void sched_lend_user_prio(thread_t *td, uint8_t prio) {
-
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     td->lend_user_pri = prio;
     td->user_pri = MIN(prio, td->base_user_pri);
     if (td->priority > td->user_pri)
@@ -1104,7 +1087,6 @@ void sched_lend_user_prio(thread_t *td, uint8_t prio) {
  * Like the above but first check if there is anything to do.
  */
 void sched_lend_user_prio_cond(thread_t *td, uint8_t prio) {
-
     if (td->lend_user_pri != prio)
         goto lend;
     if (td->user_pri != MIN(prio, td->base_user_pri))
@@ -1125,7 +1107,7 @@ INTERRUPT static spinlock_t *sched_switch_migrate(threadqueue_t *tdq,
     int lowpri;
     ASSERT((td->flags & TSF_BOUND) != 0, "Thread %p shouldn't migrate", td);
 
-    tdn = get_run_queue_of(td->ts_cpu);
+    tdn = get_run_queue_of(td->cpu);
     tdq_load_rem(tdq, td);
     /*
      * Do the lock dance required to avoid LOR.  We have an
@@ -1149,16 +1131,16 @@ INTERRUPT void sched_switch(thread_t *td, int flags) {
     int cpuid, preempted;
     int pickcpu;
 
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
 
     cpuid = get_cpu_id();
     tdq = get_run_queue();
     sched_pctcpu_update(td, 1);
     pickcpu = (td->flags & TDF_PICKCPU) != 0;
     if (pickcpu)
-        td->ts_rltick = ticks - affinity * MAX_CACHE_LEVELS;
+        td->rltick = ticks - affinity * MAX_CACHE_LEVELS;
     else
-        td->ts_rltick = ticks;
+        td->rltick = ticks;
     td->lastcpu = td->oncpu;
     preempted = (td->flags & TDF_SLICEEND) == 0 && (flags & SW_PREEMPT) != 0;
     td->flags &= ~(TDF_PICKCPU | TDF_SLICEEND);
@@ -1174,15 +1156,15 @@ INTERRUPT void sched_switch(thread_t *td, int flags) {
     mtx = thread_lock_block(td);
     spinlock_enter();
     if (TD_IS_IDLETHREAD(td)) {
-        // MPASS(mtx == TDQ_LOCKPTR(tdq));
+        ASSERT(mtx == TDQ_LOCKPTR(tdq));
         TD_SET_CAN_RUN(td);
     } else if (TD_IS_RUNNING(td)) {
-        // MPASS(mtx == TDQ_LOCKPTR(tdq));
+        ASSERT(mtx == TDQ_LOCKPTR(tdq));
         srqflag = preempted ? SRQ_OURSELF | SRQ_YIELDING | SRQ_PREEMPTED
                             : SRQ_OURSELF | SRQ_YIELDING;
         if (pickcpu)
-            td->ts_cpu = sched_pickcpu(td, 0);
-        if (td->ts_cpu == cpuid)
+            td->cpu = sched_pickcpu(td, 0);
+        if (td->cpu == cpuid)
             tdq_runq_add(tdq, td, srqflag);
         else
             mtx = sched_switch_migrate(tdq, td, srqflag);
@@ -1204,8 +1186,8 @@ INTERRUPT void sched_switch(thread_t *td, int flags) {
      * appropriate cpu run-queue or sleep-queue and with the current
      * thread-queue locked.
      */
-    // TDQ_LOCK_ASSERT(tdq, MA_OWNED | MA_NOTRECURSED);
-    // MPASS(td == tdq->tdq_curthread);
+    TDQ_LOCK_ASSERT(tdq);
+    ASSERT(td == tdq->tdq_curthread);
     newtd = choosethread();
     sched_pctcpu_update(newtd, 0);
     TDQ_UNLOCK(tdq);
@@ -1215,18 +1197,11 @@ INTERRUPT void sched_switch(thread_t *td, int flags) {
      */
     td->oncpu = NOCPU;
     cpu_switch(td, newtd, mtx);
-
-    // cpuid = td->oncpu = get_cpu_id();
-    // ASSERT(curthread->td_md.md_spinlock_count == 1,
-    //     ("invalid count %d", curthread->td_md.md_spinlock_count));
 }
 
 INTERRUPT void sched_sleep(thread_t *td, int prio) {
-    ////THREAD_LOCK_ASSERT(td, MA_OWNED);
-
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     td->slptick = ticks;
-    // if (TD_IS_SUSPENDED(td) || prio >= PSOCK)
-    //	td->flags |= TDF_CANSWAP;
     if (td->pri_class != PRI_TIMESHARE)
         return;
     if (td->priority > PRI_MIN_BATCH)
@@ -1236,8 +1211,7 @@ INTERRUPT void sched_sleep(thread_t *td, int prio) {
 INTERRUPT void sched_wakeup(thread_t *td, int srqflags) {
     int slptick;
 
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
-    // td->flags &= ~TDF_CANSWAP;
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
 
     /*
      * If we slept for more than a tick update our interactivity and
@@ -1246,7 +1220,7 @@ INTERRUPT void sched_wakeup(thread_t *td, int srqflags) {
     slptick = td->slptick;
     td->slptick = 0;
     if (slptick && slptick != ticks) {
-        td->ts_slptime += (ticks - slptick) << SCHED_TICK_SHIFT;
+        td->slptime += (ticks - slptick) << SCHED_TICK_SHIFT;
         sched_interact_update(td);
         sched_pctcpu_update(td, 0);
     }
@@ -1261,7 +1235,7 @@ INTERRUPT void sched_wakeup(thread_t *td, int srqflags) {
     /*
      * Reset the slice value since we slept and advanced the round-robin.
      */
-    td->ts_slice = 0;
+    td->slice = 0;
     sched_add(td, SRQ_BORING | srqflags);
 }
 
@@ -1271,7 +1245,7 @@ INTERRUPT void sched_preempt(thread_t *td) {
 
     thread_lock(td);
     tdq = get_run_queue();
-    // TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+    TDQ_LOCK_ASSERT(tdq);
     if (td->priority > tdq->lowpri) {
         if (td->critnest == 1) {
             flags = SW_INVOL | SW_PREEMPT;
@@ -1293,7 +1267,7 @@ INTERRUPT thread_t *sched_choose(void) {
     threadqueue_t *tdq;
 
     tdq = get_run_queue();
-    // TDQ_LOCK_ASSERT(tdq, MA_OWNED);
+    TDQ_LOCK_ASSERT(tdq);
     td = tdq_choose(tdq);
     if (td != NULL) {
         tdq_runq_rem(tdq, td);
@@ -1311,7 +1285,7 @@ INTERRUPT static void sched_setpreempt(int pri) {
     int cpri;
 
     ctd = curthread;
-    // THREAD_LOCK_ASSERT(ctd, MA_OWNED);
+    THREAD_LOCK_ASSERT(ctd, MA_OWNED);
 
     cpri = ctd->priority;
     if (pri < cpri)
@@ -1326,7 +1300,7 @@ INTERRUPT static void sched_setpreempt(int pri) {
 INTERRUPT void sched_add(thread_t *td, int flags) {
     threadqueue_t *tdq;
     int cpu, lowpri;
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     /*
      * Recalculate the priority before we select the target cpu or
      * run-queue.
@@ -1352,9 +1326,9 @@ INTERRUPT void sched_add(thread_t *td, int flags) {
 INTERRUPT void sched_rem(thread_t *td) {
     threadqueue_t *tdq;
 
-    tdq = get_run_queue_of(td->ts_cpu);
-    // TDQ_LOCK_ASSERT(tdq, MA_OWNED);
-    // MPASS(td->lock == TDQ_LOCKPTR(tdq));
+    tdq = get_run_queue_of(td->cpu);
+    TDQ_LOCK_ASSERT(tdq);
+    ASSERT(td->lock == TDQ_LOCKPTR(tdq));
     ASSERT(TD_ON_RUNQ(td), "sched_rem: thread not on run queue");
     tdq_runq_rem(tdq, td);
     tdq_load_rem(tdq, td);
@@ -1367,11 +1341,10 @@ INTERRUPT uint32_t sched_pctcpu(thread_t *td) {
     uint32_t pctcpu;
     pctcpu = 0;
 
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     sched_pctcpu_update(td, TD_IS_RUNNING(td));
-    if (td->ts_ticks) {
+    if (td->ticks) {
         int rtick;
-
         /* How many rtick per second ? */
         rtick = MIN(SCHED_TICK_HZ(td) / SCHED_TICK_SECS, hz);
         pctcpu = (FSCALE * ((FSCALE * rtick) / hz)) >> FSHIFT;
@@ -1397,9 +1370,9 @@ INTERRUPT void sched_throw(thread_t *td) {
 
     tdq = get_run_queue();
 
-    // MPASS(td != NULL);
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
-    // THREAD_LOCKPTR_ASSERT(td, TDQ_LOCKPTR(tdq));
+    ASSERT(td != NULL);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCKPTR_ASSERT(td, TDQ_LOCKPTR(tdq));
 
     tdq_load_rem(tdq, td);
     td->lastcpu = td->oncpu;
@@ -1415,7 +1388,7 @@ INTERRUPT void sched_throw(thread_t *td) {
 INTERRUPT void sched_clock(thread_t *td, int cnt) {
     threadqueue_t *tdq;
 
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     tdq = get_run_queue();
 #ifdef SMP
     /*
@@ -1446,7 +1419,7 @@ INTERRUPT void sched_clock(thread_t *td, int cnt) {
             tdq->ridx = tdq->idx;
     }
     sched_pctcpu_update(td, 1);
-    if (/*(td->pri_class & PRI_FIFO_BIT) ||*/ TD_IS_IDLETHREAD(td))
+    if (TD_IS_IDLETHREAD(td))
         return;
 
     if (td->pri_class == PRI_TIMESHARE) {
@@ -1454,7 +1427,7 @@ INTERRUPT void sched_clock(thread_t *td, int cnt) {
          * We used a tick; charge it to the thread so
          * that we can compute our interactivity.
          */
-        td->ts_runtime += tickincr * cnt;
+        td->runtime += tickincr * cnt;
         sched_interact_update(td);
         sched_priority(td);
     }
@@ -1463,9 +1436,9 @@ INTERRUPT void sched_clock(thread_t *td, int cnt) {
      * Force a context switch if the current thread has used up a full
      * time slice (default is 100ms).
      */
-    td->ts_slice += cnt;
-    if (td->ts_slice >= td_slice(td, tdq)) {
-        td->ts_slice = 0;
+    td->slice += cnt;
+    if (td->slice >= td_slice(td, tdq)) {
+        td->slice = 0;
 
         /*
          * If an ithread uses a full quantum, demote its
@@ -1500,7 +1473,7 @@ INTERRUPT void mi_switch(int flags) {
     struct thread *td;
 
     td = curthread; /* XXX */
-    // THREAD_LOCK_ASSERT(td, MA_OWNED | MA_NOTRECURSED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED | MA_NOTRECURSED);
     ASSERT(!TD_ON_RUNQ(td), "mi_switch: called by old code");
     ASSERT(td->critnest == 1, "mi_switch: switch in a critical section");
     ASSERT((flags & (SW_INVOL | SW_VOL)) != 0,
@@ -1523,12 +1496,6 @@ INTERRUPT void mi_switch(int flags) {
     // td->generation++;	/* bump preempt-detect counter */
     m_switchticks = ticks;
     sched_switch(td, flags);
-
-    /*
-     * If the last thread was exiting, finish cleaning it up.
-     */
-    // TODO: deadthreads
-    // spinlock_exit();
 }
 
 INTERRUPT void statclock(int cnt, int usermode) {
@@ -1612,18 +1579,12 @@ INTERRUPT void scheduler_on_schedule(interrupt_context_t *ctx) {
     hardclock(1, 0);
     statclock(1, 0);
 
-    // if (((thread_t *)m_curthread)->sched_ast == 1)
     ast_scheduler((void *)m_curthread);
-    ASSERT(false, "shouldn't be here");
-    _disable();
-    while (1)
-        ;
 }
 
 INTERRUPT void scheduler_on_park(interrupt_context_t *ctx) {
     frame = (uintptr_t)ctx;
 
-    // lapic_set_deadline(0);
     thread_t *td = curthread;
     thread_lock(td);
     TD_SET_SLEEPING(td);
@@ -1634,12 +1595,7 @@ INTERRUPT void scheduler_on_park(interrupt_context_t *ctx) {
         ((void (*)(uint64_t))ctx->rdi)(ctx->rsi);
     }
 
-    mi_switch(SW_VOL); // TODO:
-
-    ASSERT(false, "shouldn't be here");
-    _disable();
-    while (1)
-        ;
+    mi_switch(SW_VOL);
 }
 
 INTERRUPT void scheduler_on_drop(interrupt_context_t *ctx) {
@@ -1651,19 +1607,13 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t *ctx) {
     thread_lock(td);
     TD_SET_STATE(td, TDS_INACTIVE);
 
-    mi_switch(SW_VOL); // TODO:
-
-    ASSERT(false, "shouldn't be here");
-    _disable();
-    while (1)
-        ;
+    mi_switch(SW_VOL);
 }
 
 bool scheduler_can_spin(int i) { return false; }
 
 void critical_exit_preempt(void) {
     thread_t *td;
-    // int flags;
 
     /*
      * If td_critnest is 0, it is possible that we are going to get
@@ -1675,24 +1625,10 @@ void critical_exit_preempt(void) {
     if (td->critnest != 0)
         return;
 
-    /*
-     * Microoptimization: we committed to switch,
-     * disable preemption in interrupt handlers
-     * while spinning for the thread lock.
-     */
-    // td->critnest = 1;
-    // thread_lock(td);
-    // td->critnest--;
-    // flags = SW_INVOL | SW_PREEMPT;
-    //	if (TD_IS_IDLETHREAD(td))
-    //		flags |= SWT_IDLE;
-    //	else
-    //		flags |= SWT_OWEPREEMPT;
-    // mi_switch(flags);
 }
 
 void sched_class(thread_t *td, int class) {
-    // THREAD_LOCK_ASSERT(td, MA_OWNED);
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
     if (td->pri_class == class)
         return;
     td->pri_class = class;
@@ -1710,11 +1646,11 @@ void sched_new_thread(thread_t *td) {
     td->flags = 0;
 
     td->runtime = 0;
-    td->ts_runq = tdq;
+    td->runq = tdq;
     td->lock = &tdq->lock;
     td->oncpu = NOCPU;
     td->lastcpu = NOCPU;
-    td->ts_cpu = 0;
+    td->cpu = 0;
     td->flags = 0;
 
     td->spinlock_count = 1;
@@ -1749,11 +1685,6 @@ void scheduler_preempt_enable(void) {
 //----------------------------------------------------------------------------------------------------------------------
 
 void scheduler_yield() {
-    // don't preempt if we can't preempt
-    // if (m_preempt_disable_depth > 0) {
-    //    return;
-    //}
-
     __asm__ volatile("int %0" : : "i"(IRQ_YIELD) : "memory");
 }
 
@@ -1772,13 +1703,6 @@ void scheduler_ready_thread(thread_t *thread) {
     TD_CLR_SLEEPING(thread);
     TD_SET_CAN_RUN(thread);
     sched_wakeup(thread, 0);
-    if (thread->owepreempt)
-        printf("SHOULD YIELD\n");
-    // if (frame == 0) scheduler_yield();
-    //__asm__ volatile("int %0"
-    //                  :
-    //                  : "i"(IRQ_READY_THREAD), "D"(thread)
-    //                  : "memory");
 }
 void scheduler_park(void (*callback)(void *arg), void *arg) {
     __asm__ volatile("int %0"
@@ -1818,11 +1742,11 @@ void scheduler_startup() {
 err_t init_scheduler() {
     err_t err = NO_ERROR;
 
-    m_run_queues = malloc(get_cpu_count() * sizeof(threadqueue_t));
-
+    m_run_queues = malloc(get_cpu_count() * sizeof(threadqueue_t));    
     CHECK(m_run_queues != NULL);
+    memset(m_run_queues, 0, get_cpu_count() * sizeof(threadqueue_t));
+
     blocked_lock = INIT_SPINLOCK();
-    // TODO: not rely on malloc zeroing
     for (int i = 0; i < get_cpu_count(); i++) {
         for (int j = 0; j < 64; j++) {
             m_run_queues[i].realtime.queues[j].first = NULL;
@@ -1851,7 +1775,7 @@ err_t init_scheduler_per_core() {
     m_switchtime = cpu_ticks();
 
     thread_t *idlethread =
-        create_thread(idle_loop, NULL, "kernel/idlethread%d", get_cpu_id());
+        create_thread(idle_loop, NULL, "kernel/idlethread-%d", get_cpu_id());
     idlethread->flags = TDF_IDLETD | TDF_NOLOAD;
     TD_SET_CAN_RUN(idlethread);
     idlethread->spinlock_count = 0;
@@ -1860,6 +1784,7 @@ err_t init_scheduler_per_core() {
     idlethread->pri_class = PRI_IDLE;
     idlethread->base_pri = PRI_MAX_IDLE;
     idlethread->base_user_pri = PRI_MAX_IDLE;
+    get_run_queue()->tdq_curthread = idlethread;
 
     m_pcputicks = (uintptr_t)palloc(sizeof(int));
     m_switchtime = cpu_ticks();
