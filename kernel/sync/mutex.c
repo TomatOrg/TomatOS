@@ -48,7 +48,7 @@ static bool compare_and_park(compare_and_park_arg_t* arg) {
     return value == arg->expected;
 }
 
-static bool mutex_is_locked(mutex_t* mutex) {
+bool mutex_is_locked(mutex_t* mutex) {
     return atomic_load_explicit(&mutex->byte, memory_order_acquire) & IS_HELD;
 }
 

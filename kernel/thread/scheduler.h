@@ -8,6 +8,16 @@
 
 #include <stdbool.h>
 
+
+// Scheduler-internal state
+typedef enum td_states {
+    TDS_INACTIVE = 0x0,
+    TDS_INHIBITED,
+    TDS_CAN_RUN,
+    TDS_RUNQ,
+    TDS_RUNNING
+} td_states_t;
+
 /**
  * Helper method, check if the thread should spin in the given
  * iteration in a row. Used by the mutex
@@ -125,6 +135,12 @@ void scheduler_drop_current();
  * Startup the scheduler
  */
 void scheduler_startup();
+
+/**
+ * Fill the current thread with scheduler-specific information 
+ */
+void sched_new_thread(thread_t* thread);
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Get the current running thread

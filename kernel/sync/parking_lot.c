@@ -32,6 +32,7 @@
 
 #include <thread/scheduler.h>
 #include <thread/timer.h>
+#include <thread/thread.h>
 
 #if 0
     #define PL_TRACE(fmt, ...) TRACE(fmt, ## __VA_ARGS__)
@@ -746,7 +747,7 @@ void unpark_all(const void* address) {
 
         // it is perfectly valid for the thread to not be waiting at this point if it got a timeout
         // but we got in time to dequeue it
-        if (thread->status == THREAD_STATUS_WAITING) {
+        if (get_thread_status(thread) == THREAD_STATUS_WAITING) {
             scheduler_ready_thread(thread);
         }
         spinlock_unlock(&thread->parking_lock);
@@ -820,7 +821,7 @@ void unpark_one(
 
     // it is perfectly valid for the thread to not be waiting at this point if it got a timeout
     // but we got in time to dequeue it
-    if (thread->status == THREAD_STATUS_WAITING) {
+    if (get_thread_status(thread) == THREAD_STATUS_WAITING) {
         scheduler_ready_thread(thread);
     }
     spinlock_unlock(&thread->parking_lock);
