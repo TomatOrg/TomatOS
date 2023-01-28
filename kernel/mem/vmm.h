@@ -19,8 +19,8 @@ typedef struct page_entry_4kb {
 
     // -- available : 11 --
     // see the phys.c for more info
-    uint64_t buddy_level : 4;
-    uint64_t buddy_alloc : 1;
+    uint64_t buddy_level : 4; // the level of the buddy
+    uint64_t buddy_alloc : 1; // is this buddy allocated
     uint64_t _available1 : 6;
 
     uint64_t no_execute : 1;

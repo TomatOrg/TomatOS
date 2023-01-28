@@ -9,6 +9,7 @@
         <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
         <IlcSystemModule>Corelib</IlcSystemModule>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <RootNamespace />
     </PropertyGroup>
 
     <ItemGroup>
