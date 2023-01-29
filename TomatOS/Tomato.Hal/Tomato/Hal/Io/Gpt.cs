@@ -125,7 +125,7 @@ public static class Gpt
     /// <summary>
     /// Tries to parse the GPT table 
     /// </summary>
-    public static async IAsyncEnumerable<BlockManager.GenericPartition> IteratePartitions(IBlock block)
+    public static async IAsyncEnumerable<Partition> IteratePartitions(IBlock block)
     {
         // read the primary partition table, verifying it again just in case
         var primaryHeaderData = MemoryServices.AllocatePhysicalMemory(block.BlockSize).Memory;
@@ -153,7 +153,7 @@ public static class Gpt
             }
             
             // create the generic partition
-            yield return new BlockManager.GenericPartition(block, entry.StartingLba, entry.EndingLba);
+            yield return new Partition(block, entry.StartingLba, entry.EndingLba);
         }
     }
     

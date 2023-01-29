@@ -70,6 +70,7 @@ typedef struct thread_data {
 static void word_lock_lock_slow(word_lock_t* lock) {
     thread_t* thread = get_current_thread();
     unsigned spin_count = 0;
+    ASSERT(thread != NULL);
 
     while (true) {
         uintptr_t current_word_value = atomic_load(&lock->lock);
@@ -167,13 +168,13 @@ static void word_lock_lock_slow(word_lock_t* lock) {
     }
 }
 
-void word_lock_lock(word_lock_t* mutex) {
+void word_lock_lock(word_lock_t* lock) {
     uintptr_t zero = 0;
-    if (LIKELY(atomic_compare_exchange_weak_explicit(&mutex->lock, &zero, IS_LOCKED, memory_order_acquire, memory_order_acquire))) {
+    if (LIKELY(atomic_compare_exchange_weak_explicit(&lock->lock, &zero, IS_LOCKED, memory_order_acquire, memory_order_relaxed))) {
         return;
     }
 
-    word_lock_lock_slow(mutex);
+    word_lock_lock_slow(lock);
 }
 
 static void word_lock_unlock_slow(word_lock_t* mutex) {

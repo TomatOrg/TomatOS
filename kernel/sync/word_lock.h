@@ -33,6 +33,6 @@ typedef struct word_lock {
     _Atomic(uintptr_t) lock;
 } word_lock_t;
 
-void word_lock_lock(word_lock_t* mutex);
+void word_lock_lock(word_lock_t* lock);
 
 void word_lock_unlock(word_lock_t* mutex);

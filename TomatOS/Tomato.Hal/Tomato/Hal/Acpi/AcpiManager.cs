@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using Tomato.Hal.Acpi.Resource;
 using Tomato.Hal.Drivers.Ps2;
 using Tomato.Hal.Drivers.Rtc;
@@ -120,7 +121,7 @@ public static class AcpiManager
             var count = (header.Length - Unsafe.SizeOf<AcpiDescriptionHeader>()) / Unsafe.SizeOf<ulong>();
             var tables = MemoryServices.Map<ulong>(rsdp.XsdtAddress + (ulong)Unsafe.SizeOf<AcpiDescriptionHeader>(), (int)count).Span;
 
-            Debug.Print($"ACPI: RSDP {phys:x016} {rsdp.Length:x08} (v{rsdp.Revision:x02} {rsdp.OemId})");
+            Debug.Print($"ACPI: RSDP {phys:x016} {rsdp.Length:x08} (v{rsdp.Revision:x02} {Encoding.Latin1.GetString(rsdp.OemId.AsSpan())})");
             Debug.Print($"ACPI: XSDT {phys:x016} ({AcpiDescriptionHeader.ToString(header)})");
 
             foreach (var table in tables)
@@ -135,7 +136,7 @@ public static class AcpiManager
             var count = (header.Length - Unsafe.SizeOf<AcpiDescriptionHeader>()) / Unsafe.SizeOf<uint>();
             var tables = MemoryServices.Map<uint>(rsdp.RsdtAddress + (ulong)Unsafe.SizeOf<AcpiDescriptionHeader>(), (int)count).Span;
 
-            Debug.Print($"ACPI: RSDP {phys:x016} (v00 {rsdp.OemId})");
+            Debug.Print($"ACPI: RSDP {phys:x016} (v00 {Encoding.Latin1.GetString(rsdp.OemId.AsSpan())})");
             Debug.Print($"ACPI: RSDT {phys:x016} ({AcpiDescriptionHeader.ToString(header)})");
 
             foreach (var table in tables)

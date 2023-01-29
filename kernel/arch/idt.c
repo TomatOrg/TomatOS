@@ -359,6 +359,8 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     int depth = 0;
     uintptr_t last_ret = 0;
 
+    // if you want to print the assembly of a specific stack trace entry set this (start from 1)
+    int to_print = 0;
     while (true) {
         if (!vmm_is_mapped((uintptr_t)base_ptr, 1)) {
             ERROR("\t%p is unmapped!", base_ptr);
@@ -383,6 +385,11 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
 
             debug_format_symbol(ret_addr, buffer, sizeof(buffer));
             TRACE("\t> %s (0x%p)", buffer, ret_addr);
+
+            to_print--;
+            if (to_print == 0) {
+                debug_disasm_at((void*)ret_addr, 5);
+            }
         }
 
         if (old_bp == 0) {

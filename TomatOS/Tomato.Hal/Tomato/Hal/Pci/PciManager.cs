@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Tomato.App;
 
 namespace Tomato.Hal.Pci;
 
@@ -13,7 +14,7 @@ public static class PciManager
     private static List<PciDevice> _devices = new();
     private static object _lock = new();
 
-    private static bool _locked = false;
+    public static readonly Capability PciDriver = new("PCI Driver", "Allows to register as a PCI driver, meaning it will have direct access to certain hardware and memory");
     
     private static uint GetDriverHash(ushort vendorId, ushort deviceId)
     {
@@ -69,34 +70,15 @@ public static class PciManager
     }
 
     /// <summary>
-    /// Locks the PciManager from accepting new drivers
-    /// </summary>
-    public static void Lock()
-    {
-        lock (_lock)
-        {
-            _locked = true;
-            
-            // we can clear the drivers left out since they are def not loaded
-            _devices.Clear();
-        }
-    }
-
-    /// <summary>
     /// Register a new PCI driver, must be called before the Lock method is called
     /// or an exception will be thrown
     /// </summary>
     public static void RegisterDriver(Type type)
     {
-        // fast path
-        if (_locked)
-            throw new InvalidOperationException();
+        CapabilityDomain.Ensure(PciDriver);
 
         lock (_lock)
         {
-            if (_locked)
-                throw new InvalidOperationException();
-
             var dispatch = false;
 
             // get all the drivers supported by the class

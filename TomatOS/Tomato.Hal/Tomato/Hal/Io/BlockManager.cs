@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
+using Tomato.App;
 using Tomato.Hal.Interfaces;
 using Tomato.Hal.Managers;
 using Tomato.Hal.Pci;
@@ -15,46 +16,11 @@ namespace Tomato.Hal.Io;
 
 public static class BlockManager
 {
-    // TODO: add specific partition types for GPT and MBR
-    public class GenericPartition : IBlock
-    {
-        IBlock _drive;
-        long _start, _end;
 
-        public GenericPartition(IBlock drive, long start, long end)
-        {
-            _drive = drive;
-            _start = start;
-            _end = end;
-        }
-
-        public bool Removable => _drive.Removable;
-        public bool Present => _drive.Present;
-        public bool ReadOnly => _drive.ReadOnly;
-        public bool WriteCaching => _drive.WriteCaching;    
-        public long LastBlock => _drive.LastBlock;
-        public int BlockSize => _drive.BlockSize;
-        public int IoAlign => _drive.IoAlign;
-        public int OptimalTransferLengthGranularity => _drive.OptimalTransferLengthGranularity;
-
-        public Task ReadBlocks(long lba, Memory<byte> memory, CancellationToken token = default) => _drive.ReadBlocks(lba + _start, memory, token);
-
-        public Task WriteBlocks(long lba, Memory<byte> memory, CancellationToken token = default) => _drive.WriteBlocks(lba + _start, memory, token);
-
-        public Task FlushBlocks(CancellationToken token = default) => _drive.FlushBlocks(token);
-    }
-
-    private static bool _driversLocked = false;
     private static List<IFileSystemDriver> _drivers = new();
     private static List<IBlock> _blocks = new();
 
-    /// <summary>
-    /// Lock the BlockManager, prevents new drivers from being registered
-    /// </summary>
-    public static void Lock()
-    {
-        _driversLocked = true;
-    }
+    public static Capability FileSystemDriver = new Capability("FileSystem driver", "Allows to act as a filesystem driver, with raw access to the partitions on the disk");
 
     /// <summary>
     /// Dispatch a single block, assuming that this block 
@@ -73,7 +39,7 @@ public static class BlockManager
             FileSystemManager.Register(fs);
             return;
         }
-            
+        
         // no driver yet, store for future reference
         _blocks.Add(block);
     }
@@ -105,8 +71,7 @@ public static class BlockManager
     /// </summary>
     public static void RegisterDriver(IFileSystemDriver driver)
     {
-        if (_driversLocked)
-            throw new InvalidOperationException();
+        CapabilityDomain.Ensure(FileSystemDriver);
 
         lock (_drivers)
         {

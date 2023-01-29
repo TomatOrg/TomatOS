@@ -1770,12 +1770,19 @@ cleanup:
     return err;
 }
 
+static spinlock_t m_idle_thread_creation = INIT_SPINLOCK();
+
 err_t init_scheduler_per_core() {
     err_t err = NO_ERROR;
     m_switchtime = cpu_ticks();
 
-    thread_t *idlethread =
-        create_thread(idle_loop, NULL, "kernel/idlethread-%d", get_cpu_id());
+    // because this is done before threading is fully initialized, we will
+    // need to make sure there is no contention on the thread creation, otherwise
+    // it will try to put us to sleep
+    spinlock_lock(&m_idle_thread_creation);
+    thread_t *idlethread = create_thread(idle_loop, NULL, "kernel/idlethread-%d", get_cpu_id());
+    spinlock_unlock(&m_idle_thread_creation);
+
     idlethread->flags = TDF_IDLETD | TDF_NOLOAD;
     TD_SET_CAN_RUN(idlethread);
     idlethread->spinlock_count = 0;

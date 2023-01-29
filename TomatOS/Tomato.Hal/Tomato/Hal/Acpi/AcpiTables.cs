@@ -1,5 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
+using TinyDotNet;
 
 namespace Tomato.Hal.Acpi;
 
@@ -34,29 +36,20 @@ public struct AcpiDescriptionHeader
     public uint Length;
     public byte Revision;
     public byte Checksum;
-    public OemId OemId;
-    public ulong OemTableId;
+    public FixedArray6<byte> OemId;
+    public FixedArray8<byte> OemTableId;
     public uint OemRevision;
-    public uint CreatorId;
+    public FixedArray4<byte> CreatorId;
     public uint CreatorRevision;
     
     public static string ToString(in AcpiDescriptionHeader header)
     {
-        return $"v{header.Revision:x02} {header.OemId.ToString()} " +
-               $"{(char)((byte)(header.OemTableId >> 0))}" +
-               $"{(char)((byte)(header.OemTableId >> 8))}" +
-               $"{(char)((byte)(header.OemTableId >> 16))}" +
-               $"{(char)((byte)(header.OemTableId >> 24))}" +
-               $"{(char)((byte)(header.OemTableId >> 32))}" +
-               $"{(char)((byte)(header.OemTableId >> 40))}" +
-               $"{(char)((byte)(header.OemTableId >> 48))}" +
-               $"{(char)((byte)(header.OemTableId >> 56))}" +
-               $" {header.OemRevision:x08} " +
-               $"{(char)((byte)(header.CreatorId >> 0))}" +
-               $"{(char)((byte)(header.CreatorId >> 8))}" +
-               $"{(char)((byte)(header.CreatorId >> 16))}" +
-               $"{(char)((byte)(header.CreatorId >> 24))}" +
-               $" {header.CreatorRevision:x08}";
+        return $"v{header.Revision:x02} " +
+               $"{Encoding.Latin1.GetString(header.OemId.AsSpan())} " +
+               $"{Encoding.Latin1.GetString(header.OemTableId.AsSpan())} " +
+               $"{header.OemRevision:x08} " +
+               $"{Encoding.Latin1.GetString(header.CreatorId.AsSpan())} " +
+               $"{header.CreatorRevision:x08}";
     }
 }
 
@@ -66,7 +59,7 @@ public struct RootSystemDescriptorPointer
     
     public ulong Signature;
     public byte Checksum;
-    public OemId OemId;
+    public FixedArray6<byte> OemId;
     public byte Revision; // was reserved in version 1
     public uint RsdtAddress;
     public uint Length;
