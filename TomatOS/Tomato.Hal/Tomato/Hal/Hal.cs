@@ -29,8 +29,8 @@ public static class Hal
         Debug.Print("Managed kernel is starting!");
         App.App.CreateKernelApp();
 
-        Debug.WriteLine($"{App.App.Current.Name}");
-        Debug.WriteLine($"{CapabilityDomain.Current}");
+        //Debug.WriteLine($"{App.App.Current.Name}");
+        //Debug.WriteLine($"{CapabilityDomain.Current}");
 
         // all we need to do is call the acpi setup, everything will be
         // done on its own from that point forward

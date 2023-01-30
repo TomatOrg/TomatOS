@@ -14,5 +14,6 @@ internal static class Program
     public static void Main()
     {
         PciManager.RegisterDriver(typeof(VirtioBlock));
+        PciManager.RegisterDriver(typeof(VirtioNet));
     }
 }

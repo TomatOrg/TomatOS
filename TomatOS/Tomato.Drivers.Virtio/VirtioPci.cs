@@ -259,7 +259,7 @@ public abstract class VirtioPci
     protected PciDevice _pci;
     protected Region _devCfgRegion;
     protected VirtioPciCommonCfg _common;
-    protected QueueInfo _queueInfo;
+    protected QueueInfo[] _queueInfo;
     protected Region _notify;
     readonly private uint _notifyMultiplier;
 
@@ -287,7 +287,7 @@ public abstract class VirtioPci
         };
     }
 
-    public VirtioPci(PciDevice pci)
+    public VirtioPci(PciDevice pci, uint otherFeatures = 0)
     {
         _pci = pci;
         foreach (var cap in _pci.Capabilities)
@@ -327,7 +327,7 @@ public abstract class VirtioPci
         _common.DeviceStatus.Value |= VirtioPciCommonCfg.DevStatus.Acknowledge; // it exists
         _common.DeviceStatus.Value |= VirtioPciCommonCfg.DevStatus.Driver; // it can be loaded
 
-        ulong requiredFeatures = (1ul << 32); // VIRTIO_F_VERSION_1
+        ulong requiredFeatures = (1ul << 32) | otherFeatures; // VIRTIO_F_VERSION_1
         ulong optionalFeatures = 0;
         for (int i = 0; i < 2; i++)
         {
@@ -340,9 +340,9 @@ public abstract class VirtioPci
         // features acknowledged
         _common.DeviceStatus.Value |= VirtioPciCommonCfg.DevStatus.FeaturesOk;
         
-        // TODO: enable all queues and not just the first
-        _pci.Msix.Configure(1);
-        for (int q = 0; q < 1; q++)
+        _pci.Msix.Configure(_common.NumQueues.Value);
+        _queueInfo = new QueueInfo[_common.NumQueues.Value];
+        for (int q = 0; q < _common.NumQueues.Value; q++)
         {
             _common.QueueSelect.Value = (ushort)q;
             int size = _common.QueueSize.Value;
@@ -351,10 +351,10 @@ public abstract class VirtioPci
             // TODO: support packed virtqueues instead
             var msixIdx = q;
 
-            _queueInfo = new(q, size, _notify.CreateField<ushort>(q * (int)_notifyMultiplier), _pci.Msix[msixIdx]);
-            _common.QueueDesc.Value = _queueInfo.DescPhys;
-            _common.QueueDriver.Value = _queueInfo.AvailPhys;
-            _common.QueueDevice.Value = _queueInfo.UsedPhys;
+            _queueInfo[q] = new(q, size, _notify.CreateField<ushort>(q * (int)_notifyMultiplier), _pci.Msix[msixIdx]);
+            _common.QueueDesc.Value = _queueInfo[q].DescPhys;
+            _common.QueueDriver.Value = _queueInfo[q].AvailPhys;
+            _common.QueueDevice.Value = _queueInfo[q].UsedPhys;
             _common.QueueMsixVector.Value = (ushort)msixIdx;
 
             // and finally, enable the queue

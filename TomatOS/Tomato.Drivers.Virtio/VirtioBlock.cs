@@ -57,7 +57,7 @@ public class VirtioBlock : VirtioPci, IBlock
     {
         _devConfig = new VirtioBlkConfig(_devCfgRegion);
         _lastBlock = (long)_devConfig.Capacity.Value - 1;
-        _blockPackets = new PacketInfo[_queueInfo.Size];
+        _blockPackets = new PacketInfo[_queueInfo[0].Size];
         _blockAlloc = new();
         (new Thread(IrqWaiterThread)).Start();
         Debug.Print("VirtioBlock: Device registered");
@@ -67,10 +67,10 @@ public class VirtioBlock : VirtioPci, IBlock
     void Process()
     {
         // 1.2 spec, 2.7.14 Receiving Used Buffers From The Device
-        while (_queueInfo.LastSeenUsed != _queueInfo.Used.DescIdx.Value)
+        while (_queueInfo[0].LastSeenUsed != _queueInfo[0].Used.DescIdx.Value)
         {
             // get
-            var head = _queueInfo.Used.Ring.Span[_queueInfo.LastSeenUsed % _queueInfo.Size].Id;
+            var head = _queueInfo[0].Used.Ring.Span[_queueInfo[0].LastSeenUsed % _queueInfo[0].Size].Id;
             ref var pkt = ref _blockPackets[head];
 
             // process
@@ -80,8 +80,8 @@ public class VirtioBlock : VirtioPci, IBlock
             _blockAlloc.Free(pkt.PacketIdx);
 
             // free virtio-related bookkeeping
-            _queueInfo.FreeChain(head);
-            _queueInfo.LastSeenUsed++;
+            _queueInfo[0].FreeChain(head);
+            _queueInfo[0].LastSeenUsed++;
         }
     }
 
@@ -89,7 +89,7 @@ public class VirtioBlock : VirtioPci, IBlock
     {
         while (true)
         {
-            _queueInfo.Interrupt.Wait();
+            _queueInfo[0].Interrupt.Wait();
             Process();
         }
     }
@@ -102,28 +102,28 @@ public class VirtioBlock : VirtioPci, IBlock
         pkt.Span[0].InReq.Type = write ? 1u : 0u;
         pkt.Span[0].InReq.Sector = sector;
 
-        lock (_queueInfo)
+        lock (_queueInfo[0])
         {
-            var head = _queueInfo.GetNewDescriptor();
+            var head = _queueInfo[0].GetNewDescriptor();
             _blockPackets[head] = new PacketInfo(index, tcs);
 
             var h = head;
-            _queueInfo.Descriptors.Span[h].Phys = address;
-            _queueInfo.Descriptors.Span[h].Len = 16;
-            _queueInfo.Descriptors.Span[h].Flags = 0;
+            _queueInfo[0].Descriptors.Span[h].Phys = address;
+            _queueInfo[0].Descriptors.Span[h].Len = 16;
+            _queueInfo[0].Descriptors.Span[h].Flags = 0;
 
-            h = _queueInfo.GetNext(h);
-            _queueInfo.Descriptors.Span[h].Phys = phys;
-            _queueInfo.Descriptors.Span[h].Len = bytes;
-            _queueInfo.Descriptors.Span[h].Flags = write ? 0 : QueueInfo.Descriptor.Flag.Write;
+            h = _queueInfo[0].GetNext(h);
+            _queueInfo[0].Descriptors.Span[h].Phys = phys;
+            _queueInfo[0].Descriptors.Span[h].Len = bytes;
+            _queueInfo[0].Descriptors.Span[h].Flags = write ? 0 : QueueInfo.Descriptor.Flag.Write;
 
-            h = _queueInfo.GetNext(h);
-            _queueInfo.Descriptors.Span[h].Phys = address + 16;
-            _queueInfo.Descriptors.Span[h].Len = 1;
-            _queueInfo.Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.Write;
+            h = _queueInfo[0].GetNext(h);
+            _queueInfo[0].Descriptors.Span[h].Phys = address + 16;
+            _queueInfo[0].Descriptors.Span[h].Len = 1;
+            _queueInfo[0].Descriptors.Span[h].Flags = QueueInfo.Descriptor.Flag.Write;
 
-            _queueInfo.PlaceHeadOnAvail(head);
-            _queueInfo.Notify();
+            _queueInfo[0].PlaceHeadOnAvail(head);
+            _queueInfo[0].Notify();
         }
 
         return tcs.Task;
