@@ -66,6 +66,7 @@ void irq_wait(uint8_t handler) {
     instance->waiting_thread = get_current_thread();
     atomic_flag_clear(&instance->handling);
 
+    scheduler_irq();
     // park the current thread, will wake it up laterinstnace.
     scheduler_park(instance->ops.unmask, instance->ctx);
 }
@@ -85,6 +86,8 @@ void irq_dispatch(interrupt_context_t* ctx) {
     if (instance->waiting_thread == NULL) {
         WARN("irq: got IRQ #%d while no thread is waiting, invalid mask function?", ctx->int_num);
     }
+
+    scheduler_in_irq(ctx);
 
     // schedule the thread right now
     scheduler_ready_thread(instance->waiting_thread);
