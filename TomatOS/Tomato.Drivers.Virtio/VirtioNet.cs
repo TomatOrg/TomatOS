@@ -11,6 +11,7 @@ using Tomato.Hal.Managers;
 using Tomato.Hal.Pci;
 using Tomato.Hal.Io;
 using Tomato.Hal;
+using System.Text;
 using TinyDotNet;
 using static Tomato.Hal.MemoryServices;
 
@@ -33,18 +34,57 @@ public class VirtioNet : VirtioPci
     internal struct Mac
     {
         internal FixedArray6<byte> Data;
+        internal Mac(byte a, byte b, byte c, byte d, byte e, byte f)
+        {
+            Data = new FixedArray6<byte>();
+            Data[0] = a;
+            Data[1] = b;
+            Data[2] = c;
+            Data[3] = d;
+            Data[4] = e;
+            Data[5] = f;
+        }
+        internal static Mac Broadcast = new Mac(0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF);
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal struct IpV4
+    internal struct IpV4 : IEquatable<IpV4>
     {
         internal FixedArray4<byte> Data;
-        internal IpV4(byte a, byte b, byte c, byte d) {
+        internal IpV4(byte a, byte b, byte c, byte d)
+        {
             Data = new FixedArray4<byte>();
             Data[0] = a;
             Data[1] = b;
             Data[2] = c;
             Data[3] = d;
+        }
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                return Data[0] + Data[1] * 256 + Data[2] * 256 * 256 + Data[3] * 256 * 256 * 256;
+            }
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is IpV4 v && Equals(v);
+        }
+
+        public bool Equals(IpV4 other)
+        {
+            return Data[0] == other.Data[0] && Data[1] == other.Data[1] && Data[2] == other.Data[2] && Data[3] == other.Data[3];
+        }
+
+        public static bool operator ==(IpV4 left, IpV4 right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(IpV4 left, IpV4 right)
+        {
+            return !(left == right);
         }
     }
 
@@ -87,6 +127,56 @@ public class VirtioNet : VirtioPci
 
         var mac = _devConfig.MacAddr.Value;
         Debug.Print($"VirtioNet: MAC {mac.Data[0]:X2}:{mac.Data[1]:X2}:{mac.Data[2]:X2}:{mac.Data[3]:X2}:{mac.Data[4]:X2}:{mac.Data[5]:X2}");
+
+        TftpReadFile("README.md", new IpV4(10, 1, 1, 2));
+    }
+
+    void TftpReadFile(string filename, IpV4 ip)
+    {
+        var b = new Buf();
+        b.PushByte(0);
+        b.Push(new Span<byte>(Encoding.ASCII.GetBytes("octet"))); // TODO:
+        b.PushByte(0);
+        b.Push(new Span<byte>(Encoding.ASCII.GetBytes(filename))); // TODO:
+        ref var opcode = ref b.Push<ushort>();
+        opcode = SwapBytes((ushort)TftpOpcodeEnum.ReadRequest);
+        UdpSend(b, 1234, ip, 69);
+    }
+
+    void UdpSend(Buf b, ushort ourPort, IpV4 ip, ushort port)
+    {
+        ref var udpHdr = ref b.Push<UdpHeader>();
+        udpHdr.DestPort = port;
+        udpHdr.SrcPort = ourPort;
+        udpHdr.Checksum = 0;
+        udpHdr.Length = (ushort)(4096 - b._curr);
+        IpSend(b, ip, IpV4Header.ProtocolEnum.Udp);
+    }
+    void IpSend(Buf b, IpV4 ip, IpV4Header.ProtocolEnum protocol)
+    {
+        ushort id = 0; // TODO: have this be a PID
+        ref var ipHdr = ref b.Push<IpV4Header>();
+        ipHdr.Version = 4;
+        ipHdr.Ihl = (byte)(Unsafe.SizeOf<IpV4Header>() / 4);
+        ipHdr.Tos = 0;
+        ipHdr.Length = (ushort)(4096 - b._curr);
+        ipHdr.Id = id;
+        ipHdr._fragOffset = 0;
+        ipHdr.Ttl = 64;
+        ipHdr.Protocol = protocol;
+        ipHdr.Src = OurIp;
+        ipHdr.Dest = ip;
+        ipHdr.Check = 0;
+        ipHdr.Check = IpChecksum(b.Get().Slice(0, Unsafe.SizeOf<IpV4Header>()));
+        EthernetSend(b, ArpLookup(ip), EthernetHeader.EtherTypeEnum.IpV4);
+    }
+    void EthernetSend(Buf b, Mac mac, EthernetHeader.EtherTypeEnum type)
+    {
+        ref var ethHdr = ref b.Push<EthernetHeader>();
+        ethHdr.Dest = mac;
+        ethHdr.Src = _devConfig.MacAddr.Value;
+        ethHdr.EtherType = type;
+        Send(b);
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -281,12 +371,56 @@ public class VirtioNet : VirtioPci
         ref var ipHdr = ref b.Pop<IpV4Header>();
         var extra = b.Pop(ipHdr.Ihl * 4 - Unsafe.SizeOf<IpV4Header>());
 
+        ArpDictionary[ipHdr.Dest] = senderHw;
+
         // TODO: checksum and TTL check
         // TODO: fragmentation
-
+        var subB = b.Slice((ushort)(ipHdr.Length - (ipHdr.Ihl * 4)));
         if (ipHdr.Protocol == IpV4Header.ProtocolEnum.Icmp)
         {
-            IcmpV4Handle(b.Slice((ushort)(ipHdr.Length - (ipHdr.Ihl * 4))), ipHdr.Id, ipHdr.Src, senderHw);
+            IcmpV4Handle(subB, ipHdr.Id, ipHdr.Src, senderHw);
+        }
+        else if (ipHdr.Protocol == IpV4Header.ProtocolEnum.Udp)
+        {
+            UdpHandle(subB, ipHdr.Id, ipHdr.Src, senderHw);
+        }
+    }
+
+    internal enum TftpOpcodeEnum : byte
+    {
+        ReadRequest = 1,
+        WriteRequest = 2,
+        Data = 3,
+        Ack = 4,
+        Error = 5,
+    }
+
+    void UdpHandle(Buf b, ushort id, IpV4 sender, Mac senderHw)
+    {
+        ref var udpHdr = ref b.Pop<UdpHeader>();
+
+        var opcode = (TftpOpcodeEnum)SwapBytes(b.Pop<ushort>());
+        if (opcode == TftpOpcodeEnum.ReadRequest || opcode == TftpOpcodeEnum.WriteRequest)
+        {
+            var str = b.Get();
+            Span<byte> filename = null;
+            Span<byte> mode = null;
+            int i = 0;
+            for (; i < str.Length; i++) if (str[i] == 0) { filename = str.Slice(0, i); break; }
+            i++;
+            for (int j = i; j < str.Length; j++) if (str[j] == 0) mode = str.Slice(i, j - i);
+        }
+        else if (opcode == TftpOpcodeEnum.Data)
+        {
+            var blockIdx = SwapBytes(b.Pop<ushort>());
+            Debug.Print(Encoding.UTF8.GetString(b.Get()));
+            b = new Buf();
+
+            ref var block = ref b.Push<ushort>();
+            block = SwapBytes(blockIdx);
+            ref var opco = ref b.Push<ushort>();
+            opco = SwapBytes((ushort)TftpOpcodeEnum.Ack);
+            UdpSend(b, udpHdr.DestPort, sender, udpHdr.SrcPort);
         }
     }
 
@@ -329,28 +463,43 @@ public class VirtioNet : VirtioPci
         icmpHdr.Check = 0;
         icmpHdr.Check = IpChecksum(b.Get());
 
-        ref var ipHdr = ref b.Push<IpV4Header>();
-        ipHdr.Version = 4;
-        ipHdr.Ihl = (byte)(Unsafe.SizeOf<IpV4Header>() / 4);
-        ipHdr.Tos = 0;
-        ipHdr.Length = (byte)(Unsafe.SizeOf<IpV4Header>() + Unsafe.SizeOf<IcmpV4Header>() + data.Length);
-        ipHdr.Id = id;
-        ipHdr._fragOffset = 0;
-        ipHdr.Ttl = 64;
-        ipHdr.Protocol = IpV4Header.ProtocolEnum.Icmp;
-        ipHdr.Src = OurIp;
-        ipHdr.Dest = sender;
-        ipHdr.Check = 0;
-        ipHdr.Check = IpChecksum(b.Get().Slice(0, Unsafe.SizeOf<IpV4Header>()));
-
-        ref var ethHdr = ref b.Push<EthernetHeader>();
-        ethHdr.Dest = senderHw;
-        ethHdr.Src = _devConfig.MacAddr.Value;
-        ethHdr.EtherType = EthernetHeader.EtherTypeEnum.IpV4;
-
-        Send(b);
+        IpSend(b, sender, IpV4Header.ProtocolEnum.Icmp);
     }
 
+    static Dictionary<IpV4, Mac> ArpDictionary = new();
+    static Dictionary<IpV4, AutoResetEvent> ArpSync = new();
+    Mac ArpLookup(IpV4 ip)
+    {
+        if (ArpDictionary.TryGetValue(ip, out var mac))
+        {
+            return mac;
+        }
+
+        var sync = new AutoResetEvent(false);
+
+        var b = new Buf();
+        ref var arpData = ref b.Push<ArpEthIpV4>();
+        arpData.SenderHwAddr = _devConfig.MacAddr.Value;
+        arpData.SenderProtAddr = OurIp;
+        arpData.TargetHwAddr = Mac.Broadcast;
+        arpData.TargetProtAddr = ip;
+        ref var arpHdr = ref b.Push<ArpHeader>();
+        arpHdr.HwAddrFormat = ArpHeader.HwAddrFormatEnum.Ether;
+        arpHdr.ProtAddrFormat = EthernetHeader.EtherTypeEnum.IpV4;
+        arpHdr.HwAddrLength = 6;
+        arpHdr.ProtAddrLength = 4;
+        arpHdr.Op = ArpHeader.OpEnum.Request;
+        EthernetSend(b, Mac.Broadcast, EthernetHeader.EtherTypeEnum.Arp);
+        
+        ArpSync[ip] = sync;
+        sync.WaitOne();
+
+        if (ArpDictionary.TryGetValue(ip, out var mac2))
+        {
+            return mac2;
+        }
+        throw new SystemException();
+    }
     void ArpHandle(Buf b)
     {
         ref var arpHdr = ref b.Pop<ArpHeader>();
@@ -358,15 +507,29 @@ public class VirtioNet : VirtioPci
         Debug.Assert(arpHdr.ProtAddrFormat == EthernetHeader.EtherTypeEnum.IpV4);
         Debug.Assert(arpHdr.HwAddrLength == 6);
         Debug.Assert(arpHdr.ProtAddrLength == 4);
-        Debug.Assert(arpHdr.Op == ArpHeader.OpEnum.Request);
 
         ref var arpData = ref b.Pop<ArpEthIpV4>();
 
         var mac = arpData.SenderHwAddr;
         var ip = arpData.SenderProtAddr;
-        //Debug.Print($"MAC {mac.A:X2}:{mac.B:X2}:{mac.C:X2}:{mac.D:X2}:{mac.E:X2}:{mac.F:X2} is IP {ip.A}.{ip.B}.{ip.C}.{ip.D}");
+        // Debug.Print($"MAC {mac.Data[0]:X2}:{mac.Data[1]:X2}:{mac.Data[2]:X2}:{mac.Data[3]:X2}:{mac.Data[4]:X2}:{mac.Data[5]:X2} is IP {ip.Data[0]}.{ip.Data[1]}.{ip.Data[2]}.{ip.Data[3]}");
+        ArpDictionary[ip] = mac;
+        if (arpHdr.Op == ArpHeader.OpEnum.Reply) { var sync = ArpSync[ip]; ArpSync.Remove(ip); sync.Set(); }
+        else if (arpHdr.Op == ArpHeader.OpEnum.Request) ArpReply(arpData.SenderHwAddr, arpData.SenderProtAddr);
+    }
 
-        ArpReply(arpData.SenderHwAddr, arpData.SenderProtAddr);
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct UdpHeader
+    {
+        internal ushort _srcPort;
+        internal ushort _destPort;
+        internal ushort _length;
+        internal ushort _checksum;
+        internal ushort SrcPort { get => SwapBytes(_srcPort); set => _srcPort = SwapBytes(value); }
+        internal ushort DestPort { get => SwapBytes(_destPort); set => _destPort = SwapBytes(value); }
+        internal ushort Length { get => SwapBytes(_length); set => _length = SwapBytes(value); }
+        internal ushort Checksum { get => SwapBytes(_checksum); set => _checksum = SwapBytes(value); }
     }
 
     internal struct Buf
@@ -400,12 +563,19 @@ public class VirtioNet : VirtioPci
             toPush.CopyTo(_data.Span.Slice(_curr, toPush.Length));
         }
 
+        internal void PushByte(byte toPush)
+        {
+            _curr--;
+            _data.Span[_curr] = toPush;
+        }
+
         internal ref T Pop<T>() where T : unmanaged
         {
             var data = _data.Span.Slice(_curr);
             _curr += Unsafe.SizeOf<T>();
             return ref MemoryMarshal.Cast<byte, T>(data)[0];
         }
+
         internal Span<byte> Pop(int c)
         {
             var data = _data.Span.Slice(_curr, c);
@@ -418,7 +588,8 @@ public class VirtioNet : VirtioPci
             return _data.Span.Slice(_curr);
         }
 
-        internal Buf Slice(int len) {
+        internal Buf Slice(int len)
+        {
             Buf n;
             n._data = _data.Slice(_curr, len);
             n._phys = _phys + (ulong)_curr;
@@ -456,7 +627,7 @@ public class VirtioNet : VirtioPci
         arpHdr.HwAddrLength = (byte)Unsafe.SizeOf<Mac>();
         arpHdr.ProtAddrLength = (byte)Unsafe.SizeOf<IpV4>();
         arpHdr.Op = ArpHeader.OpEnum.Reply;
-        
+
         ref var ethHdr = ref b.Push<EthernetHeader>();
         ethHdr.Dest = hwAddr;
         ethHdr.Src = _devConfig.MacAddr.Value;

@@ -4,6 +4,8 @@
 sudo ip tuntap add mode tap tap0
 sudo ip link set dev tap0 up promisc on
 sudo ip addr add 10.1.1.2/24 dev tap0
+killall in.tftpd
+/usr/sbin/in.tftpd -l -4 -s .
 
 qemu-system-x86_64 \
   -drive if=virtio,file=out/build/test.hdd \
