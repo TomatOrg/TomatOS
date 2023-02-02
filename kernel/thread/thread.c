@@ -208,7 +208,7 @@ static void add_to_all_threads(thread_t* thread) {
     lock_all_threads();
     // set the default gc thread data, updated by the gc whenever it iterates the
     // thread list and does stuff
-    thread->tcb->gc_data = m_default_gc_thread_data;
+    thread->tcb->gc_data = g_default_gc_thread_data;
     arrpush(g_all_threads, thread);
     unlock_all_threads();
 }
