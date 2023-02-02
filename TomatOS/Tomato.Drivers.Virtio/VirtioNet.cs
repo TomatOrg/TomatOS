@@ -127,21 +127,121 @@ public class VirtioNet : VirtioPci
 
         var mac = _devConfig.MacAddr.Value;
         Debug.Print($"VirtioNet: MAC {mac.Data[0]:X2}:{mac.Data[1]:X2}:{mac.Data[2]:X2}:{mac.Data[3]:X2}:{mac.Data[4]:X2}:{mac.Data[5]:X2}");
-
-        TftpReadFile("README.md", new IpV4(10, 1, 1, 2));
+        Test().Wait();
     }
 
-    void TftpReadFile(string filename, IpV4 ip)
+    struct Data : IEquatable<Data>
+    {
+        internal IpV4 ip;
+        internal ushort port;
+
+        internal Data(IpV4 _ip, ushort _port)
+        {
+            ip = _ip;
+            port = _port;
+        }
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                return ip.Data[0] + ip.Data[1] * 256 + ip.Data[2] * 256 * 256 + ip.Data[3] * 256 * 256 * 256;
+            }
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Data v && Equals(v);
+        }
+
+        public bool Equals(Data other)
+        {
+            return port == other.port && ip.Data[0] == other.ip.Data[0] && ip.Data[1] == other.ip.Data[1] && ip.Data[2] == other.ip.Data[2] && ip.Data[3] == other.ip.Data[3];
+        }
+
+        public static bool operator ==(Data left, Data right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(Data left, Data right)
+        {
+            return !(left == right);
+        }
+    }
+
+    struct OutData
+    {
+        internal TaskCompletionSource<Buf> tcs;
+        internal UdpClient uc;
+    }
+    static Dictionary<Data, OutData> Tcses = new();
+    class UdpClient
+    {
+        internal IpV4 dest;
+        internal ushort ourPort;
+        internal ushort theirPort;
+
+        internal void Connect(IpV4 addr, ushort port)
+        {
+            dest = addr;
+            theirPort = port;
+            ourPort = 1234;
+        }
+        
+        internal Task<Buf> ReceiveAsync()
+        {
+            var tcs = new TaskCompletionSource<Buf>(TaskCreationOptions.RunContinuationsAsynchronously);
+            OutData d;
+            d.tcs = tcs;
+            d.uc = this;
+            VirtioNet.Tcses[new Data(dest, ourPort)] = d;
+            return tcs.Task;
+        }
+    }
+    async Task Test()
+    {
+        var c = new UdpClient();
+        c.Connect(new IpV4(10, 1, 1, 2), 69);
+
+        var req = TftpRrq();
+        UdpSend(req, c.ourPort, c.dest, c.theirPort);
+
+        while (true)
+        {
+            var buf = await c.ReceiveAsync();
+            var opcode = (TftpOpcodeEnum)SwapBytes(buf.Pop<ushort>());
+            if (opcode == TftpOpcodeEnum.Data)
+            {
+                var blockIdx = SwapBytes(buf.Pop<ushort>());
+                Debug.Print(Encoding.UTF8.GetString(buf.Get()));
+
+                req = TftpAck(blockIdx);
+                UdpSend(req, c.ourPort, c.dest, c.theirPort);
+            }
+        }
+    }
+    Buf TftpRrq()
     {
         var b = new Buf();
         b.PushByte(0);
         b.Push(new Span<byte>(Encoding.ASCII.GetBytes("octet"))); // TODO:
         b.PushByte(0);
-        b.Push(new Span<byte>(Encoding.ASCII.GetBytes(filename))); // TODO:
+        b.Push(new Span<byte>(Encoding.ASCII.GetBytes("README.md"))); // TODO:
         ref var opcode = ref b.Push<ushort>();
         opcode = SwapBytes((ushort)TftpOpcodeEnum.ReadRequest);
-        UdpSend(b, 1234, ip, 69);
+        return b;
     }
+    Buf TftpAck(ushort blockIdx)
+    {
+        var buf = new Buf();
+
+        ref var block = ref buf.Push<ushort>();
+        block = SwapBytes(blockIdx);
+        ref var opco = ref buf.Push<ushort>();
+        opco = SwapBytes((ushort)TftpOpcodeEnum.Ack);
+        return buf;
+    }
+
 
     void UdpSend(Buf b, ushort ourPort, IpV4 ip, ushort port)
     {
@@ -398,29 +498,10 @@ public class VirtioNet : VirtioPci
     void UdpHandle(Buf b, ushort id, IpV4 sender, Mac senderHw)
     {
         ref var udpHdr = ref b.Pop<UdpHeader>();
-
-        var opcode = (TftpOpcodeEnum)SwapBytes(b.Pop<ushort>());
-        if (opcode == TftpOpcodeEnum.ReadRequest || opcode == TftpOpcodeEnum.WriteRequest)
+        if (Tcses.TryGetValue(new Data(sender, udpHdr.DestPort), out var o))
         {
-            var str = b.Get();
-            Span<byte> filename = null;
-            Span<byte> mode = null;
-            int i = 0;
-            for (; i < str.Length; i++) if (str[i] == 0) { filename = str.Slice(0, i); break; }
-            i++;
-            for (int j = i; j < str.Length; j++) if (str[j] == 0) mode = str.Slice(i, j - i);
-        }
-        else if (opcode == TftpOpcodeEnum.Data)
-        {
-            var blockIdx = SwapBytes(b.Pop<ushort>());
-            Debug.Print(Encoding.UTF8.GetString(b.Get()));
-            b = new Buf();
-
-            ref var block = ref b.Push<ushort>();
-            block = SwapBytes(blockIdx);
-            ref var opco = ref b.Push<ushort>();
-            opco = SwapBytes((ushort)TftpOpcodeEnum.Ack);
-            UdpSend(b, udpHdr.DestPort, sender, udpHdr.SrcPort);
+            o.uc.theirPort = udpHdr.SrcPort;
+            o.tcs.SetResult(b);
         }
     }
 
@@ -490,7 +571,7 @@ public class VirtioNet : VirtioPci
         arpHdr.ProtAddrLength = 4;
         arpHdr.Op = ArpHeader.OpEnum.Request;
         EthernetSend(b, Mac.Broadcast, EthernetHeader.EtherTypeEnum.Arp);
-        
+
         ArpSync[ip] = sync;
         sync.WaitOne();
 
