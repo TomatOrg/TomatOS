@@ -229,7 +229,7 @@ public class FatFs : IFileSystem
     // TODO: use a disk pagecache
     internal async Task<Memory<byte>> Read(long sector, int bytes)
     {
-        var mem = MemoryServices.AllocatePhysicalMemory(bytes).Memory;
+        var mem = new DmaBuffer(bytes).Memory;
         await _block.ReadBlocks(sector, mem);
         return mem;
     }

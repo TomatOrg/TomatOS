@@ -17,7 +17,7 @@ internal class FatDriver : IFileSystemDriver
     // detecting a FAT filesystem is much harder than I imagined
     public async Task<IFileSystem> TryCreate(IBlock block)
     {
-        var sector = MemoryServices.AllocatePhysicalMemory(512);
+        var sector = new DmaBuffer(512);
         await block.ReadBlocks(0, sector.Memory);
         var bootSectorJump = sector.Memory;
         var bpb = MemoryMarshal.Cast<byte, Bpb>(sector.Memory.Slice(3 + 8)).Span[0];

@@ -32,6 +32,7 @@ public class VirtioBlock : VirtioPci, IBlock
     public int IoAlign => 512;
     public int OptimalTransferLengthGranularity => 8;
 
+    // TODO: this is super bad since GetMappedPhysicalAddress will not work unless using DmaBuffer
     public Task ReadBlocks(long lba, Memory<byte> memory, CancellationToken token = default)
         => DoAsync((ulong)lba, (uint)memory.Length, false, GetMappedPhysicalAddress(memory));
 
@@ -162,14 +163,14 @@ public class VirtioBlock : VirtioPci, IBlock
 
     private class PacketAllocator<T> where T : unmanaged
     {
-        List<IMemoryOwner<byte>> _pages = new();
+        List<DmaBuffer> _pages = new();
         uint _firstFree = 0xFFFFFFFF; // high 16 bits = page, low 16 bits = idx
         int _size = Unsafe.SizeOf<T>();
 
         private void Fill()
         {
             var pageIdx = _pages.Count;
-            var mem = AllocatePhysicalMemory(PageSize);
+            var mem = new DmaBuffer(PageSize);
             var s = MemoryMarshal.Cast<byte, uint>(mem.Memory).Span;
             var max = (PageSize - 4) / (_size * 4);
             for (int i = 0; i < max; i++)
@@ -187,12 +188,12 @@ public class VirtioBlock : VirtioPci, IBlock
         {
             uint curr = _firstFree;
             if (_firstFree == 0xFFFFFFFF) { Fill(); curr = _firstFree; }
-            IMemoryOwner<byte> page = _pages[(int)(curr >> 16)];
+            DmaBuffer page = _pages[(int)(curr >> 16)];
             int idx = (int)(curr & 0xFFFF);
             uint newFree = (MemoryMarshal.Cast<byte, uint>(page.Memory)).Span[idx];
             _firstFree = newFree;
 
-            address = GetPhysicalAddress(page) + (ulong)idx * 4;
+            address = page.PhysicalAddress + (ulong)idx * 4;
             mem = MemoryMarshal.Cast<byte, T>(page.Memory.Slice(idx * 4));
             index = curr;
         }

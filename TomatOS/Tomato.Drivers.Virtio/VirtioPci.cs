@@ -29,7 +29,7 @@ public abstract class VirtioPci
         readonly int Index;
 
         // Allocated memory and partitions
-        readonly IMemoryOwner<byte> _backingMemory;
+        readonly DmaBuffer _backingMemory;
         readonly public Memory<Descriptor> Descriptors;
         readonly public AvailRing Avail;
         readonly public UsedRing Used;
@@ -60,7 +60,7 @@ public abstract class VirtioPci
             var usedSize = 6 * 8 * Size;
 
             var total = descrSize + availSize + usedSize;
-            _backingMemory = MemoryServices.AllocatePhysicalMemory(total);
+            _backingMemory = new DmaBuffer(total);
             var r = new Region(_backingMemory.Memory);
 
             // set the three communication regions
@@ -68,7 +68,7 @@ public abstract class VirtioPci
             Avail = new(r.CreateRegion(descrSize, availSize), Size);
             Used = new(r.CreateRegion(descrSize + availSize, usedSize), Size);
 
-            DescPhys = MemoryServices.GetPhysicalAddress(_backingMemory);
+            DescPhys = _backingMemory.PhysicalAddress;
             AvailPhys = DescPhys + (ulong)descrSize;
             UsedPhys = AvailPhys + (ulong)availSize;
 

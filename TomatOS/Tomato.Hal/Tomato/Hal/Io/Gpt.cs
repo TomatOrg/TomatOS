@@ -93,8 +93,8 @@ public static class Gpt
     {
         // TODO: verify protective MBR is valid
 
-        var primaryHeaderData = MemoryServices.AllocatePhysicalMemory(block.BlockSize).Memory;
-        var backupHeaderData = MemoryServices.AllocatePhysicalMemory(block.BlockSize).Memory;
+        var primaryHeaderData = new DmaBuffer(block.BlockSize).Memory;
+        var backupHeaderData = new DmaBuffer(block.BlockSize).Memory;
         
         // check primary gpt table
         if (!await ValidateGptTable(primaryHeaderData, 1, block))
@@ -128,7 +128,7 @@ public static class Gpt
     public static async IAsyncEnumerable<Partition> IteratePartitions(IBlock block)
     {
         // read the primary partition table, verifying it again just in case
-        var primaryHeaderData = MemoryServices.AllocatePhysicalMemory(block.BlockSize).Memory;
+        var primaryHeaderData = new DmaBuffer(block.BlockSize).Memory;
         if (!await ValidateGptTable(primaryHeaderData, 1, block))
             yield break;
         
@@ -136,8 +136,7 @@ public static class Gpt
         
         // allocate the array for reading the partitions 
         var sizeOfEntry = partHeader.SizeOfPartitionEntry;
-        var partEntryData = MemoryServices.AllocatePhysicalMemory((int)(partHeader.NumberOfPartitionEntries *
-                                                                        sizeOfEntry)).Memory;
+        var partEntryData = new DmaBuffer((int)(partHeader.NumberOfPartitionEntries * sizeOfEntry)).Memory;
         await block.ReadBlocks(partHeader.PartitionEntryLba, partEntryData);
         
         // iterate all the partitions 
