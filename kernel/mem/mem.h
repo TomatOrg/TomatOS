@@ -8,6 +8,13 @@
 // size of a single phys
 #define PAGE_SIZE                       (SIZE_4KB)
 
+// The virtual area used for the GC objects (mimalloc heaps)
+// OBJECT_HEAP_END coincides with MI_MAX_ADDRESS, which is currently 20TB
+// We put it a bit high in the lower half since 2-4GB is used by the lowmem allocator.
+#define OBJECT_HEAP_SIZE                (SIZE_1TB * 20)
+#define OBJECT_HEAP_START               (BASE_1TB)
+#define OBJECT_HEAP_END                 (OBJECT_HEAP_START + OBJECT_HEAP_SIZE)
+
 // the low memory heap is used to allocate pointers that fit in uint32 for space saving
 #define KERNEL_LOW_MEM_HEAP_SIZE        (SIZE_2GB)
 #define KERNEL_LOW_MEM_HEAP_START       (BASE_2GB)
@@ -28,12 +35,6 @@
 #define STACK_POOL_START                (DIRECT_MAP_END + SIZE_64GB)
 #define STACK_POOL_END                  (STACK_POOL_START + STACK_POOL_SIZE)
 STATIC_ASSERT(DIRECT_MAP_END < STACK_POOL_START);
-
-// The virtual area used for the GC objects (mimalloc heaps)
-// OBJECT_HEAP_END coincides with MI_MAX_ADDRESS, which is currently 20TB
-// We put it a bit high in the lower half since 2-4GB is used by the lowmem allocator.
-#define OBJECT_HEAP_START               (SIZE_1TB)
-#define OBJECT_HEAP_END                 (SIZE_1TB * 20)
 
 // This is the area the recursive paging exist on
 #define RECURSIVE_PAGING_SIZE           (SIZE_512GB)

@@ -179,27 +179,6 @@ cleanup:
 // Thread creation and deletion
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-typedef struct thread_list {
-    thread_t* head;
-} thread_list_t;
-
-static bool thread_list_empty(thread_list_t* list) {
-    return list->head == NULL;
-}
-
-static void thread_list_push(thread_list_t* list, thread_t* thread) {
-    thread->sched_link = list->head;
-    list->head = thread;
-}
-
-static thread_t* thread_list_pop(thread_list_t* list) {
-    thread_t* thread = list->head;
-    if (thread != NULL) {
-        list->head = thread->sched_link;
-    }
-    return thread;
-}
-
 // all the threads in the system
 static word_lock_t m_all_threads_lock = {0 };
 thread_t** g_all_threads = NULL;
@@ -211,52 +190,6 @@ static void add_to_all_threads(thread_t* thread) {
     thread->tcb->gc_data = g_default_gc_thread_data;
     arrpush(g_all_threads, thread);
     unlock_all_threads();
-}
-
-// the global array of free thread descriptors
-static spinlock_t m_global_free_threads_lock = INIT_SPINLOCK();
-static thread_list_t m_global_free_threads;
-static int32_t m_global_free_threads_count = 0;
-
-// cpu local free threads
-static CPU_LOCAL thread_list_t m_free_threads;
-static CPU_LOCAL int32_t m_free_threads_count = 0;
-
-static thread_t* get_free_thread() {
-    thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
-
-    scheduler_preempt_disable();
-
-retry:
-    // If we have no threads and there are threads in the global free list pull
-    // some threads to us, only take up to 32 entries
-    if (thread_list_empty(free_threads) && !thread_list_empty(&m_global_free_threads)) {
-        // We got no threads on our cpu, move a batch to our cpu
-        spinlock_lock(&m_global_free_threads_lock);
-        while (m_free_threads_count < 32) {
-            // prefer threads with stacks
-            thread_t* thread = thread_list_pop(&m_global_free_threads);
-            if (thread == NULL) {
-                break;
-            }
-            m_global_free_threads_count--;
-            thread_list_push(free_threads, thread);
-            m_free_threads_count++;
-        }
-        spinlock_unlock(&m_global_free_threads_lock);
-        goto retry;
-    }
-
-    // take a thread from the local list
-    thread_t* thread = thread_list_pop(free_threads);
-    if (thread == NULL) {
-        goto cleanup;
-    }
-    m_free_threads_count--;
-    
-cleanup:
-    scheduler_preempt_enable();
-    return thread;
 }
 
 /**
@@ -305,14 +238,11 @@ cleanup:
 atomic_int g_thread_count = 0;
 
 thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
-    thread_t* thread = get_free_thread();
+    thread_t* thread = alloc_thread();
     if (thread == NULL) {
-        thread = alloc_thread();
-        if (thread == NULL) {
-            return NULL;
-        }
-        add_to_all_threads(thread);
+        return NULL;
     }
+    add_to_all_threads(thread);
 
     // increment the thread count and let
     // parking lot know it happened
@@ -340,7 +270,10 @@ thread_t* create_thread(thread_entry_t entry, void* ctx, const char* fmt, ...) {
     // relies on the values to be consistent!
     uint8_t* tcb_bottom = (uint8_t*)thread->tcb - m_tls_size;
     memset(tcb_bottom, 0, m_tls_size);
-    if (m_tls_filesz) memcpy(tcb_bottom, m_tls_file, m_tls_filesz); // make ubsan happy about non-null pointer
+    if (m_tls_filesz) {
+        // make ubsan happy about non-null pointer
+        memcpy(tcb_bottom, m_tls_file, m_tls_filesz);
+    }
 
     // Reset the thread save state:
     //  - set the rip as the thread entry
@@ -391,37 +324,8 @@ thread_t* put_thread(thread_t* thread) {
 
 void release_thread(thread_t* thread) {
     if (atomic_fetch_sub(&thread->ref_count, 1) == 1) {
-        thread_list_t* free_threads = get_cpu_local_base(&m_free_threads);
-
         // free the thread locals of this thread as we don't need them anymore
         jit_free_thread_locals();
-
-        // add to the list
-        thread_list_push(free_threads, thread);
-        m_free_threads_count++;
-
-        // if we have too many threads locally on the cpu
-        // move some of them to the global threads list
-        if (m_free_threads_count >= 64) {
-            spinlock_lock(&m_global_free_threads_lock);
-            while (m_free_threads_count >= 32) {
-                thread = thread_list_pop(free_threads);
-                m_free_threads_count--;
-                thread_list_push(&m_global_free_threads, thread);
-                m_global_free_threads_count++;
-            }
-            spinlock_unlock(&m_global_free_threads_lock);
-        }
-    }
-}
-
-void reclaim_free_threads() {
-    int free_count = 0;
-
-    spinlock_lock(&m_global_free_threads_lock);
-    while (!thread_list_empty(&m_global_free_threads)) {
-        thread_t* thread = thread_list_pop(&m_global_free_threads);
-        m_global_free_threads_count--;
 
         // free the thread control block
         void* tcb = thread->tcb - m_tls_size;
@@ -433,7 +337,4 @@ void reclaim_free_threads() {
         // free the thread itself
         free(thread);
     }
-    spinlock_unlock(&m_global_free_threads_lock);
-
-    TRACE("Reclaimed %d threads from the global free list", free_count);
 }

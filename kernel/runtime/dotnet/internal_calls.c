@@ -104,68 +104,14 @@ static method_result_t Tomato_Hal_Hal_GetNextFramebuffer(int* index, uint64_t* a
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //----------------------------------------------------------------------------------------------------------------------
-// MSI-X: `ctx` is the vector mask address
-//----------------------------------------------------------------------------------------------------------------------
-
-void msix_irq_mask(void *ctx) {
-    *(uint32_t*)(PHYS_TO_DIRECT(ctx)) = 1;
-}
-
-void msix_irq_unmask(void *ctx) {
-    *(uint32_t*)(PHYS_TO_DIRECT(ctx)) = 0;
-}
-
-irq_ops_t m_msix_irq_ops = {
-    .mask = msix_irq_mask,
-    .unmask = msix_irq_unmask
-};
-
-//----------------------------------------------------------------------------------------------------------------------
-// IoApic: `ctx` is the page aligned IOAPIC address ORed with the index in the IoRedTbl
-//----------------------------------------------------------------------------------------------------------------------
-
-// FIXME: this code does one VMEXIT more than it needs to, since it reads the flags value
-
-void ioapic_irq_mask(void *ctx) {
-    uintptr_t c = (uintptr_t)ctx;
-    uint32_t index = c & 4095;
-    volatile uint32_t *sel = PHYS_TO_DIRECT(c - index), *win = sel + 4;
-    *sel = 0x10 + index * 2;
-    *win |= 1u << 16;
-}
-
-void ioapic_irq_unmask(void *ctx) {
-    uintptr_t c = (uintptr_t)ctx;
-    uint32_t index = c & 4095;
-    volatile uint32_t *sel = PHYS_TO_DIRECT(c - index), *win = sel + 4;
-    *sel = 0x10 + index * 2;
-    *win &= ~(1u << 16);
-}
-
-irq_ops_t m_ioapic_irq_ops = {
-    .mask = ioapic_irq_mask,
-    .unmask = ioapic_irq_unmask
-};
-
-//----------------------------------------------------------------------------------------------------------------------
 // the API
 //----------------------------------------------------------------------------------------------------------------------
 
-static method_result_t Tomato_Hal_Irq_AllocateIrq(int count, int type, void* addr) {
+static method_result_t Tomato_Hal_Irq_AllocateIrq(int count) {
     uint8_t interrupt = 0;
 
-    // get the ops for the requested irq type
-    irq_ops_t ops;
-    switch (type) {
-        case 0: ops = m_msix_irq_ops; break;
-        // TODO: MSI
-        case 2: ops = m_ioapic_irq_ops; break;
-        default:
-            ASSERT(!"IRQ type not supported yet");
-    }
-
     // allocate it
-    PANIC_ON(alloc_irq(count, ops, addr, &interrupt));
+    PANIC_ON(alloc_irq(count, &interrupt));
 
     // return the number
     return (method_result_t){ .exception = NULL, .value = interrupt };
@@ -244,7 +190,7 @@ err_t init_kernel_internal_calls() {
     MIR_load_external(ctx, "[Tomato.Hal-v1]Tomato.Hal.MemoryServices::FreeMemory(uint64)", Tomato_Hal_MemoryServices_FreeMemory);
 
     // Irq
-    MIR_load_external(ctx, "int32 [Tomato.Hal-v1]Tomato.Hal.Irq::AllocateIrq(int32,[Tomato.Hal-v1]Tomato.Hal.Irq+IrqMaskType,uint64)", Tomato_Hal_Irq_AllocateIrq);
+    MIR_load_external(ctx, "int32 [Tomato.Hal-v1]Tomato.Hal.Irq::AllocateIrq(int32)", Tomato_Hal_Irq_AllocateIrq);
     MIR_load_external(ctx, "[Tomato.Hal-v1]Tomato.Hal.Irq::IrqWait(int32)", Tomato_Hal_Irq_IrqWait);
 
     // IO ports

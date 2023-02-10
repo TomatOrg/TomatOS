@@ -33,7 +33,6 @@
 #include "printf.h"
 #include "except.h"
 #include "stb_ds.h"
-#include "sync/irq_spinlock.h"
 
 #include <dotnet/types.h>
 

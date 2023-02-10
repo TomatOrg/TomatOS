@@ -4,32 +4,66 @@
 
 #include <stdatomic.h>
 #include "arch/intrin.h"
+#include "arch/idt.h"
 
-static bool spinlock_try_lock_weak(spinlock_t* spinlock) {
-    bool _false = false;
-    return atomic_compare_exchange_weak_explicit(&spinlock->locked, &_false, true,
-                                                 memory_order_acquire, memory_order_relaxed);
-}
+INTERRUPT void spinlock_lock(spinlock_t* spinlock) {
+    for (;;) {
+        if (!atomic_exchange_explicit(&spinlock->lock, true, memory_order_acquire)) {
+            return;
+        }
 
-void spinlock_lock(spinlock_t* spinlock) {
-    while (!spinlock_try_lock_weak(spinlock)) {
-        while (spinlock_is_locked(spinlock)) {
+        while (atomic_load_explicit(&spinlock->lock, memory_order_relaxed)) {
             __builtin_ia32_pause();
         }
     }
 }
 
-bool spinlock_try_lock(spinlock_t* spinlock) {
-    bool _false = false;
-    bool result = atomic_compare_exchange_strong_explicit(&spinlock->locked, &_false, true,
-                                                   memory_order_acquire, memory_order_relaxed);
-    return result;
+INTERRUPT bool spinlock_try_lock(spinlock_t* spinlock) {
+    return !atomic_load_explicit(&spinlock->lock, memory_order_relaxed) &&
+            atomic_exchange_explicit(&spinlock->lock, true, memory_order_acquire);
 }
 
-void spinlock_unlock(spinlock_t* spinlock) {
-    atomic_store_explicit(&spinlock->locked, false, memory_order_release);
+INTERRUPT void spinlock_unlock(spinlock_t* spinlock) {
+    atomic_store_explicit(&spinlock->lock, false, memory_order_release);
 }
 
-bool spinlock_is_locked(spinlock_t* spinlock) {
-    return atomic_load_explicit(&spinlock->locked, memory_order_relaxed);
+INTERRUPT bool spinlock_is_locked(spinlock_t* spinlock) {
+    return atomic_load_explicit(&spinlock->lock, memory_order_relaxed);
+}
+
+INTERRUPT static bool irq_save() {
+    bool status = __readeflags() & BIT9;
+    _disable();
+    return status;
+}
+
+INTERRUPT static void irq_restore(bool status) {
+    if (status) {
+        _enable();
+    }
+}
+
+INTERRUPT void irq_spinlock_lock(irq_spinlock_t* spinlock) {
+    bool status = irq_save();
+    spinlock_lock(&spinlock->lock);
+    spinlock->status = status;
+}
+
+INTERRUPT bool irq_spinlock_try_lock(irq_spinlock_t* spinlock) {
+    bool status = irq_save();
+    bool success = spinlock_try_lock(&spinlock->lock);
+    if (!success) {
+        irq_restore(status);
+    }
+    return success;
+}
+
+INTERRUPT void irq_spinlock_unlock(irq_spinlock_t* spinlock) {
+    bool status = spinlock->status;
+    spinlock_unlock(&spinlock->lock);
+    irq_restore(status);
+}
+
+INTERRUPT bool irq_spinlock_is_locked(irq_spinlock_t* spinlock) {
+    return spinlock_is_locked(&spinlock->lock);
 }

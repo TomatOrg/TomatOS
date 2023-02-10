@@ -77,23 +77,13 @@ typedef enum irq {
     IRQ_SPURIOUS    = 0xFF,
 } irq_t;
 
-typedef struct irq_ops {
-    // Tells the irq subsystem how to mask the IRQ
-    void (*mask)(void* ctx);
-
-    // Tells the irq subsystem how to unmask the IRQ
-    void (*unmask)(void* ctx);
-} irq_ops_t;
-
 /**
  * Allocate a new IRQ for the device
  *
  * @param count     [IN]    How many irqs to allocate, sequentially
- * @param ops       [IN]    The IRQ operations needed from the driver
- * @param ctx       [IN]    The context to pass to the operations
  * @param vector    [OUT]   The allocated base vector
  */
-err_t alloc_irq(int count, irq_ops_t ops, void* ctx, uint8_t* vector);
+err_t alloc_irq(int count, uint8_t* vector);
 
 /**
  * Wait for the given IRQ, passing in the context for the specific one

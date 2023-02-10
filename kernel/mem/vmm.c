@@ -13,10 +13,9 @@
 #include "mem.h"
 #include "early.h"
 
-#include "arch/intrin.h"
-#include "sync/irq_spinlock.h"
-#include "arch/idt.h"
-#include "thread/cpu_local.h"
+#include <thread/cpu_local.h>
+#include <arch/intrin.h>
+#include <arch/idt.h>
 
 /**
  * The root physical address of the kernel phys table

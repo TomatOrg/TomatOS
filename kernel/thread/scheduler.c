@@ -30,17 +30,15 @@
 
 #include "scheduler.h"
 
-#include "arch/gdt.h"
-#include "arch/idt.h"
 #include "cpu_local.h"
-#include "irq/irq.h"
-#include "mem/mem.h"
-#include "mem/stack.h"
-#include "sync/irq_spinlock.h"
-#include "thread/thread.h"
-#include "time/tick.h"
+#include "thread.h"
 #include "timer.h"
-#include "util/defs.h"
+
+#include <time/tick.h>
+#include <util/defs.h>
+#include <arch/idt.h>
+#include <irq/irq.h>
+#include <mem/mem.h>
 
 #include <arch/apic.h>
 #include <arch/intrin.h>
@@ -223,7 +221,7 @@
     }
 
 #define TDQ_LOCKPTR(tdq) (&(tdq)->lock)
-#define TDQ_LOCK_ASSERT(rq) ASSERT(rq->lock.locked);
+#define TDQ_LOCK_ASSERT(rq) ASSERT(spinlock_is_locked(&rq->lock));
 #define TDQ_LOAD(tdq) atomic_load_int(&(tdq)->load)
 
 #define TDQ_LOCK(t)                                                            \
@@ -242,8 +240,8 @@
 #define cpu_ticks() get_tick()
 #define curthread ((thread_t *)m_curthread)
 
-#define THREAD_LOCK_ASSERT(td, a) ASSERT(td->lock->locked)
-#define THREAD_LOCK_BLOCKED_ASSERT(td, a) if (td->lock != &blocked_lock) ASSERT(td->lock->locked);
+#define THREAD_LOCK_ASSERT(td, a) ASSERT(spinlock_is_locked(td->lock))
+#define THREAD_LOCK_BLOCKED_ASSERT(td, a) if (td->lock != &blocked_lock) ASSERT(spinlock_is_locked(td->lock));
 #define THREAD_LOCKPTR_ASSERT(td, l) ASSERT(td->lock == l);
 
 typedef struct runq_head {
@@ -1600,17 +1598,18 @@ INTERRUPT void scheduler_on_park(interrupt_context_t *ctx) {
 
 INTERRUPT void scheduler_on_drop(interrupt_context_t *ctx) {
     frame = (uintptr_t)ctx;
-    frame = (uintptr_t)ctx;
+
+    thread_t *td = curthread;
+
+    // remove the thread from here
+    td->tcb->managed_thread = NULL;
 
     // lapic_set_deadline(0);
-    thread_t *td = curthread;
     thread_lock(td);
     TD_SET_STATE(td, TDS_INACTIVE);
 
     mi_switch(SW_VOL);
 }
-
-bool scheduler_can_spin(int i) { return false; }
 
 void critical_exit_preempt(void) {
     thread_t *td;
@@ -1717,11 +1716,11 @@ void scheduler_drop_current() {
 
 void idle_loop(void *ctx) {
     while (1) {
-        asm("sti");
+        _enable();
         uint64_t deadline = get_total_tick() + TICKS_PER_MILLISECOND;
         lapic_set_deadline(deadline);
         while (get_total_tick() < deadline)
-            asm("hlt");
+            __halt();
     }
 }
 void scheduler_startup() {

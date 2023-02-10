@@ -5,8 +5,8 @@
 #include "vmm.h"
 #include "thread/cpu_local.h"
 #include "arch/idt.h"
+#include "sync/spinlock.h"
 
-#include <sync/irq_spinlock.h>
 #include <util/string.h>
 #include <util/stb_ds.h>
 

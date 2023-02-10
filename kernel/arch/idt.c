@@ -9,7 +9,6 @@
 #include "irq/irq.h"
 #include "thread/thread.h"
 
-#include <sync/irq_spinlock.h>
 #include <thread/scheduler.h>
 #include <debug/debug.h>
 #include <util/except.h>

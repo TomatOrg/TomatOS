@@ -111,15 +111,15 @@ public class Msix
         for (var i = _configuredIrqs; i < count; i++)
         {
             // the vector control is the last dword of a 4 dword structure
-            var irq = Irq.AllocateIrq(1, Irq.IrqMaskType.Msix, tableBase + (ulong)i * 16 + 12);
+            var irq = Irq.AllocateIrq(1);
             _irqs[i] = new Irq(irq);
             
             // configure it, we are going to set it as lowest priority cpu, this
             // will allow a cpu that is not working right now to handle it nicely.
-            // we keep the entry as masked, the wait will unmask it 
             ref var entry = ref _table.Span[i];
             entry.Addr = 0xFEE00000;
             entry.Data = (uint)((1 << 8) | irq);
+            entry.Ctrl = 0;
         }
 
         // set the new configured count 

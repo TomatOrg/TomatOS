@@ -6,16 +6,16 @@
 
 #define LIST_FIRST_ENTRY(ptr, type, member) LIST_ENTRY((ptr)->next, type, member)
 #define LIST_LAST_ENTRY(ptr, type, member) LIST_ENTRY((ptr)->prev, type, member)
-#define LIST_NEXT_ENTRY(pos, member) LIST_ENTRY((pos)->member.next, typeof(*(pos)), member)
-#define LIST_PREV_ENTRY(pos, member) LIST_ENTRY((pos)->member.prev, typeof(*(pos)), member)
+#define LIST_NEXT_ENTRY(pos, member) LIST_ENTRY((pos)->member.next, __typeof__(*(pos)), member)
+#define LIST_PREV_ENTRY(pos, member) LIST_ENTRY((pos)->member.prev, __typeof__(*(pos)), member)
 
 #define LIST_ENTRY_IS_HEAD(pos, head, member) (&pos->member == (head))
 
 #define LIST_FOR_EACH_ENTRY(pos, head, member) \
-	for (pos = LIST_FIRST_ENTRY(head, typeof(*pos), member); !LIST_ENTRY_IS_HEAD(pos, head, member); pos = LIST_NEXT_ENTRY(pos, member))
+	for (pos = LIST_FIRST_ENTRY(head, __typeof__(*pos), member); !LIST_ENTRY_IS_HEAD(pos, head, member); pos = LIST_NEXT_ENTRY(pos, member))
 
 #define LIST_FOR_EACH_ENTRY_SAFE(pos, n, head, member) \
-	for (pos = LIST_FIRST_ENTRY(head, typeof(*pos), member), n = LIST_NEXT_ENTRY(pos, member); !LIST_ENTRY_IS_HEAD(pos, head, member); pos = n, n = LIST_NEXT_ENTRY(n, member))
+	for (pos = LIST_FIRST_ENTRY(head, __typeof__(*pos), member), n = LIST_NEXT_ENTRY(pos, member); !LIST_ENTRY_IS_HEAD(pos, head, member); pos = n, n = LIST_NEXT_ENTRY(n, member))
 
 /**
  * an entry in a list

@@ -1,12 +1,13 @@
 #pragma once
 
+#include <stdatomic.h>
 #include <stdbool.h>
 
 typedef struct spinlock {
-    _Atomic(bool) locked;
+    atomic_bool lock;
 } spinlock_t;
 
-#define INIT_SPINLOCK() ((spinlock_t){ .locked = false })
+#define INIT_SPINLOCK() ((spinlock_t){ .lock = false })
 
 void spinlock_lock(spinlock_t* spinlock);
 
@@ -15,3 +16,18 @@ bool spinlock_try_lock(spinlock_t* spinlock);
 void spinlock_unlock(spinlock_t* spinlock);
 
 bool spinlock_is_locked(spinlock_t* spinlock);
+
+typedef struct irq_spinlock {
+    spinlock_t lock;
+    bool status;
+} irq_spinlock_t;
+
+#define INIT_IRQ_SPINLOCK() ((irq_spinlock_t){ .lock = INIT_SPINLOCK(), .status = false })
+
+void irq_spinlock_lock(irq_spinlock_t* spinlock);
+
+bool irq_spinlock_try_lock(irq_spinlock_t* spinlock);
+
+void irq_spinlock_unlock(irq_spinlock_t* spinlock);
+
+bool irq_spinlock_is_locked(irq_spinlock_t* spinlock);

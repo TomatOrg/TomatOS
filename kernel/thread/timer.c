@@ -34,12 +34,10 @@
 
 #include "scheduler.h"
 #include "cpu_local.h"
-#include "util/stb_ds.h"
-#include "time/tsc.h"
-#include "time/tick.h"
-#include "sync/irq_spinlock.h"
 
+#include <util/stb_ds.h>
 #include <mem/malloc.h>
+#include <time/tick.h>
 
 #include <stdatomic.h>
 

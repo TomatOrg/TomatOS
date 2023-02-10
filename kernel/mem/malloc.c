@@ -4,7 +4,6 @@
 #include "mem.h"
 #include "sync/mutex.h"
 
-#include <sync/irq_spinlock.h>
 #include <util/string.h>
 
 // kernel heap

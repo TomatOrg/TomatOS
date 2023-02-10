@@ -60,7 +60,11 @@ public class VirtioBlock : VirtioPci, IBlock
         _lastBlock = (long)_devConfig.Capacity.Value - 1;
         _blockPackets = new PacketInfo[_queueInfo.Size];
         _blockAlloc = new();
-        (new Thread(IrqWaiterThread)).Start();
+        var thread = new Thread(IrqWaiterThread)
+        {
+            Name = GetType().FullName
+        };
+        thread.Start();
         Debug.Print("VirtioBlock: Device registered");
         BlockManager.RegisterBlock(this);
     }
