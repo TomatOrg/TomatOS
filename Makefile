@@ -3,27 +3,30 @@
 ########################################################################################################################
 
 # Should we compile with no-optimizations
-DEBUG		?= 0
+DEBUG			?= 0
+
+# Should we compile with asserts
+DEBUG_ASSERTS 	?= 1
 
 # Should GCC be used instead of clang
 # needed for some debug utilities
-USE_GCC		?= 0
+USE_GCC			?= 0
 
 # Should UBSAN be enabled
-USE_UBSAN	?= 0
+USE_UBSAN		?= 0
 
 # Should KASAN be enabled
-USE_KASAN	?= 0
+USE_KASAN		?= 0
 
 # Should we enable the profiler
-USE_PROF	?= 0
+USE_PROF		?= 0
 
 # Should LTO be enabled
-USE_LTO		?= 1
+USE_LTO			?= 1
 
-OUT_DIR		:= out
-BIN_DIR		:= $(OUT_DIR)/bin
-BUILD_DIR	:= $(OUT_DIR)/build
+OUT_DIR			:= out
+BIN_DIR			:= $(OUT_DIR)/bin
+BUILD_DIR		:= $(OUT_DIR)/build
 
 #-----------------------------------------------------------------------------------------------------------------------
 # General configurations
@@ -67,12 +70,14 @@ CFLAGS	+= -O0 -g
 
 # Enable a full stack protector for debugging
 CFLAGS 	+= -fstack-protector-all
-
-# Mark that we are in debug
-CFLAGS 	+= -D__DEBUG__
 else
 # full optimizations, but still emit debug info
 CFLAGS	+= -O3 -g
+endif
+
+ifeq ($(DEBUG_ASSERTS),1)
+CFLAGS 	+= -D__DEBUG_ASSERTS__
+else
 
 # set no debugging, mostly used for the libraries we use
 CFLAGS 	+= -DNDEBUG
@@ -148,7 +153,9 @@ CFLAGS 		+= -Ilib/tinydotnet/src
 #-----------------------------------------------------------------------------------------------------------------------
 # mimalloc
 #-----------------------------------------------------------------------------------------------------------------------
+
 SRCS		+= lib/mimalloc/src/random.c
+SRCS		+= lib/mimalloc/src/os.c
 SRCS		+= lib/mimalloc/src/bitmap.c
 SRCS		+= lib/mimalloc/src/arena.c
 SRCS		+= lib/mimalloc/src/segment-cache.c
@@ -162,7 +169,7 @@ SRCS		+= lib/mimalloc/src/init.c
 CFLAGS 		+= -DMADV_NORMAL
 CFLAGS 		+= -Ilib/mimalloc/src
 CFLAGS 		+= -Ilib/mimalloc/include
-ifeq ($(DEBUG), 1)
+ifeq ($(DEBUG_ASSERTS), 1)
 	CFLAGS		+= -DMI_DEBUG=4
 endif
 #-----------------------------------------------------------------------------------------------------------------------

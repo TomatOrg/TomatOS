@@ -1,7 +1,10 @@
 #include "stdio.h"
 #include "util/stb_ds.h"
+#include "thread/thread.h"
 
 #include <mem/mem.h>
+
+THREAD_LOCAL int errno;
 
 FILE* stdout = (FILE*) -1;
 FILE* stderr = (FILE*) -2;
@@ -24,6 +27,20 @@ int fputc(int c, FILE* stream) {
         arrpush(stream->buffer, (unsigned char)c);
     }
     return (int)((unsigned char)c);
+}
+
+int fputs(const char *s, FILE *stream) {
+    if (stream == stdout || stream == stderr) {
+        while (*s) {
+            _putchar(*s++);
+        }
+    } else {
+        int current_length = arrlen(stream->buffer);
+        int string_length = strlen(s);
+        arrsetlen(stream->buffer, current_length + string_length);
+        memcpy(stream->buffer + current_length, s, string_length);
+    }
+    return 0;
 }
 
 int fgetc(FILE* steam) {

@@ -13,12 +13,29 @@ void* mmap(void* addr, size_t len, int prot, int flags, int fildes, off_t off) {
     ASSERT(off == 0);
     ASSERT(fildes < 0);
     ASSERT(flags == (MAP_PRIVATE | MAP_ANONYMOUS));
-    void* ptr = palloc(ALIGN_UP(len, PAGE_SIZE));
-    if (ptr == NULL) {
-        return MAP_FAILED;
+
+    if (addr != NULL) {
+        // range is empty, allocate it
+        if (!vmm_is_mapped((uintptr_t)addr, len)) {
+            err_t err = vmm_alloc(addr, ALIGN_UP(len, PAGE_SIZE) / PAGE_SIZE, prot);
+            if (IS_ERROR(err)) {
+                return MAP_FAILED;
+            }
+            return addr;
+        } else {
+            ASSERT(!"TODO: handle non-null page that is already taken");
+        }
+    } else {
+        ASSERT(len <= SIZE_2MB);
+        void* ptr = palloc(ALIGN_UP(len, PAGE_SIZE));
+        if (ptr == NULL) {
+            return MAP_FAILED;
+        }
+        mprotect(ptr, len, prot);
+        return ptr;
     }
-    mprotect(ptr, len, prot);
-    return ptr;
+
+    return NULL;
 }
 
 int munmap(void* addr, size_t len) {

@@ -47,6 +47,8 @@ void fclose(FILE* stream);
  */
 int fputc(int c, FILE* steam);
 
+int fputs(const char *s, FILE *stream);
+
 /**
  * reads the next character from stream and returns
  * it as an unsigned char cast to an int, or EOF on

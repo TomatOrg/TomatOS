@@ -335,6 +335,7 @@ INTERRUPT void* palloc(size_t size) {
     if (ptr != NULL) {
         memset(ptr, 0, size);
     } else {
+        ERROR("Run out of memory trying to allocate %S", size);
         ASSERT(!"Out of memory");
     }
 
