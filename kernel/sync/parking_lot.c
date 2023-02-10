@@ -584,10 +584,8 @@ INTERRUPT static void wakeup_thread(thread_t* thread, uintptr_t now) {
     // if we fail to lock it means that we already woke up from something
     // else and the timer is probably about to be stopped, so don't try
     // to start it up
-    if (spinlock_try_lock(&thread->parking_lock)) {
-        scheduler_ready_thread(thread);
-        spinlock_unlock(&thread->parking_lock);
-    }
+    scheduler_ready_thread(thread);
+    spinlock_unlock(&thread->parking_lock);
 }
 
 typedef struct arg {
