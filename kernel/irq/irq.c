@@ -24,12 +24,12 @@ typedef struct irq_instance {
 static irq_instance_t m_irqs[IRQ_ALLOC_END - IRQ_ALLOC_BASE] = { 0 };
 
 // Sync the subsystem
-static spinlock_t m_irq_spinlock = INIT_SPINLOCK();
+static spinlock_t m_irq_alloc_lock = INIT_SPINLOCK();
 
 err_t alloc_irq(int count, uint8_t* vector) {
     err_t err = NO_ERROR;
 
-    spinlock_lock(&m_irq_spinlock);
+    spinlock_lock(&m_irq_alloc_lock);
 
     int found = 0;
     int entry = 0;
@@ -54,7 +54,7 @@ err_t alloc_irq(int count, uint8_t* vector) {
     *vector = entry + IRQ_ALLOC_BASE;
 
 cleanup:
-    spinlock_unlock(&m_irq_spinlock);
+    spinlock_unlock(&m_irq_alloc_lock);
     
     return err;
 }
@@ -71,8 +71,6 @@ void irq_wait(uint8_t handler) {
     spinlock_lock(&instance->lock);
 
     if (!instance->triggered) {
-        TRACE("irq: IRQ #%d `%s`: goes to sleep", handler, get_current_thread());
-
         // set the current thread as waiting for it
         ASSERT(instance->waiting_thread == NULL);
         instance->waiting_thread = get_current_thread();
@@ -81,8 +79,6 @@ void irq_wait(uint8_t handler) {
         // the irq lock
         scheduler_park((void*)spinlock_unlock, &instance->lock);
     } else {
-        TRACE("irq: IRQ #%d `%s`: already triggered, not sleeping", handler, get_current_thread());
-
         // we already got a trigger, clean that up
         instance->triggered = false;
         spinlock_unlock(&instance->lock);
@@ -105,13 +101,9 @@ INTERRUPT void irq_dispatch(interrupt_context_t* ctx) {
     } else {
         // make sure we have a waiting thread
         if (instance->waiting_thread == NULL) {
-            TRACE("irq: IRQ #%d: triggered while no thread is waiting", ctx->int_num);
-
             // mark as triggered
             instance->triggered = true;
         } else {
-            TRACE("irq: IRQ #%d: triggered, `%s` waiting for it", ctx->int_num, instance->waiting_thread);
-
             // no one is waiting on this anymore
             thread_t* thread = instance->waiting_thread;
             instance->waiting_thread = NULL;
