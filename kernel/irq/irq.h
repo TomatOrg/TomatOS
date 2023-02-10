@@ -98,3 +98,11 @@ void irq_wait(uint8_t vector);
  * @param ctx       [IN] The interrupt context of the current IRQ
  */
 void irq_dispatch(interrupt_context_t* ctx);
+
+bool irq_save();
+
+void irq_restore(bool status);
+
+void irq_enable();
+
+void irq_disable();

@@ -29,6 +29,8 @@
 #include "time/tick.h"
 #include "util/fastrand.h"
 #include "util/stb_ds.h"
+#include "irq/irq.h"
+#include "arch/intrin.h"
 
 #include <thread/scheduler.h>
 #include <thread/timer.h>
@@ -578,7 +580,7 @@ static bool park_enqueue(const void* address, thread_t* me, park_validation_t va
 /**
  * The timer callback, wakes up the given thread from a timeout
  */
-static void wakeup_thread(thread_t* thread, uintptr_t now) {
+INTERRUPT static void wakeup_thread(thread_t* thread, uintptr_t now) {
     // if we fail to lock it means that we already woke up from something
     // else and the timer is probably about to be stopped, so don't try
     // to start it up
@@ -637,8 +639,10 @@ park_result_t park_conditionally(
     }
 
     // now do the locking loop
+    irq_disable();
     spinlock_lock(&me->parking_lock);
     while (me->address != NULL && get_tick() < when) {
+        // TODO: should we restore irqs or not in this time?
         scheduler_park((void*)spinlock_unlock, &me->parking_lock);
         spinlock_lock(&me->parking_lock);
     }
@@ -651,6 +655,7 @@ park_result_t park_conditionally(
         timer_stop(timer);
     }
     spinlock_unlock(&me->parking_lock);
+    irq_enable();
 
     // release the timer
     if (timer != NULL) {
@@ -685,6 +690,7 @@ park_result_t park_conditionally(
     ASSERT(me->next_in_queue == NULL);
 
     // Make sure that no matter what, me->address is null after this point.
+    irq_disable();
     spinlock_lock(&me->parking_lock);
     if (!did_dequeue) {
         // If we did not dequeue ourselves, then someone else did. They will set our address to
@@ -698,6 +704,7 @@ park_result_t park_conditionally(
     }
     me->address = NULL;
     spinlock_unlock(&me->parking_lock);
+    irq_enable();
 
     park_result_t result = {
         .was_unparked = !did_dequeue,
@@ -742,6 +749,7 @@ void unpark_all(const void* address) {
         thread_t* thread = arg.arr[i];
         ASSERT(thread->address != NULL);
 
+        irq_disable();
         spinlock_lock(&thread->parking_lock);
         thread->address = NULL;
 
@@ -751,6 +759,7 @@ void unpark_all(const void* address) {
             scheduler_ready_thread(thread);
         }
         spinlock_unlock(&thread->parking_lock);
+        irq_enable();
 
         release_thread(thread);
     }
@@ -816,6 +825,7 @@ void unpark_one(
 
     ASSERT(thread->address != NULL);
 
+    irq_disable();
     spinlock_lock(&thread->parking_lock);
     thread->address = NULL;
 
@@ -825,6 +835,7 @@ void unpark_one(
         scheduler_ready_thread(thread);
     }
     spinlock_unlock(&thread->parking_lock);
+    irq_enable();
 
     // At this point, the threadData may die
     release_thread(thread);

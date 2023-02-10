@@ -1,13 +1,14 @@
 #include "irq.h"
 #include "dotnet/gc/heap.h"
 #include "thread/scheduler.h"
+#include "arch/intrin.h"
 
 typedef struct irq_instance {
     // The thread waiting on this irq, NULL if none
     thread_t* waiting_thread;
 
     // lock to protect the irq instance
-    irq_spinlock_t lock;
+    spinlock_t lock;
 
     // we got a trigger, so next time someone waits
     // we will not let them
@@ -66,7 +67,8 @@ void irq_wait(uint8_t handler) {
     ASSERT(m_irqs[idx].allocated);
     irq_instance_t* instance = &m_irqs[idx];
 
-    irq_spinlock_lock(&instance->lock);
+    irq_disable();
+    spinlock_lock(&instance->lock);
 
     if (!instance->triggered) {
         TRACE("irq: IRQ #%d `%s`: goes to sleep", handler, get_current_thread());
@@ -77,17 +79,18 @@ void irq_wait(uint8_t handler) {
 
         // park the current thread, will wake it up later. makes sure to release
         // the irq lock
-        scheduler_park((void*)irq_spinlock_unlock, &instance->lock);
+        scheduler_park((void*)spinlock_unlock, &instance->lock);
     } else {
         TRACE("irq: IRQ #%d `%s`: already triggered, not sleeping", handler, get_current_thread());
 
         // we already got a trigger, clean that up
         instance->triggered = false;
-        irq_spinlock_unlock(&instance->lock);
+        spinlock_unlock(&instance->lock);
     }
+    irq_enable();
 }
 
-void irq_dispatch(interrupt_context_t* ctx) {
+INTERRUPT void irq_dispatch(interrupt_context_t* ctx) {
     // get the handler
     ASSERT(ctx->int_num >= IRQ_ALLOC_BASE);
     uint8_t idx = ctx->int_num - IRQ_ALLOC_BASE;
@@ -95,7 +98,7 @@ void irq_dispatch(interrupt_context_t* ctx) {
     ASSERT(m_irqs[idx].allocated);
     irq_instance_t* instance = &m_irqs[idx];
 
-    irq_spinlock_lock(&instance->lock);
+    spinlock_lock(&instance->lock);
 
     if (!instance->allocated) {
         WARN("irq: IRQ #%d: no one is handling this irq", ctx->int_num);
@@ -118,5 +121,28 @@ void irq_dispatch(interrupt_context_t* ctx) {
         }
     }
 
-    irq_spinlock_unlock(&instance->lock);
+    spinlock_unlock(&instance->lock);
 }
+
+INTERRUPT bool irq_save() {
+    bool status = __readeflags() & BIT9;
+    _disable();
+    return status;
+}
+
+INTERRUPT void irq_restore(bool status) {
+    if (status) {
+        _enable();
+    }
+}
+
+INTERRUPT void irq_enable() {
+    ASSERT(!(__readeflags() & BIT9));
+    _enable();
+}
+
+INTERRUPT void irq_disable() {
+    ASSERT(__readeflags() & BIT9);
+    _disable();
+}
+

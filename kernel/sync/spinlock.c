@@ -5,6 +5,7 @@
 #include <stdatomic.h>
 #include "arch/intrin.h"
 #include "arch/idt.h"
+#include "irq/irq.h"
 
 INTERRUPT void spinlock_lock(spinlock_t* spinlock) {
     for (;;) {
@@ -29,18 +30,6 @@ INTERRUPT void spinlock_unlock(spinlock_t* spinlock) {
 
 INTERRUPT bool spinlock_is_locked(spinlock_t* spinlock) {
     return atomic_load_explicit(&spinlock->lock, memory_order_relaxed);
-}
-
-INTERRUPT static bool irq_save() {
-    bool status = __readeflags() & BIT9;
-    _disable();
-    return status;
-}
-
-INTERRUPT static void irq_restore(bool status) {
-    if (status) {
-        _enable();
-    }
 }
 
 INTERRUPT void irq_spinlock_lock(irq_spinlock_t* spinlock) {
