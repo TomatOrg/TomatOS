@@ -135,6 +135,9 @@ typedef struct thread_control_block {
     // The per-thread data for the gc
     gc_thread_data_t gc_data;
 
+    // the current exception
+    void* current_exception;
+
     // the managed thread instance for this thread
     void* managed_thread;
 } thread_control_block_t;

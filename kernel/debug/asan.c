@@ -88,6 +88,7 @@ static void kasan_panic(uintptr_t addr, size_t size, bool read, uint8_t code, vo
 		else printf("%02x ", shadow_val);
 	}
 	printf("\n");
+    __builtin_trap();
 }
 
 INLINE uint8_t shadow_isvalid(uintptr_t addr, size_t size) {

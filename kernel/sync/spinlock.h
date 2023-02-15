@@ -22,7 +22,7 @@ typedef struct irq_spinlock {
     bool status;
 } irq_spinlock_t;
 
-#define INIT_IRQ_SPINLOCK() ((irq_spinlock_t){ .lock.lock = false, .status = false })
+#define INIT_IRQ_SPINLOCK() ((irq_spinlock_t){ .lock = { .lock = false }, .status = false })
 
 void irq_spinlock_lock(irq_spinlock_t* spinlock);
 
