@@ -198,12 +198,13 @@ static void add_to_all_threads(thread_t* thread) {
 static atomic_int m_thread_id_gen = 1;
 
 static thread_t* alloc_thread() {
+    thread_t* thread = NULL;
     err_t err = NO_ERROR;
 
     int thread_id = atomic_fetch_add(&m_thread_id_gen, 1);
     CHECK(thread_id <= UINT16_MAX);
 
-    thread_t* thread = malloc(sizeof(thread_t));
+    thread = malloc(sizeof(thread_t));
     CHECK(thread != NULL);
 
     // set the id

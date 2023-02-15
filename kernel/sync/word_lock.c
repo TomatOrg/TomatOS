@@ -266,7 +266,7 @@ static void word_lock_unlock_slow(word_lock_t* mutex) {
 
 void word_lock_unlock(word_lock_t* mutex) {
     uintptr_t is_locked = IS_LOCKED;
-    if (LIKELY(atomic_compare_exchange_weak_explicit(&mutex->lock, &is_locked, 0, memory_order_release, memory_order_release))) {
+    if (LIKELY(atomic_compare_exchange_weak_explicit(&mutex->lock, &is_locked, 0, memory_order_release, memory_order_relaxed))) {
         return;
     }
 
