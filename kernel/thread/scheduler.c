@@ -327,11 +327,11 @@ void sched_add(thread_t *td, int flags);
 thread_t *sched_choose(void);
 void sched_clock(thread_t *td, int cnt);
 void sched_idletd(void *);
-void sched_preempt(thread_t *td);
 void sched_relinquish(thread_t *td);
 void sched_rem(thread_t *td);
 void sched_wakeup(thread_t *td, int srqflags);
 thread_t *choosethread(void);
+void sched_prio(thread_t* td, uint8_t prio);
 
 INTERRUPT void ast_sched_locked(thread_t *ctd, int ast) { ctd->sched_ast = 1; }
 INTERRUPT void ast_unsched_locked(thread_t *ctd, int ast) {
@@ -908,6 +908,13 @@ void sched_user_prio(thread_t *td, uint8_t prio) {
     td->user_pri = prio;
 }
 
+void sched_ithread_prio(thread_t* td, uint8_t prio) {
+	THREAD_LOCK_ASSERT(td, MA_OWNED);
+	ASSERT(td->pri_class == PRI_ITHD);
+	td->base_ithread_pri = prio;
+	sched_prio(td, prio);
+}
+
 INTERRUPT static void sched_priority(thread_t *td) {
     uint32_t pri, score;
 
@@ -1035,6 +1042,13 @@ INTERRUPT static void sched_thread_priority(thread_t *td, uint8_t prio) {
         return;
     }
     td->priority = prio;
+}
+
+INTERRUPT void sched_class(thread_t *td, int class) {
+    THREAD_LOCK_ASSERT(td, MA_OWNED);
+    if (td->pri_class == class)
+        return;
+    td->pri_class = class;
 }
 
 INTERRUPT void sched_lend_prio(thread_t *td, uint8_t prio) {
@@ -1237,28 +1251,6 @@ INTERRUPT void sched_wakeup(thread_t *td, int srqflags) {
     sched_add(td, SRQ_BORING | srqflags);
 }
 
-INTERRUPT void sched_preempt(thread_t *td) {
-    threadqueue_t *tdq;
-    int flags;
-
-    thread_lock(td);
-    tdq = get_run_queue();
-    TDQ_LOCK_ASSERT(tdq);
-    if (td->priority > tdq->lowpri) {
-        if (td->critnest == 1) {
-            flags = SW_INVOL | SW_PREEMPT;
-            flags |=
-                TD_IS_IDLETHREAD(td) ? SWT_REMOTEWAKEIDLE : SWT_REMOTEPREEMPT;
-            mi_switch(flags);
-            /* Switch dropped thread lock. */
-            return;
-        }
-        td->owepreempt = 1;
-    } else {
-        tdq->owepreempt = 0;
-    }
-    thread_unlock(td);
-}
 
 INTERRUPT thread_t *sched_choose(void) {
     thread_t *td;
@@ -1568,6 +1560,13 @@ void hardclock(int cnt, int usermode) {
         !atomic_compare_exchange_strong((_Atomic(int) *)&ticks, &global, *t));
 }
 
+void scheduler_mark_irqthread() {
+    thread_lock(curthread);
+    sched_class(curthread, PRI_ITHD);
+    sched_ithread_prio(curthread, 0);
+    thread_unlock(curthread);
+}
+
 INTERRUPT void scheduler_on_schedule(interrupt_context_t *ctx) {
     frame = (uintptr_t)ctx;
     long now = 0, poll_until = 0;
@@ -1600,7 +1599,7 @@ INTERRUPT void scheduler_on_drop(interrupt_context_t *ctx) {
     frame = (uintptr_t)ctx;
 
     thread_t *td = curthread;
-
+    
     // remove the thread from here
     td->tcb->managed_thread = NULL;
 
@@ -1626,13 +1625,6 @@ void critical_exit_preempt(void) {
 
 }
 
-void sched_class(thread_t *td, int class) {
-    THREAD_LOCK_ASSERT(td, MA_OWNED);
-    if (td->pri_class == class)
-        return;
-    td->pri_class = class;
-}
-
 void sched_new_thread(thread_t *td) {
     threadqueue_t *tdq = get_run_queue();
 
@@ -1651,7 +1643,7 @@ void sched_new_thread(thread_t *td) {
     td->lastcpu = NOCPU;
     td->cpu = 0;
     td->flags = 0;
-
+    
     td->spinlock_count = 1;
     td->critnest = 1;
 }
@@ -1687,14 +1679,8 @@ void scheduler_yield() {
     __asm__ volatile("int %0" : : "i"(IRQ_YIELD) : "memory");
 }
 
-void scheduler_on_ready_thread(interrupt_context_t *ctx) {
-    frame = (uintptr_t)ctx;
-
-    thread_t *thread = (void *)ctx->rdi;
-    thread_lock(thread);
-    TD_CLR_SLEEPING(thread);
-    TD_SET_CAN_RUN(thread);
-    sched_wakeup(thread, 0);
+void scheduler_in_irq(interrupt_context_t* f) {
+    frame = (uintptr_t)f;
 }
 
 void scheduler_ready_thread(thread_t *thread) {
@@ -1702,7 +1688,12 @@ void scheduler_ready_thread(thread_t *thread) {
     TD_CLR_SLEEPING(thread);
     TD_SET_CAN_RUN(thread);
     sched_wakeup(thread, 0);
+    if (curthread->owepreempt && frame && curthread->critnest == 0) {
+        thread_lock(thread);
+        mi_switch(SW_VOL | SWT_OWEPREEMPT);
+    }
 }
+
 void scheduler_park(void (*callback)(void *arg), void *arg) {
     __asm__ volatile("int %0"
                      :

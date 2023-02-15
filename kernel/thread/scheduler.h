@@ -141,6 +141,15 @@ void scheduler_startup();
  */
 void sched_new_thread(thread_t* thread);
 
+/**
+ * Set the interrupt IRQ frame for direct scheduling to irq threads
+*/
+void scheduler_in_irq(interrupt_context_t* f);
+
+/**
+ * Make the thread an IRQ thread
+ */
+void scheduler_mark_irqthread();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Get the current running thread

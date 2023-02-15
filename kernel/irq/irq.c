@@ -60,6 +60,8 @@ cleanup:
 }
 
 void irq_wait(uint8_t handler) {
+    scheduler_mark_irqthread();
+    
     // get the handler
     ASSERT(handler >= IRQ_ALLOC_BASE);
     uint8_t idx = handler - IRQ_ALLOC_BASE;
@@ -109,6 +111,7 @@ INTERRUPT void irq_dispatch(interrupt_context_t* ctx) {
             instance->waiting_thread = NULL;
 
             // schedule the thread right now
+            scheduler_in_irq(ctx);
             scheduler_ready_thread(thread);
         }
     }
