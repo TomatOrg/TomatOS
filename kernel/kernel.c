@@ -3,6 +3,7 @@
 #include "mem/tlsf.h"
 #include "debug/term.h"
 #include "time/tick.h"
+#include "dotnet/exception.h"
 
 #include <limine.h>
 
@@ -276,16 +277,19 @@ static void kernel_startup() {
                 CHECK_AND_RETHROW(jit_method(assembly->EntryPoint));
 
                 // run it
-                method_result_t(*entry_point)() = assembly->EntryPoint->MirFunc->addr;
-                method_result_t result = entry_point();
-                if (result.exception != NULL) {
-                    WARN("Got exception: \"%U\" (of type `%U`), ignoring",
-                         result.exception->Message, OBJECT_TYPE(result.exception)->Name);
-                } else {
+                exception_frame_t frame = { 0 };
+                if (exception_set_frame(&frame) == 0) {
+                    int32_t (*entry_point)() = assembly->EntryPoint->MirFunc->addr;
+                    int32_t result = entry_point();
                     if (assembly->EntryPoint->ReturnType != NULL) {
                         TRACE("\tReturned: %d", result.value);
                     }
+                } else {
+                    System_Exception exception = exception_get();
+                    WARN("Got exception: \"%U\" (of type `%U`), ignoring",
+                         exception->Message, OBJECT_TYPE(exception)->Name);
                 }
+                exception_clear();
             }
         }
     }

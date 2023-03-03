@@ -26,35 +26,30 @@ static System_Exception Tomato_Hal_MemoryServices_UpdateMemory(System_Memory* me
     return NULL;
 }
 
-static method_result_t Tomato_Hal_MemoryServices_AllocateMemory(uint64_t size) {
-    return (method_result_t){ .exception = NULL, .value = (uintptr_t)palloc(size) };
+static void* Tomato_Hal_MemoryServices_AllocateMemory(uint64_t size) {
+    return palloc(size);
 }
 
-static System_Exception Tomato_Hal_MemoryServices_FreeMemory(uint64_t ptr) {
+static void Tomato_Hal_MemoryServices_FreeMemory(uint64_t ptr) {
     pfree((void *) ptr);
-    return NULL;
 }
 
-static method_result_t Tomato_Hal_MemoryServices_MapMemory(uint64_t phys, uint64_t pages) {
+static void* Tomato_Hal_MemoryServices_MapMemory(uint64_t phys, uint64_t pages) {
     vmm_map(phys, PHYS_TO_DIRECT(phys), pages, MAP_WRITE);
-    return (method_result_t){ .exception = NULL, .value = (uintptr_t)PHYS_TO_DIRECT(phys) };
+    return PHYS_TO_DIRECT(phys);
 }
 
-static method_result_t Tomato_Hal_MemoryServices_GetMappedPhysicalAddress(System_Memory memory) {
-    return (method_result_t){ .exception = NULL, .value = DIRECT_TO_PHYS(memory.Ptr) };
+static uintptr_t Tomato_Hal_MemoryServices_GetMappedPhysicalAddress(System_Memory memory) {
+    return DIRECT_TO_PHYS(memory.Ptr);
 }
 
 static void jit_Tomato_Hal_MemoryServices_GetSpanPtr(MIR_context_t ctx) {
     const char* fname = "uint64 [Tomato.Hal-v1]Tomato.Hal.MemoryServices::GetSpanPtr([Corelib-v1]System.Span`1<uint8>&)";
-    MIR_type_t res[] = {
-        MIR_T_P,
-        MIR_T_P
-    };
-    MIR_item_t func = MIR_new_func(ctx, fname, 2, res, 1, MIR_T_P, "this");
+    MIR_type_t res = MIR_T_P;
+    MIR_item_t func = MIR_new_func(ctx, fname, 1, &res, 1, MIR_T_P, "this");
     MIR_reg_t this = MIR_reg(ctx, "this", func->u.func);
     MIR_append_insn(ctx, func,
-                    MIR_new_ret_insn(ctx, 2,
-                                     MIR_new_int_op(ctx, 0),
+                    MIR_new_ret_insn(ctx, 1,
                                      MIR_new_mem_op(ctx, MIR_T_P, offsetof(System_Span, Ptr), this, 0, 1)));
     MIR_finish_func(ctx);
     MIR_new_export(ctx, fname);
@@ -64,14 +59,14 @@ static void jit_Tomato_Hal_MemoryServices_GetSpanPtr(MIR_context_t ctx) {
 // Tomato.Hal.Hal
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static method_result_t Tomato_Hal_Hal_GetRsdp() {
-    return (method_result_t){ .exception = NULL, .value = DIRECT_TO_PHYS(g_rsdp) };
+static uint64_t Tomato_Hal_Hal_GetRsdp() {
+    return DIRECT_TO_PHYS(g_rsdp);
 }
 
-static method_result_t Tomato_Hal_Hal_GetNextFramebuffer(int* index, uint64_t* addr, int* width, int* height, int* pitch) {
+static bool Tomato_Hal_Hal_GetNextFramebuffer(int* index, uint64_t* addr, int* width, int* height, int* pitch) {
     while (true) {
         if (*index >= g_framebuffers_count) {
-            return (method_result_t){ .exception = NULL, .value = false };
+            return false;
         }
 
         // get it and increment
@@ -95,7 +90,7 @@ static method_result_t Tomato_Hal_Hal_GetNextFramebuffer(int* index, uint64_t* a
         *pitch = (int)framebuffer->pitch;
 
         // return we found one
-        return (method_result_t){ .exception = NULL, .value = true };
+        return true;
     }
 }
 
@@ -107,28 +102,26 @@ static method_result_t Tomato_Hal_Hal_GetNextFramebuffer(int* index, uint64_t* a
 // the API
 //----------------------------------------------------------------------------------------------------------------------
 
-static method_result_t Tomato_Hal_Irq_AllocateIrq(int count) {
+static int32_t Tomato_Hal_Irq_AllocateIrq(int count) {
     uint8_t interrupt = 0;
 
     // allocate it
     PANIC_ON(alloc_irq(count, &interrupt));
 
     // return the number
-    return (method_result_t){ .exception = NULL, .value = interrupt };
+    return interrupt;
 }
 
-static System_Exception Tomato_Hal_Irq_IrqWait(uint64_t irq) {
+static void Tomato_Hal_Irq_IrqWait(uint64_t irq) {
     irq_wait(irq);
-    return NULL;
 }
 
-static method_result_t Tomato_Hal_Platform_Pc_IoPorts_In8(uint16_t port) {
-    return (method_result_t){ .exception = NULL, .value = __inbyte(port) };
+static uint8_t Tomato_Hal_Platform_Pc_IoPorts_In8(uint16_t port) {
+    return __inbyte(port);
 }
 
-static System_Exception Tomato_Hal_Platform_Pc_IoPorts_Out8(uint16_t port, uint8_t value) {
+static void Tomato_Hal_Platform_Pc_IoPorts_Out8(uint16_t port, uint8_t value) {
     __outbyte(port, value);
-    return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -142,8 +135,7 @@ static err_t tomato_gen(MIR_context_t ctx, System_Reflection_MethodInfo method) 
         if (string_equals_cstr( method->GenericMethodDefinition->Name, "UnsafePtrToRef")) {
             MIR_reg_t this = MIR_reg(ctx, "arg0", method->MirFunc->u.func);
             MIR_append_insn(ctx, method->MirFunc,
-                            MIR_new_ret_insn(ctx, 2,
-                                             MIR_new_int_op(ctx, 0),
+                            MIR_new_ret_insn(ctx, 1,
                                              MIR_new_reg_op(ctx, this)));
         } else {
             CHECK_FAIL("%U", method->Name);
