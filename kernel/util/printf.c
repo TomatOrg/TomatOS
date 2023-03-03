@@ -1052,38 +1052,14 @@ static NO_SANITIZE int _vsnprintf(out_fct_type out, char *buffer, const size_t m
 
             case 'P': {
                 uintptr_t value = ((uintptr_t) va_arg(va, void*));
-#ifdef TOMATOS_HOSTED
-                symbol_t* symbol = NULL;
-#else
                 symbol_t *symbol = debug_lookup_symbol(value);
-#endif
-                if (symbol == NULL || value - symbol->address != 0) {
-                    width = sizeof(void *) * 2U;
-                    flags |= FLAGS_ZEROPAD | FLAGS_UPPERCASE;
-                    idx = _ntoa_long(out, buffer, idx, maxlen, (unsigned long) value, false, 16U, precision, width,
-                                     flags);
+
+                if (symbol == NULL) {
+                    fctprintf((void*)out, buffer, "0x%p", value);
+                } else if (value - symbol->address == 0) {
+                    fctprintf((void*)out, buffer, "%s (0x%p)", symbol->name, value);
                 } else {
-                    const char *p = symbol->name;
-                    unsigned int l = _strnlen_s(p, precision ? precision : (size_t) -1);
-                    // pre padding
-                    if (flags & FLAGS_PRECISION) {
-                        l = (l < precision ? l : precision);
-                    }
-                    if (!(flags & FLAGS_LEFT)) {
-                        while (l++ < width) {
-                            out(' ', buffer, idx++, maxlen);
-                        }
-                    }
-                    // string output
-                    while ((*p != 0) && (!(flags & FLAGS_PRECISION) || precision--)) {
-                        out(*(p++), buffer, idx++, maxlen);
-                    }
-                    // post padding
-                    if (flags & FLAGS_LEFT) {
-                        while (l++ < width) {
-                            out(' ', buffer, idx++, maxlen);
-                        }
-                    }
+                    fctprintf((void*)out, buffer, "%s+0x%x (0x%p)", symbol->name, value - symbol->address, value);
                 }
                 format++;
             }

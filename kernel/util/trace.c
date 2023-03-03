@@ -62,6 +62,9 @@ void trace_hex(const void* _data, size_t size) {
 }
 
 void _putchar(char character) {
+#ifdef __DEBUGCON_TRACE__
+    __outbyte(0xe9, character);
+#endif
 #ifdef __GRAPHICS_TRACE__
     term_print_char(character);
 #endif

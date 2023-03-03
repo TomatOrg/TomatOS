@@ -2,6 +2,8 @@
 
 #include "util/except.h"
 
+#include "idt.h"
+
 /**
  * Get the apic base for early printing
  */
@@ -54,3 +56,18 @@ void lapic_set_timeout(uint64_t ticks);
  * Set the exact deadline and not an offset
  */
 void lapic_set_deadline(uint64_t ticks);
+
+/**
+ * NMI handler for lapic related work
+ */
+bool lapic_nmi_handler(exception_context_t* ctx);
+
+/**
+ * Stop all the cores
+ */
+void lapic_stop_all_cores();
+
+/**
+ * Resume all the cores
+ */
+void lapic_resume_all_cores();

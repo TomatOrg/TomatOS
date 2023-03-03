@@ -8,6 +8,8 @@
 #include "msr.h"
 #include "irq/irq.h"
 #include "thread/thread.h"
+#include "debug/asan.h"
+#include "debug/gdb.h"
 
 #include <thread/scheduler.h>
 #include <debug/debug.h>
@@ -239,31 +241,6 @@ static const char* g_exception_name[] = {
         "Reserved"
 };
 
-typedef struct exception_context {
-    uint64_t r15;
-    uint64_t r14;
-    uint64_t r13;
-    uint64_t r12;
-    uint64_t r11;
-    uint64_t r10;
-    uint64_t r9;
-    uint64_t r8;
-    uint64_t rbp;
-    uint64_t rdi;
-    uint64_t rsi;
-    uint64_t rdx;
-    uint64_t rcx;
-    uint64_t rbx;
-    uint64_t rax;
-    uint64_t int_num;
-    uint64_t error_code;
-    uint64_t rip;
-    uint64_t cs;
-    uint64_t rflags;
-    uint64_t rsp;
-    uint64_t ss;
-} exception_context_t;
-
 /**
  * Exception spinlock, so the exception output will be synced nicely even on multi
  * core crashes
@@ -282,7 +259,7 @@ typedef union selector_error_code {
 /**
  * The default exception handler, simply panics...
  */
-static noreturn void default_exception_handler(exception_context_t* ctx) {
+static void default_exception_handler(exception_context_t* ctx) {
     irq_spinlock_lock(&m_exception_lock);
 
     // reset the spinlock so we can print
@@ -337,7 +314,7 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     ERROR("RSI=%016p RDI=%016p RBP=%016p RSP=%016p", ctx->rsi, ctx->rdi, ctx->rbp, ctx->rsp);
     ERROR("R8 =%016p R9 =%016p R10=%016p R11=%016p", ctx->r8 , ctx->r9 , ctx->r10, ctx->r11);
     ERROR("R12=%016p R13=%016p R14=%016p R15=%016p", ctx->r12, ctx->r13, ctx->r14, ctx->r15);
-    ERROR("RIP=%016p RFL=%b", ctx->rip, ctx->rflags);
+    ERROR("RIP=%016p RFL=%b", ctx->rip, ctx->rflags.packed);
     ERROR("FS =%016p GS =%016p", __readmsr(MSR_IA32_FS_BASE), __readmsr(MSR_IA32_GS_BASE));
     ERROR("CR0=%08x CR2=%016p CR3=%016p CR4=%08x", __readcr0(), __readcr2(), __readcr3(), __readcr4());
 
@@ -405,6 +382,9 @@ static noreturn void default_exception_handler(exception_context_t* ctx) {
     // verify the heap
     check_malloc();
 
+    // first try to use the gdb stub
+    gdb_handle_exception(ctx);
+
     // stop
     ERROR("Halting :(");
     irq_spinlock_unlock(&m_exception_lock);
@@ -416,9 +396,17 @@ __attribute__((used))
 void common_exception_handler(exception_context_t* ctx) {
     err_t err = NO_ERROR;
 
-    if (ctx->int_num == 14) {
+    // try to handle nmi, otherwise fallback to default handler
+    if (ctx->int_num == EXCEPTION_NMI) {
+        CHECK(lapic_nmi_handler(ctx));
+
+    } else if (ctx->int_num == EXCEPTION_PAGE_FAULT) {
+        // first try to handle at the vmm level
+        bool handled = false;
+        uintptr_t fault_address = __readcr2();
         page_fault_error_t error = { .packed = ctx->error_code };
-        CHECK_AND_RETHROW(vmm_page_fault_handler(__readcr2(), error.write, error.present));
+        CHECK_AND_RETHROW(vmm_page_fault_handler(fault_address, error.write, error.present, &handled));
+        CHECK(handled);
     } else {
         default_exception_handler(ctx);
     }

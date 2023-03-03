@@ -23,7 +23,7 @@ void fclose(FILE* stream) {
 int fputc(int c, FILE* stream) {
     if (stream == stdout || stream == stderr) {
         _putchar((char)c);
-    } else {
+    } else if (stream != NULL) {
         arrpush(stream->buffer, (unsigned char)c);
     }
     return (int)((unsigned char)c);
@@ -34,7 +34,7 @@ int fputs(const char *s, FILE *stream) {
         while (*s) {
             _putchar(*s++);
         }
-    } else {
+    } else if (stream != NULL) {
         int current_length = arrlen(stream->buffer);
         int string_length = strlen(s);
         arrsetlen(stream->buffer, current_length + string_length);

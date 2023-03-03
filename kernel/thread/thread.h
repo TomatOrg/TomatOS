@@ -324,6 +324,10 @@ void save_thread_context(thread_t* restrict target, interrupt_context_t* restric
 
 void restore_thread_context(thread_t* restrict target, interrupt_context_t* restrict ctx);
 
+void save_thread_exception_context(thread_t* restrict target, exception_context_t* restrict ctx);
+
+void restore_thread_exception_context(thread_t* restrict target, exception_context_t* restrict ctx);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Thread local stuff
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

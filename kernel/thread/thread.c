@@ -125,6 +125,55 @@ INTERRUPT void restore_thread_context(thread_t* restrict target, interrupt_conte
     __writemsr(MSR_IA32_FS_BASE, (uintptr_t)target->tcb);
 }
 
+void save_thread_exception_context(thread_t* restrict target, exception_context_t* restrict ctx) {
+    thread_save_state_t* regs = &target->save_state;
+    save_fx_state(&regs->fx_save_state);
+    regs->r15 = ctx->r15;
+    regs->r14 = ctx->r14;
+    regs->r13 = ctx->r13;
+    regs->r12 = ctx->r12;
+    regs->r11 = ctx->r11;
+    regs->r10 = ctx->r10;
+    regs->r9 = ctx->r9;
+    regs->r8 = ctx->r8;
+    regs->rbp = ctx->rbp;
+    regs->rdi = ctx->rdi;
+    regs->rsi = ctx->rsi;
+    regs->rdx = ctx->rdx;
+    regs->rcx = ctx->rcx;
+    regs->rbx = ctx->rbx;
+    regs->rax = ctx->rax;
+    regs->rip = ctx->rip;
+    regs->rflags = ctx->rflags;
+    regs->rsp = ctx->rsp;
+}
+
+void restore_thread_exception_context(thread_t* restrict target, exception_context_t* restrict ctx) {
+    thread_save_state_t* regs = &target->save_state;
+    ctx->r15 = regs->r15;
+    ctx->r14 = regs->r14;
+    ctx->r13 = regs->r13;
+    ctx->r12 = regs->r12;
+    ctx->r11 = regs->r11;
+    ctx->r10 = regs->r10;
+    ctx->r9 = regs->r9;
+    ctx->r8 = regs->r8;
+    ctx->rbp = regs->rbp;
+    ctx->rdi = regs->rdi;
+    ctx->rsi = regs->rsi;
+    ctx->rdx = regs->rdx;
+    ctx->rcx = regs->rcx;
+    ctx->rbx = regs->rbx;
+    ctx->rax = regs->rax;
+    ctx->rip = regs->rip;
+    ctx->rflags = regs->rflags;
+    ctx->rsp = regs->rsp;
+    ctx->cs = GDT_CODE;
+    ctx->ss = GDT_DATA;
+    restore_fx_state(&regs->fx_save_state);
+    __writemsr(MSR_IA32_FS_BASE, (uintptr_t)target->tcb);
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // TLS initialization
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

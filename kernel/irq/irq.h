@@ -62,13 +62,13 @@ typedef enum irq {
     /**
      * Startup the scheduler
      */
-    IRQ_DROP     = 0xF2,
+    IRQ_DROP        = 0xF2,
 
     /**
      * Creates a trace of all the regs
      * and the stack at the calling point
      */
-    IRQ_TRACE    = 0xF3,
+    IRQ_TRACE       = 0xF3,
 
     /**
      * Spurious interrupt, have it the highest to

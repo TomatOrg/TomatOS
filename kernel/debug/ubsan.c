@@ -408,3 +408,19 @@ void NO_SANITIZE __ubsan_handle_pointer_overflow(pointer_overflow_data_t* data, 
 
     print_source_location(data->loc);
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Non null arg
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef struct non_null_arg_data {
+    source_location_t loc;
+    source_location_t attr_loc;
+    int arg_index;
+} non_null_arg_data_t;
+
+void NO_SANITIZE __ubsan_handle_nonnull_arg(non_null_arg_data_t* data) {
+    printf("[!] ubsan: ");
+    printf("null pointer passed as argument %d, which is declared to never be null", data->arg_index);
+    print_source_location(data->loc);
+}

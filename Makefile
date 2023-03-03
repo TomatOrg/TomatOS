@@ -3,10 +3,10 @@
 ########################################################################################################################
 
 # Should we compile with no-optimizations
-DEBUG			?= 0
+OPTIMIZE		?= 1
 
 # Should we compile with asserts
-DEBUG_ASSERTS 	?= 1
+DEBUG		 	?= 1
 
 # Should GCC be used instead of clang
 # needed for some debug utilities
@@ -36,7 +36,7 @@ CFLAGS 		:=
 
 # Choose a compiler
 ifeq ($(USE_GCC),1)
-CC 			:= gcc
+CC 			:= gcc-12
 LD 			:= ld.lld # FIXME: TODO: GNU ld is broken
 CFLAGS 		+= -U __linux__ # undefine linux, otherwise mimalloc uses Linux syscalls
 else
@@ -58,28 +58,24 @@ CFLAGS 		+= -Wno-psabi
 # TODO: do we always want this? I think we do
 CFLAGS 		+= -fno-omit-frame-pointer
 
-CFLAGS 		+= -D__SERIAL_TRACE__
+CFLAGS 		+= -D__DEBUGCON_TRACE__
+#CFLAGS 		+= -D__SERIAL_TRACE__
 CFLAGS 		+= -D__GRAPHICS_TRACE__
 
 # ------------------
 # Set debug options
 # ------------------
-ifeq ($(DEBUG),1)
-# No optimizations at all and full debug info
-CFLAGS	+= -O0 -g
-
-# Enable a full stack protector for debugging
-CFLAGS 	+= -fstack-protector-all
+ifeq ($(OPTIMIZE),0)
+CFLAGS	+= -O0
 else
-# full optimizations, but still emit debug info
-CFLAGS	+= -O3 -g
+CFLAGS	+= -Os
 endif
 
-ifeq ($(DEBUG_ASSERTS),1)
-CFLAGS 	+= -D__DEBUG_ASSERTS__
+# Debug flag allows debug code and asserts
+# to run
+ifeq ($(DEBUG),1)
+CFLAGS 	+= -D__DEBUG__
 else
-
-# set no debugging, mostly used for the libraries we use
 CFLAGS 	+= -DNDEBUG
 endif
 
@@ -94,6 +90,9 @@ endif
 # Set LTO option
 # ------------------
 ifeq ($(USE_LTO),1)
+ifeq ($(USE_GCC),1)
+	$(error "GCC build does not support LTO")
+endif
 CFLAGS		+= -flto
 endif
 
@@ -123,7 +122,7 @@ endif
 # Set the cflags
 CFLAGS 		+= -mno-avx -mno-avx2 -fno-pie -fno-pic -Wno-error=unused-but-set-variable
 CFLAGS		+= -ffreestanding -static -fshort-wchar
-CFLAGS		+= -mcmodel=kernel -mno-red-zone
+CFLAGS		+= -mcmodel=kernel -mno-red-zone -g
 CFLAGS 		+= -nostdlib -nostdinc
 CFLAGS 		+= -Ikernel -Ilib -Ilimine
 CFLAGS		+= -Ikernel/libc

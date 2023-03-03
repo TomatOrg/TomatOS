@@ -529,13 +529,15 @@ cleanup:
     return fully_mapped;
 }
 
-INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present) {
+INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present, bool* handled) {
     err_t err = NO_ERROR;
 
     if (
         (KERNEL_HEAP_START <= fault_address && fault_address < KERNEL_HEAP_END) ||
         (KERNEL_LOW_MEM_HEAP_START <= fault_address && fault_address < KERNEL_LOW_MEM_HEAP_END)
     ) {
+        *handled = true;
+
         // make sure this happens only for non-present page
         CHECK(!present);
 
@@ -543,6 +545,8 @@ INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool
         CHECK_AND_RETHROW(vmm_alloc((void*) ALIGN_DOWN(fault_address, PAGE_SIZE), 1, MAP_WRITE | MAP_UNMAP_DIRECT));
 
     } else if (STACK_POOL_START <= fault_address && fault_address < STACK_POOL_END) {
+        *handled = true;
+
         // make sure this happens only for non-present page
         CHECK(!present);
 
@@ -553,8 +557,6 @@ INTERRUPT err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool
 
         // we are good, map the page
         CHECK_AND_RETHROW(vmm_alloc((void*) ALIGN_DOWN(fault_address, PAGE_SIZE), 1, MAP_WRITE | MAP_UNMAP_DIRECT));
-    } else {
-        CHECK_FAIL("Invalid paging request at %p", fault_address);
     }
 
 cleanup:

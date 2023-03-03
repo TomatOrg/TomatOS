@@ -4,6 +4,7 @@
 #include "debug/term.h"
 #include "time/tick.h"
 #include "dotnet/exception.h"
+#include "debug/gdb.h"
 
 #include <limine.h>
 
@@ -214,6 +215,8 @@ static void kernel_startup() {
     g_limine_rsdp.response = NULL;
     g_limine_kernel_address.response = NULL;
     g_limine_framebuffer.response = NULL;
+
+    init_gdb();
 
     TRACE("Entered kernel thread!");
 

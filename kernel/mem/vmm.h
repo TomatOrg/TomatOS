@@ -206,4 +206,4 @@ bool vmm_is_mapped(uintptr_t ptr, size_t size);
  * @param write             [IN] Was this a read or write
  * @param present           [IN] Is the phys present or is it unpresent
  */
-err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present);
+err_t vmm_page_fault_handler(uintptr_t fault_address, bool write, bool present, bool* handled);

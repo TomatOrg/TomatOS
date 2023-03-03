@@ -7,6 +7,8 @@
 #include "irq/irq.h"
 #include "thread/cpu_local.h"
 #include "time/tick.h"
+#include "kernel.h"
+#include "thread/scheduler.h"
 
 #include <util/defs.h>
 #include <mem/mem.h>
@@ -38,10 +40,10 @@ typedef enum lapic_delivery_mode {
     DELIVERY_MODE_FIXED = 0,
     DELIVERY_MODE_LOWEST_PRIORITY = 1,
     DELIVERY_MODE_SMI = 2,
-    DELIVERY_MODE_NMI = 3,
-    DELIVERY_MODE_INIT = 4,
-    DELIVERY_MODE_STARTUP = 5,
-    DELIVERY_MODE_EXTINT = 6,
+    DELIVERY_MODE_NMI = 4,
+    DELIVERY_MODE_INIT = 5,
+    DELIVERY_MODE_STARTUP = 6,
+    DELIVERY_MODE_EXTINT = 7,
 } lapic_delivery_mode_t;
 
 typedef enum lapic_destination_shorthand {
@@ -297,4 +299,60 @@ void lapic_set_timeout(uint64_t ticks) {
 
 void lapic_set_deadline(uint64_t ticks) {
     __writemsr(MSR_IA32_TSC_DEADLINE, ticks * get_tsc_freq());
+}
+
+static atomic_bool m_stopping_world = false;
+
+static atomic_int m_stopped_cores = 0;
+
+INTERRUPT bool lapic_nmi_handler(exception_context_t* ctx) {
+    // make sure the world is stopped
+    if (!m_stopping_world) {
+        return false;
+    }
+
+    // mark that we are stopped
+    m_stopped_cores++;
+
+    thread_t* thread = get_current_thread();
+    save_thread_exception_context(thread, ctx);
+
+    // wait for the world to continue again
+    if (m_stopping_world) {
+        __asm__ volatile("monitor" : : "a"(&m_stopping_world), "c"(0), "d"(0));
+        while (m_stopping_world) {
+            __asm__ volatile("mwait" : : "a"(&m_stopping_world), "c"(0));
+        }
+    }
+
+    restore_thread_exception_context(thread, ctx);
+
+    return true;
+}
+
+void lapic_stop_all_cores() {
+    // set that we are stopping the world
+    m_stopping_world = true;
+
+    // send everyone should stop
+    lapic_icr_low_t low = {
+        .delivery_mode = DELIVERY_MODE_NMI,
+        .destination_shorthand = DESTINATION_SHORTHAND_ALL_EXCLUDING_SELF,
+    };
+    send_ipi(low, 0);
+
+    // wait for all the cores to stop
+    m_stopped_cores++;
+    while (m_stopped_cores != get_cpu_count()) {
+        __asm__("pause");
+    }
+}
+
+void lapic_resume_all_cores() {
+    // we are no longer stopping the world, wait for everyone to quit
+    m_stopping_world = false;
+    m_stopped_cores--;
+    while (m_stopped_cores != 0) {
+        __asm__("pause");
+    }
 }

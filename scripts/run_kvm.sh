@@ -4,8 +4,9 @@
 
 qemu-system-x86_64 \
   -drive if=virtio,file=out/build/test.hdd \
-  -monitor telnet:localhost:1235,server,nowait \
-  -serial stdio \
+  -serial tcp:localhost:1235,server,nowait \
+  -monitor tcp:localhost:1236,server,nowait \
+  -debugcon stdio \
   -machine q35 \
   --enable-kvm \
   -cpu host,+invtsc,+tsc-deadline \
