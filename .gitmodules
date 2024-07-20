@@ -1,0 +1,6 @@
+[submodule "lib/flanterm"]
+	path = lib/flanterm
+	url = git@github.com:mintsuki/flanterm.git
+[submodule "lib/TomatoDotNet"]
+	path = lib/TomatoDotNet
+	url = git@github.com:TomatOrg/TomatoDotNet.git
