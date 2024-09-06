@@ -9,14 +9,14 @@
 #include "pcpu.h"
 
 typedef struct scheduler_cpu_context {
+    // lock on the run queue
+    spinlock_t run_queue_lock;
+
     // the current state of the scheduler
     volatile bool wakeup_trigger;
 
     // the run-queue of threads
     list_t run_queue;
-
-    // lock on the run queue
-    spinlock_t run_queue_lock;
 } scheduler_cpu_context_t;
 
 /**

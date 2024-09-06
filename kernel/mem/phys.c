@@ -7,6 +7,7 @@
 #include "memory.h"
 #include "sync/spinlock.h"
 #include "limine.h"
+#include "thread/pcpu.h"
 
 LIMINE_REQUEST struct limine_memmap_request g_limine_memmap_request = {
     .id = LIMINE_MEMMAP_REQUEST
@@ -505,6 +506,11 @@ void phys_reclaim_bootloader() {
 // Page allocation
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * A per CPU stack for allocating
+ */
+static CPU_LOCAL void* m_alloc_stack = NULL;
+
 static int get_level_by_size(uint32_t size) {
     // allocation is too big, return invalid
     if (size > SIZE_2MB) {
@@ -526,13 +532,14 @@ static int get_level_by_size(uint32_t size) {
     return level - 12;
 }
 
-void* phys_alloc(size_t size) {
-    int level = get_level_by_size(size);
-    if (level == -1) {
-        return NULL;
-    }
-
-    bool irq = irq_save();
+/**
+ * Performs the actual allocation, this uses a per-cpu stack that is meant
+ * specifically for allocation, this ensures that we won't run into a case
+ * where an allocation is needed to fill the demand paging of the stack while
+ * already allocating
+ */
+__attribute__((used))
+static void* internal_phys_alloc(int level) {
     spinlock_lock(&m_memory_region_lock);
 
     void* ptr = NULL;
@@ -544,17 +551,26 @@ void* phys_alloc(size_t size) {
     }
 
     spinlock_unlock(&m_memory_region_lock);
-    irq_restore(irq);
 
     return ptr;
 }
 
-void phys_free(void* ptr) {
-    if (ptr == NULL) {
-        return;
-    }
+__attribute__((naked))
+static void* call_internal_phys_alloc(int size, void* stack) {
+    asm(
+        "mov %rsp, %rbx\n"
+        "mov %rsi, %rsp\n"
+        "call internal_phys_alloc\n"
+        "mov %rbx, %rsp\n"
+        "ret"
+    );
+}
 
-    bool irq = irq_save();
+/**
+ * Same as the internal_phys_alloc, but for freeing
+ */
+__attribute__((used))
+static void internal_phys_free(void* ptr) {
     spinlock_lock(&m_memory_region_lock);
 
     // get the region
@@ -570,7 +586,67 @@ void phys_free(void* ptr) {
     free_at_level(region, ptr, level);
 
     spinlock_unlock(&m_memory_region_lock);
+}
+
+__attribute__((naked))
+static void call_internal_phys_free(void* ptr, void* stack) {
+    asm(
+        "mov %rsp, %rbx\n"
+        "mov %rsi, %rsp\n"
+        "call internal_phys_free\n"
+        "mov %rbx, %rsp\n"
+        "ret"
+    );
+}
+
+void* phys_alloc(size_t size) {
+    int level = get_level_by_size(size);
+    if (level == -1) {
+        return NULL;
+    }
+
+    bool irq = irq_save();
+    void* ptr = call_internal_phys_alloc(level, m_alloc_stack);
     irq_restore(irq);
+
+    return ptr;
+}
+
+
+void* early_phys_alloc(size_t size) {
+    int level = get_level_by_size(size);
+    if (level == -1) {
+        return NULL;
+    }
+
+    bool irq = irq_save();
+    void* ptr = internal_phys_alloc(level);
+    irq_restore(irq);
+
+    return ptr;
+}
+
+void phys_free(void* ptr) {
+    if (ptr == NULL) {
+        return;
+    }
+
+    bool irq = irq_save();
+    call_internal_phys_free(ptr, m_alloc_stack);
+    irq_restore(irq);
+}
+
+err_t init_phys_per_cpu() {
+    err_t err = NO_ERROR;
+
+    // allocate the alloc stack without using it
+    void* ptr = internal_phys_alloc(0);
+    CHECK_ERROR(ptr != NULL, ERROR_OUT_OF_MEMORY);
+
+    m_alloc_stack = ptr + PAGE_SIZE;
+
+cleanup:
+    return err;
 }
 
 void phys_dump_buddy() {

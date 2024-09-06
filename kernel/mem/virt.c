@@ -221,11 +221,11 @@ bool virt_handle_page_fault(uintptr_t addr) {
     ) {
         // thread structs and gc heap are allocated lazily as required
 
-    // } else if (0xFFFF8F0000000000 <= addr && addr < 0xFFFF8F8000000000) {
-    //     // stacks are allocated lazily as required, but we must not allocate if they
-    //     // are inside of the guard zone of the range, which is the bottom 2mb of the
-    //     // stack
-    //     CHECK(ALIGN_DOWN(addr, SIZE_8MB) + SIZE_2MB <= addr);
+    } else if (0xFFFF8F0000000000 <= addr && addr < 0xFFFF8F8000000000) {
+        // stacks are allocated lazily as required, but we must not allocate if they
+        // are inside of the guard zone of the range, which is the bottom 2mb of the
+        // stack
+        CHECK(ALIGN_DOWN(addr, SIZE_8MB) + SIZE_2MB <= addr);
 
     } else {
         // unknown area, just return false

@@ -135,18 +135,23 @@ static void smp_entry(struct limine_smp_info* info) {
 
     LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d", info->extra_argument, info->lapic_id);
 
-    // initialize the minimal state
+    //
+    // Start by setting the proper CPU context
+    //
     init_gdt();
     init_idt();
-    RETHROW(init_tss());
     set_cpu_features();
     switch_page_table();
 
-    // allocate the pcpu context
-    RETHROW(pcpu_init_per_core(info->extra_argument));
-    scheduler_init_per_core();
+    //
+    // And now setup the per-cpu
+    //
+    pcpu_init_per_core(info->extra_argument);
+    RETHROW(init_phys_per_cpu());
+    RETHROW(init_tss());
 
-    // TODO: switch stack or something
+    // and now we can init
+    scheduler_init_per_core();
 
     // we are done
     m_smp_count++;
@@ -181,13 +186,51 @@ void _start() {
             g_limine_bootloader_info_request.response->version);
     }
 
-    // early cpu init
+    //
+    // early cpu init, this will take care of having interrupts
+    // and a valid GDT already
+    //
     init_gdt();
     init_idt();
 
-    // memory management
+    //
+    // setup the basic memory management
+    //
     RETHROW(init_virt_early());
     RETHROW(init_phys());
+
+    //
+    // setup the per-cpu data of the current cpu
+    //
+    if (g_limine_smp_request.response != NULL) {
+        g_cpu_count = g_limine_smp_request.response->cpu_count;
+
+        // allocate all the storage needed
+        RETHROW(pcpu_init(g_limine_smp_request.response->cpu_count));
+
+        // now find the correct cpu id and set it
+        bool found = false;
+        for (int i = 0; i < g_limine_smp_request.response->cpu_count; i++) {
+            if (g_limine_smp_request.response->cpus[i]->lapic_id == g_limine_smp_request.response->bsp_lapic_id) {
+                pcpu_init_per_core(i);
+                found = true;
+                break;
+            }
+        }
+        CHECK(found);
+    } else {
+        // no SMP startup available from bootloader,
+        // just assume we have a single cpu
+        LOG_WARN("smp: missing limine SMP support");
+        RETHROW(pcpu_init(1));
+        pcpu_init_per_core(0);
+    }
+
+    //
+    // Continue with the rest of the initialization
+    // now that we have a working pcpu data
+    //
+    RETHROW(init_phys_per_cpu());
     RETHROW(init_tss());
     RETHROW(init_virt());
     RETHROW(init_phys_mappings());
@@ -199,14 +242,6 @@ void _start() {
 
     // we need to calibrate the timer now
     init_timer();
-
-    // first init of the SMP
-    if (g_limine_smp_request.response != NULL) {
-        struct limine_smp_response* response = g_limine_smp_request.response;
-        g_cpu_count = response->cpu_count;
-    } else {
-        LOG_WARN("smp: missing limine SMP support");
-    }
 
     // setup the scheduler
     // do that before the SMP startup so it can requests
@@ -224,7 +259,6 @@ void _start() {
                 LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
 
                 // allocate the per-cpu storage now that we know our id
-                RETHROW(pcpu_init_per_core(i));
                 scheduler_init_per_core();
 
                 m_smp_count++;
@@ -248,19 +282,11 @@ void _start() {
     }
 
     // we are about done, create the init thread and queue it
-    // m_init_thread = thread_create(init_thread_entry, NULL);
-    // scheduler_wakeup_thread(m_init_thread);
+    m_init_thread = thread_create(init_thread_entry, NULL);
+    scheduler_wakeup_thread(m_init_thread);
 
     // and we are ready to start the scheduler
-    // scheduler_start_per_core();
-
-    // initialize the garbage collector
-    gc_init();
-
-    // first load the corelib
-    struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
-    CHECK(corelib != NULL, "Failed to find corelib");
-    TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
+    scheduler_start_per_core();
 
 cleanup:
     halt();

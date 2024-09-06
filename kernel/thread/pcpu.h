@@ -5,9 +5,14 @@
 #define CPU_LOCAL _Thread_local
 
 /**
+ * Perform the main allocation
+ */
+err_t pcpu_init(int cpu_count);
+
+/**
  * Initialize the Per-cpu information for the current core
  */
-err_t pcpu_init_per_core(int cpu_id);
+void pcpu_init_per_core(int cpu_id);
 
 /**
  * Gets the id of the current cpu
