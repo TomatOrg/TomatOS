@@ -64,7 +64,7 @@ cleanup:
 
 static page_entry_t* get_next_level(page_entry_t* entry) {
     if (!entry->present) {
-        void* phys = phys_alloc_page();
+        void* phys = phys_alloc(PAGE_SIZE);
         if (phys == NULL) {
             return NULL;
         }
@@ -121,8 +121,9 @@ cleanup:
 err_t init_virt() {
     err_t err = NO_ERROR;
 
-    m_cr3 = phys_alloc_page();
+    m_cr3 = phys_alloc(PAGE_SIZE);
     CHECK(m_cr3 != NULL);
+    memset(m_cr3, 0, PAGE_SIZE);
 
     //
     // we are going to just assume the file is fine, that is because it should
@@ -178,7 +179,7 @@ err_t init_virt() {
 
         // allocate the pml4 if needed
         if (!pml4->present) {
-            void* page = phys_alloc_page();
+            void* page = phys_alloc(PAGE_SIZE);
             CHECK_ERROR(page != NULL, ERROR_OUT_OF_MEMORY);
             memset(page, 0, SIZE_4KB);
 
@@ -220,11 +221,11 @@ bool virt_handle_page_fault(uintptr_t addr) {
     ) {
         // thread structs and gc heap are allocated lazily as required
 
-    } else if (0xFFFF8F0000000000 <= addr && addr < 0xFFFF8F8000000000) {
-        // stacks are allocated lazily as required, but we must not allocate if they
-        // are inside of the guard zone of the range, which is the bottom 2mb of the
-        // stack
-        CHECK(ALIGN_DOWN(addr, SIZE_8MB) + SIZE_2MB <= addr);
+    // } else if (0xFFFF8F0000000000 <= addr && addr < 0xFFFF8F8000000000) {
+    //     // stacks are allocated lazily as required, but we must not allocate if they
+    //     // are inside of the guard zone of the range, which is the bottom 2mb of the
+    //     // stack
+    //     CHECK(ALIGN_DOWN(addr, SIZE_8MB) + SIZE_2MB <= addr);
 
     } else {
         // unknown area, just return false
@@ -232,8 +233,10 @@ bool virt_handle_page_fault(uintptr_t addr) {
     }
 
     // allocate and map the range
-    void* page = phys_alloc_page();
+    void* page = phys_alloc(PAGE_SIZE);
     CHECK_ERROR(page != NULL, ERROR_OUT_OF_MEMORY);
+    memset(page, 0, PAGE_SIZE);
+
     RETHROW(virt_map_page(DIRECT_TO_PHYS(page), addr & ~PAGE_MASK, MAP_PERM_W));
 
 cleanup:

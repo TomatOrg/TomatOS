@@ -68,3 +68,7 @@ void* tdn_host_gc_alloc(size_t size) {
     // return whatever we allocated
     return block;
 }
+
+void tdn_host_gc_register_root(void* root) {
+
+}

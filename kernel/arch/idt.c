@@ -1,5 +1,6 @@
 #include "idt.h"
 
+#include <mem/phys.h>
 #include <mem/virt.h>
 #include <sync/spinlock.h>
 #include <thread/scheduler.h>
@@ -183,7 +184,7 @@ void common_exception_handler(interrupt_context_t* ctx) {
 
         // make sure we won't go back up, otherwise we
         // have a loop potentially
-        if ((*frame_pointer) >= (uintptr_t)frame_pointer) {
+        if ((*frame_pointer) < (uintptr_t)frame_pointer) {
             break;
         }
         frame_pointer = (uintptr_t*)(*frame_pointer);
@@ -208,7 +209,7 @@ void init_idt() {
     set_idt_entry(EXCEPT_IA32_DIVIDE_ERROR, interrupt_handle_0x00, 0);
     set_idt_entry(EXCEPT_IA32_DEBUG, interrupt_handle_0x01, 0);
     set_idt_entry(EXCEPT_IA32_NMI, interrupt_handle_0x02, 2);
-    set_idt_entry(EXCEPT_IA32_BREAKPOINT, interrupt_handle_0x03, 0);
+    set_idt_entry(EXCEPT_IA32_BREAKPOINT, interrupt_handle_0x03, 5);
     set_idt_entry(EXCEPT_IA32_OVERFLOW, interrupt_handle_0x04, 0);
     set_idt_entry(EXCEPT_IA32_BOUND, interrupt_handle_0x05, 0);
     set_idt_entry(EXCEPT_IA32_INVALID_OPCODE, interrupt_handle_0x06, 0);
@@ -242,6 +243,7 @@ void init_idt() {
 }
 
 asm (
+    ".cfi_sections .eh_frame, .debug_frame\n"
     ".global common_exception_stub\n"
     "common_exception_stub:\n"
     ".cfi_startproc simple\n"

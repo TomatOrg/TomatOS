@@ -1,5 +1,6 @@
 
 #include <debug/log.h>
+#include <lib/string.h>
 #include <mem/alloc.h>
 #include <tomatodotnet/host.h>
 
@@ -32,16 +33,15 @@ void tdn_host_printf(const char* format, ...) {
 }
 
 void* tdn_host_mallocz(size_t size) {
-    return mem_alloc(size);
+    void* ptr = mem_alloc(size);
+    if (ptr != NULL) {
+        memset(ptr, 0, size);
+    }
+    return ptr;
 }
 
 void* tdn_host_realloc(void* ptr, size_t size) {
-    if (ptr == NULL) {
-        return mem_alloc(size);
-    } else {
-        LOG_DEBUG("TODO: support for realloc or something");
-        return NULL;
-    }
+    return mem_realloc(ptr, size);
 }
 
 void tdn_host_free(void* ptr) {

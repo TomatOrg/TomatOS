@@ -30,7 +30,7 @@ typedef struct free_pool_header {
 /**
  * Global lock to protect the allocator
  */
-static spinlock_t m_alloc_lock;
+static spinlock_t m_alloc_lock = INIT_SPINLOCK();
 
 static list_entry_t m_alloc_pool_lists[MAX_POOL_INDEX] = {
     LIST_INIT(&m_alloc_pool_lists[0]),
@@ -49,7 +49,7 @@ static free_pool_header_t* alloc_pool_by_index(size_t pool_index) {
     if (pool_index == MAX_POOL_INDEX) {
         // we reached the max pool size, use the page allocator
         // directly for this case
-        hdr = phys_alloc_page();
+        hdr = phys_alloc(MAX_POOL_SIZE << 1);
 
     } else if (!list_is_empty(&m_alloc_pool_lists[pool_index])) {
         // we have an empty entry, use it
@@ -89,20 +89,17 @@ static void free_pool_by_index(free_pool_header_t* free_pool_header) {
 
 void* mem_alloc(size_t size) {
     // adjust for allocation header
+    size_t wanted_size = size;
     size += sizeof(pool_header_t);
-
-    // we can't allocate more than a page
-    if (size > PAGE_SIZE) {
-        return NULL;
-    }
 
     void* ptr = NULL;
 
     if (size > MAX_POOL_SIZE) {
         // too large, use the page allocator directly
-        pool_header_t* header = phys_alloc_page();
+        size = ALIGN_UP(size, PAGE_SIZE);
+        pool_header_t* header = phys_alloc(size);
         if (header != NULL) {
-            header->size = PAGE_SIZE;
+            header->size = size;
             ptr = header + 1;
         }
     } else {
@@ -129,10 +126,43 @@ void* mem_alloc(size_t size) {
     }
 
     if (ptr != NULL) {
-        memset(ptr, 0, size);
+        memset(ptr, 0, wanted_size);
     }
 
     return ptr;
+}
+
+static inline size_t mem_get_alloc_size(void* ptr) {
+    pool_header_t* header = ((pool_header_t*)ptr - 1);
+    return header->size - sizeof(pool_header_t);
+
+}
+
+void* mem_realloc(void* ptr, size_t size) {
+    if (ptr == NULL) {
+        return mem_alloc(size);
+    }
+
+    // TODO: maybe free upper part if possible
+    size_t old_size = mem_get_alloc_size(ptr);
+    if (old_size >= size) {
+        return ptr;
+    }
+
+    // allocate new range
+    void* new_ptr = mem_alloc(size);
+    if (new_ptr == NULL) {
+        return NULL;
+    }
+
+    // copy it
+    memcpy(new_ptr, ptr, old_size);
+    memset(new_ptr + old_size, 0, size - old_size);
+
+    // free the old range
+    mem_free(ptr);
+
+    return new_ptr;
 }
 
 void mem_free(void* ptr) {
@@ -146,7 +176,7 @@ void mem_free(void* ptr) {
 
     if (header->header.size > MAX_POOL_SIZE) {
         // this is from the page allocator
-        phys_free_page(header);
+        phys_free(header);
 
     } else {
         // this is from the pool, take the lock

@@ -7,8 +7,8 @@
 
 #include <stdarg.h>
 
-#include <flanterm/backends/fb.h>
-#include <flanterm/flanterm.h>
+#include <backends/fb.h>
+#include <flanterm.h>
 
 #include <limine.h>
 
@@ -50,7 +50,7 @@ static char* debug_callback(const char* buf, void* user, int len) {
     return user;
 }
 
-static spinlock_t m_debug_lock;
+static spinlock_t m_debug_lock = INIT_SPINLOCK();
 
 void debug_printf(const char* fmt, ...) {
     char buffer[STB_SPRINTF_MIN];

@@ -35,11 +35,13 @@ err_t pcpu_init_per_core(int cpu_id) {
 
     // figure the actual size and alignment
     size_t tls_size = phdr->p_memsz;
+    CHECK(tls_size >= phdr->p_filesz);
 
     // allocate the tls storage and initialize it
     void* tls = mem_alloc(tls_size + sizeof(uintptr_t));
     CHECK_ERROR(tls != NULL, ERROR_OUT_OF_MEMORY);
-    // memcpy(tls, elf_base + phdr->p_offset, phdr->p_filesz);
+    memset(tls, 0, tls_size + sizeof(uintptr_t));
+    memcpy(tls, elf_base + phdr->p_offset, phdr->p_filesz);
 
     // set the linear address
     *(void**)(tls + tls_size) = tls + tls_size;

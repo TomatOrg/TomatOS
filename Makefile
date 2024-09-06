@@ -35,7 +35,7 @@ OBJ_DIR			:= $(BUILD_DIR)/obj
 #
 # Toolchain
 #
-CC				:= clang
+CC				:= ccache clang
 LD				:= ld.lld
 
 #
@@ -56,7 +56,7 @@ CFLAGS			+= -march=x86-64-v3
 # We are relying on frame pointers for proper stack unwinding
 # in both managed and unmanaged environment
 CFLAGS 			+= -fno-omit-frame-pointer
-CFLAGS			+= -Ilib
+CFLAGS			+= -Ilib/flanterm
 CFLAGS			+= -I$(BUILD_DIR)/limine
 
 CFLAGS			+= -fms-extensions -Wno-microsoft
@@ -64,8 +64,10 @@ CFLAGS			+= -Ilib/TomatoDotNet/include
 
 # Debug flags
 ifeq ($(DEBUG),1)
-CFLAGS			+= -Wno-unused-function -Wno-unused-label 
+CFLAGS			+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
 CFLAGS			+= -D__DEBUG__
+CFLAGS			+= -fsanitize=undefined
+CFLAGS 			+= -fno-sanitize=alignment
 else
 CFLAGS			+= -DNDEBUG
 endif
@@ -91,50 +93,10 @@ CFLAGS 			+= -DSTB_SPRINTF_NOFLOAT
 #-----------------------------------------------------------------------------------------------------------------------
 
 # Get list of source files
-SRCS 	:=
-SRCS 	+= kernel/acpi/acpi.c
-SRCS 	+= kernel/arch/apic.c
-SRCS 	+= kernel/arch/gdt.c
-SRCS 	+= kernel/arch/idt.c
-SRCS 	+= kernel/arch/smp.c
-SRCS 	+= kernel/debug/log.c
-SRCS 	+= kernel/lib/except.c
-SRCS 	+= kernel/lib/stb_sprintf.c
-SRCS 	+= kernel/lib/string.c
-SRCS 	+= kernel/mem/gc/gc.c
-SRCS 	+= kernel/mem/alloc.c
-SRCS 	+= kernel/mem/phys.c
-SRCS 	+= kernel/mem/virt.c
-SRCS 	+= kernel/runtime/tdn.c
-SRCS 	+= kernel/sync/spinlock.c
-SRCS 	+= kernel/thread/pcpu.c
-SRCS 	+= kernel/thread/scheduler.c
-SRCS 	+= kernel/thread/thread.c
-SRCS 	+= kernel/time/timer.c
-SRCS 	+= kernel/main.c
+SRCS 		:= $(shell find kernel -name '*.c')
 
 # TomatoDotNet sources
-SRCS 		+= lib/TomatoDotNet/src/dotnet/gc/gc.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/jit/jit.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/jit/jit_internal.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/metadata/metadata.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/metadata/pe.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/metadata/sig.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/types/assembly.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/types/method.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/types/string.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/types/type.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/disasm.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/loader.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/types.c
-SRCS 		+= lib/TomatoDotNet/src/util/except.c
-SRCS 		+= lib/TomatoDotNet/src/util/list.c
-SRCS 		+= lib/TomatoDotNet/src/util/stb_ds.c
-SRCS 		+= lib/TomatoDotNet/src/util/string_builder.c
-
-# TomatoDotNet jit (spidir)
-SRCS 		+= lib/TomatoDotNet/src/dotnet/jit/spidir/jit.c
-SRCS 		+= lib/TomatoDotNet/src/dotnet/jit/spidir/platform.c
+SRCS 		+= $(shell find lib/TomatoDotNet/src -name '*.c')
 TDN_CFLAGS 	+= -D__JIT_SPIDIR__ -Ilib/TomatoDotNet/libs/spidir/c-api/include
 
 # Add the flanterm code for early console
@@ -236,8 +198,8 @@ run: $(IMAGE_NAME).hdd
 		--enable-kvm \
 		-cpu host,+invtsc,+tsc-deadline \
 		-machine q35 \
-		-m 2G \
 		-smp 4 \
+		-s \
 		-hda $(IMAGE_NAME).hdd \
 		-debugcon stdio \
 		-no-reboot \

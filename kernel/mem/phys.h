@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stddef.h>
+
+#include "memory.h"
 #include "lib/except.h"
 
 /**
@@ -18,12 +20,18 @@ err_t init_phys_mappings();
  */
 void phys_reclaim_bootloader();
 
-/**
- * Allocate a physical page
- */
-void* phys_alloc_page();
 
 /**
- * Free a physical pointer
+ * Allocate physical memory, up to 128mb of contig memory
  */
-void phys_free_page(void* ptr);
+void* phys_alloc(size_t size);
+
+/**
+ * Free physical memory
+ */
+void phys_free(void* ptr);
+
+/**
+ * Dump all the buddies, for debug
+ */
+void phys_dump_buddy();

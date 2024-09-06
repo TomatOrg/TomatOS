@@ -20,7 +20,7 @@ static list_t m_thread_freelist = LIST_INIT(&m_thread_freelist);
 /**
  * Protect the thread list and the thread top variables
  */
-static spinlock_t m_thread_freelist_lock;
+static spinlock_t m_thread_freelist_lock = INIT_SPINLOCK();
 
 static thread_t* thread_alloc() {
     thread_t* thread = NULL;

@@ -5,7 +5,7 @@ import subprocess
 
 
 def get_func_and_line(addr):
-    name = subprocess.check_output(f'llvm-addr2line-15 --functions -e {elf_path} {addr}', shell=True).decode('utf-8')
+    name = subprocess.check_output(f'llvm-addr2line-18 --functions -e {elf_path} {addr}', shell=True).decode('utf-8')
     func, file = name.splitlines()
     return f' {func} ({file})'
 

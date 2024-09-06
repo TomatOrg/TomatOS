@@ -248,11 +248,19 @@ void _start() {
     }
 
     // we are about done, create the init thread and queue it
-    m_init_thread = thread_create(init_thread_entry, NULL);
-    scheduler_wakeup_thread(m_init_thread);
+    // m_init_thread = thread_create(init_thread_entry, NULL);
+    // scheduler_wakeup_thread(m_init_thread);
 
     // and we are ready to start the scheduler
-    scheduler_start_per_core();
+    // scheduler_start_per_core();
+
+    // initialize the garbage collector
+    gc_init();
+
+    // first load the corelib
+    struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
+    CHECK(corelib != NULL, "Failed to find corelib");
+    TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
 
 cleanup:
     halt();

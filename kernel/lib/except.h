@@ -89,3 +89,15 @@ err_t map_tdn_error(tdn_err_t err);
     } while(0)
 
 #define TDN_RETHROW(error) TDN_RETHROW_LABEL(error, cleanup)
+
+//----------------------------------------------------------------------------------------------------------------------
+// Assertion
+//----------------------------------------------------------------------------------------------------------------------
+
+#define ASSERT(expr) \
+    do { \
+        if (!(expr)) { \
+            LOG_ERROR("Assertion failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
+            while(1); \
+        } \
+    } while (0)

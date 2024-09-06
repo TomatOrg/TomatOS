@@ -106,13 +106,13 @@ err_t init_tss(void) {
     err_t err = NO_ERROR;
 
     tss64_t* tss = mem_alloc(sizeof(tss64_t));
-    void* ist1 = phys_alloc_page();
-    void* ist2 = phys_alloc_page();
-    void* ist3 = phys_alloc_page();
-    void* ist4 = phys_alloc_page();
-    void* ist5 = phys_alloc_page();
-    void* ist6 = phys_alloc_page();
-    void* ist7 = phys_alloc_page();
+    void* ist1 = phys_alloc(SIZE_4KB);
+    void* ist2 = phys_alloc(SIZE_4KB);
+    void* ist3 = phys_alloc(SIZE_4KB);
+    void* ist4 = phys_alloc(SIZE_4KB);
+    void* ist5 = phys_alloc(SIZE_4KB);
+    void* ist6 = phys_alloc(SIZE_4KB);
+    void* ist7 = phys_alloc(SIZE_4KB);
     CHECK_ERROR(tss != NULL, ERROR_OUT_OF_MEMORY);
     CHECK_ERROR(ist1 != NULL, ERROR_OUT_OF_MEMORY);
     CHECK_ERROR(ist2 != NULL, ERROR_OUT_OF_MEMORY);

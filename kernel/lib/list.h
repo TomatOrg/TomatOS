@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <debug/log.h>
 
 typedef struct list_entry {
     struct list_entry* next;
@@ -22,23 +23,30 @@ static inline void list_init(list_t* head) {
     head->prev = head;
 }
 
-static inline void list_add(list_t* head, list_entry_t* entry) {
-    entry->next = head->next;
-    entry->prev = head;
-    entry->next->prev = entry;
-    head->next = entry;
+static inline void __list_add(list_entry_t* new, list_entry_t* prev, list_entry_t* next) {
+    next->prev = new;
+    new->next = next;
+    new->prev = prev;
+    prev->next = new;
 }
 
-static inline void list_add_tail(list_t* head, list_entry_t* entry) {
-    entry->next = head;
-    entry->prev = head->prev;
-    entry->prev->next = entry;
-    head->prev = entry;
+static inline void list_add(list_t* head, list_entry_t* new) {
+    __list_add(new, head, head->next);
+}
+
+static inline void list_add_tail(list_t* head, list_entry_t* new) {
+    __list_add(new, head->prev, head);
+}
+
+static inline void __list_del(list_entry_t* prev, list_entry_t* next) {
+    next->prev = prev;
+    prev->next = next;
 }
 
 static inline void list_del(list_entry_t* entry) {
-    entry->next->prev = entry->prev;
-    entry->prev->next = entry->next;
+    __list_del(entry->prev, entry->next);
+    entry->next = NULL;
+    entry->prev = NULL;
 }
 
 static inline bool list_is_empty(list_t* head) {
