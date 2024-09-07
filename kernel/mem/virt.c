@@ -118,6 +118,125 @@ cleanup:
     return err;
 }
 
+err_t virt_alloc_range(uintptr_t virt, size_t page_count) {
+    err_t err = NO_ERROR;
+
+    spinlock_lock(&m_virt_lock);
+
+    size_t i;
+    for (i = 0; i < page_count; i++) {
+        uintptr_t vaddr = virt + (i * SIZE_4KB);
+
+        void* phys = phys_alloc(PAGE_SIZE);
+        CHECK_ERROR(phys != NULL, ERROR_OUT_OF_MEMORY);
+
+        page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(vaddr)]);
+        CHECK_ERROR(pml3 != NULL, ERROR_OUT_OF_MEMORY);
+
+        page_entry_t* pml2 = get_next_level(&pml3[PML3_INDEX(vaddr)]);
+        CHECK_ERROR(pml2 != NULL, ERROR_OUT_OF_MEMORY);
+
+        page_entry_t* pml1 = get_next_level(&pml2[PML2_INDEX(vaddr)]);
+        CHECK_ERROR(pml1 != NULL, ERROR_OUT_OF_MEMORY);
+
+        CHECK(!pml1[PML1_INDEX(vaddr)].present);
+        pml1[PML1_INDEX(vaddr)] = (page_entry_t){
+            .present = 1,
+            .writeable = 1,
+            .no_execute = 1,
+            .frame = DIRECT_TO_PHYS(phys) >> 12
+        };
+    }
+
+cleanup:
+    if (IS_ERROR(err)) {
+        for (size_t j = 0; j < i; j++) {
+            uintptr_t vaddr = virt + (i * SIZE_4KB);
+
+            page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(vaddr)]);
+            CHECK_ERROR(pml3 != NULL, ERROR_OUT_OF_MEMORY);
+
+            page_entry_t* pml2 = get_next_level(&pml3[PML3_INDEX(vaddr)]);
+            CHECK_ERROR(pml2 != NULL, ERROR_OUT_OF_MEMORY);
+
+            page_entry_t* pml1 = get_next_level(&pml2[PML2_INDEX(vaddr)]);
+            CHECK_ERROR(pml1 != NULL, ERROR_OUT_OF_MEMORY);
+
+            // must be present already
+            ASSERT(pml1[PML1_INDEX(vaddr)].present);
+
+            // now set the writeable and no execute flags again
+            phys_free(PHYS_TO_DIRECT(pml1[PML1_INDEX(vaddr)].frame << 12));
+            pml1[PML1_INDEX(vaddr)].packed = 0;
+        }
+    }
+
+    spinlock_unlock(&m_virt_lock);
+
+    return err;
+}
+
+err_t virt_remap_range(uintptr_t virt, size_t page_count, map_flags_t flags) {
+    err_t err = NO_ERROR;
+
+    spinlock_lock(&m_virt_lock);
+
+    for (size_t i = 0; i < page_count; i++) {
+        uintptr_t vaddr = virt + (i * SIZE_4KB);
+
+        page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(vaddr)]);
+        CHECK_ERROR(pml3 != NULL, ERROR_OUT_OF_MEMORY);
+
+        page_entry_t* pml2 = get_next_level(&pml3[PML3_INDEX(vaddr)]);
+        CHECK_ERROR(pml2 != NULL, ERROR_OUT_OF_MEMORY);
+
+        page_entry_t* pml1 = get_next_level(&pml2[PML2_INDEX(vaddr)]);
+        CHECK_ERROR(pml1 != NULL, ERROR_OUT_OF_MEMORY);
+
+        // must be present already
+        CHECK(pml1[PML1_INDEX(vaddr)].present);
+
+        // now set the writeable and no execute flags again
+        pml1[PML1_INDEX(vaddr)].writeable = flags & MAP_PERM_W;
+        pml1[PML1_INDEX(vaddr)].no_execute = (flags & MAP_PERM_X) == 0;
+        __invlpg((void*)vaddr);
+    }
+
+cleanup:
+    spinlock_unlock(&m_virt_lock);
+
+    return err;
+}
+
+bool virt_is_mapped(uintptr_t virt) {
+    spinlock_lock(&m_virt_lock);
+
+    page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(virt)]);
+    if (pml3 == NULL) {
+        spinlock_unlock(&m_virt_lock);
+        return false;
+    }
+
+    page_entry_t* pml2 = get_next_level(&pml3[PML3_INDEX(virt)]);
+    if (pml2 == NULL) {
+        spinlock_unlock(&m_virt_lock);
+        return false;
+    }
+
+    page_entry_t* pml1 = get_next_level(&pml2[PML2_INDEX(virt)]);
+    if (pml1 == NULL) {
+        spinlock_unlock(&m_virt_lock);
+        return false;
+    }
+
+    // must be present already
+    bool mapped = pml1[PML1_INDEX(virt)].present;
+
+    spinlock_unlock(&m_virt_lock);
+
+    return mapped;
+}
+
 err_t init_virt() {
     err_t err = NO_ERROR;
 

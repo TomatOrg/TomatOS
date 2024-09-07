@@ -22,6 +22,7 @@
 #include <thread/scheduler.h>
 
 #include <tomatodotnet/tdn.h>
+#include <tomatodotnet/jit/jit.h>
 
 /**
  * Use limine base revision 1 since its the newest
@@ -83,6 +84,15 @@ static void init_thread_entry(void* arg) {
     struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
     CHECK(corelib != NULL, "Failed to find corelib");
     TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
+
+    RuntimeAssembly assembly = NULL;
+    struct limine_file* kernel = get_module_by_name("/Tests.dll");
+    CHECK(kernel != NULL, "Failed to find kernel");
+    TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &assembly));
+
+    TDN_RETHROW(tdn_jit_method(assembly->EntryPoint));
+    int (*test)() = assembly->EntryPoint->MethodPtr;
+    LOG_INFO("%d", test());
 
 cleanup:
     if (IS_ERROR(err)) {

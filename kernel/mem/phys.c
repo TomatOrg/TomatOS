@@ -58,10 +58,7 @@ typedef union page_metadata {
         // is this buddy free
         uint8_t free : 1;
 
-        // was this entry properly added to the allocator
-        uint8_t available : 1;
-
-        uint8_t : 2;
+        uint8_t : 3;
     };
 
     // the raw entry
@@ -220,9 +217,6 @@ static void free_at_level(memory_region_t* region, void* ptr, int level) {
             break;
         }
 
-        // must be an available entry in order to merge
-        ASSERT(neighbor_pt->available);
-
         // check if the neighbor is at the same level, if it
         // is then merge with it
         int neighbor_level = neighbor_pt->level;
@@ -248,7 +242,6 @@ static void free_at_level(memory_region_t* region, void* ptr, int level) {
     ASSERT(metadata != NULL);
     metadata->level = level;
     metadata->free = true;
-    metadata->available = true;
 
     // we now know the correct level, add the ptr to it
     memset(ptr, 0xAA, 1 << (level + 12));
@@ -647,32 +640,4 @@ err_t init_phys_per_cpu() {
 
 cleanup:
     return err;
-}
-
-void phys_dump_buddy() {
-    LOG_INFO("memory regions");
-
-    for (int i = 0; i < m_memory_region_count; i++) {
-        memory_region_t* region = &m_memory_regions[i];
-
-        LOG_INFO("\t0x%08x-0x%08x", region->base, region->base + region->page_count * PAGE_SIZE);
-        size_t until_next_free = 0;
-        for (size_t i = 0; i < region->page_count; i++) {
-            page_metadata_t* metadata = &region->metadata[i];
-            if (until_next_free == 0) {
-                if (metadata->available) {
-                    LOG_INFO("\t\t0x%08x-0x%08x (%d): %s",
-                        region->base + i * PAGE_SIZE, region->base + i * PAGE_SIZE + (1 << (metadata->level + 12)),
-                        metadata->level, metadata->free ? "free" : "alloc");
-                } else {
-                    if (metadata->raw != 0) {
-                        LOG_ERROR("\t\t%d: <METADATA CORRUPTION> (under unavailable range) %02x", i, metadata->raw);
-                    }
-                }
-                until_next_free = (1 << metadata->level) - 1;
-            } else {
-                until_next_free--;
-            }
-        }
-    }
 }

@@ -42,6 +42,10 @@ static inline INTRIN_ATTR void cpu_relax() {
 // Control register access
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+static inline INTRIN_ATTR void __invlpg(void* m) {
+    asm volatile ( "invlpg (%0)" : : "b"(m) : "memory" );
+}
+
 static inline INTRIN_ATTR unsigned long __readcr0(void) {
     unsigned long value;
     __asm__ __volatile__("mov %%cr0, %[value]" : [value] "=q"(value));

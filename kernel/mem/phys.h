@@ -43,8 +43,3 @@ void* early_phys_alloc(size_t size);
  * Free physical memory
  */
 void phys_free(void* ptr);
-
-/**
- * Dump all the buddies, for debug
- */
-void phys_dump_buddy();

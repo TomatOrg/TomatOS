@@ -162,7 +162,15 @@ lib/TomatoDotNet/libs/spidir/target/x86_64-unknown-none/debug/libspidir.a: force
 lib/TomatoDotNet/TdnCoreLib/System.Private.CoreLib/bin/Debug/net8.0/System.Private.CoreLib.dll: force
 	cd lib/TomatoDotNet/TdnCoreLib/System.Private.CoreLib && dotnet build
 
+lib/TomatoDotNet/TdnCoreLib/Tests/bin/Debug/net8.0/Tests.dll: force
+	cd lib/TomatoDotNet/TdnCoreLib/Tests && dotnet build
+
+ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll: force
+	cd ManagedKernel/Tomato.Kernel && dotnet build
+
 DLLS 	:= lib/TomatoDotNet/TdnCoreLib/System.Private.CoreLib/bin/Debug/net8.0/System.Private.CoreLib.dll
+DLLS 	+= ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll
+DLLS 	+= lib/TomatoDotNet/TdnCoreLib/Tests/bin/Debug/net8.0/Tests.dll
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Quick test
@@ -198,6 +206,7 @@ run: $(IMAGE_NAME).hdd
 		--enable-kvm \
 		-cpu host,+invtsc,+tsc-deadline \
 		-machine q35 \
+		-m 2G \
 		-smp 4 \
 		-s \
 		-hda $(IMAGE_NAME).hdd \

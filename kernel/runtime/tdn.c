@@ -2,6 +2,9 @@
 #include <debug/log.h>
 #include <lib/string.h>
 #include <mem/alloc.h>
+#include <mem/memory.h>
+#include <mem/phys.h>
+#include <mem/virt.h>
 #include <tomatodotnet/host.h>
 
 void tdn_host_log_trace(const char* format, ...) {
@@ -32,23 +35,6 @@ void tdn_host_printf(const char* format, ...) {
     va_end(ap);
 }
 
-void* tdn_host_mallocz(size_t size) {
-    void* ptr = mem_alloc(size);
-    if (ptr != NULL) {
-        memset(ptr, 0, size);
-    }
-    return ptr;
-}
-
-void* tdn_host_realloc(void* ptr, size_t size) {
-    return mem_realloc(ptr, size);
-}
-
-void tdn_host_free(void* ptr) {
-    if (ptr == NULL) return;
-    mem_free(ptr);
-}
-
 const char* tdn_host_error_to_string(int error) {
     return "<unknown>";
 }
@@ -66,4 +52,54 @@ size_t tdn_host_strnlen(const char* s, size_t n) {
 }
 
 void tdn_host_close_file(tdn_file_t file) {
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Jit memory management
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Jit region, in the -2gb region to allow the code
+ * to access the jit builtin functions using relative accesses
+ */
+static void* m_jit_watermark = (void*)JIT_ADDR;
+
+void* tdn_host_mallocz(size_t size) {
+    void* ptr = mem_alloc(size);
+    if (ptr != NULL) {
+        memset(ptr, 0, size);
+    }
+    return ptr;
+}
+
+void* tdn_host_realloc(void* ptr, size_t size) {
+    return mem_realloc(ptr, size);
+}
+
+void tdn_host_free(void* ptr) {
+    if (ptr == NULL) return;
+    mem_free(ptr);
+}
+
+void* tdn_host_map(size_t size) {
+    if ((UINTPTR_MAX - (uintptr_t)m_jit_watermark) < size) {
+        return NULL;
+    }
+
+    // get the pointer
+    void* ptr = m_jit_watermark;
+
+    // allocate the range
+    if (IS_ERROR(virt_alloc_range((uintptr_t)ptr, SIZE_TO_PAGES(size)))) {
+        return NULL;
+    }
+
+    // increment the watermark
+    m_jit_watermark += ALIGN_UP(size, PAGE_SIZE);
+
+    return ptr;
+}
+
+void tdn_host_map_rx(void* ptr, size_t size) {
+    virt_remap_range((uintptr_t)ptr, SIZE_TO_PAGES(size), MAP_PERM_X);
 }

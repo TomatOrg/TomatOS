@@ -176,17 +176,14 @@ void common_exception_handler(interrupt_context_t* ctx) {
     LOG_ERROR("Stack trace:");
     uintptr_t* frame_pointer = (uintptr_t*)ctx->rbp;
     for (;;) {
+        if (!virt_is_mapped((uintptr_t)frame_pointer + 1)) {
+            continue;
+        }
         uintptr_t return_address = *(frame_pointer + 1);
         if (return_address == 0) {
             break;
         }
         LOG_ERROR("\t%p", return_address);
-
-        // make sure we won't go back up, otherwise we
-        // have a loop potentially
-        if ((*frame_pointer) < (uintptr_t)frame_pointer) {
-            break;
-        }
         frame_pointer = (uintptr_t*)(*frame_pointer);
     }
     LOG_ERROR("");

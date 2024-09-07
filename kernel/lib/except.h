@@ -98,6 +98,6 @@ err_t map_tdn_error(tdn_err_t err);
     do { \
         if (!(expr)) { \
             LOG_ERROR("Assertion failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
-            while(1); \
+            __builtin_trap(); \
         } \
     } while (0)

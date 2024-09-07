@@ -94,6 +94,18 @@ err_t virt_map_page(uint64_t phys, uintptr_t virt, map_flags_t flags);
 err_t virt_map_range(uint64_t phys, uintptr_t virt, size_t page_count, map_flags_t flags);
 
 /**
+ * Allocate the given virtual range, allocating physical pages as required
+ */
+err_t virt_alloc_range(uintptr_t virt, size_t page_count);
+
+/**
+ * Remap the given memory range with the given protection flags
+ */
+err_t virt_remap_range(uintptr_t virt, size_t page_count, map_flags_t flags);
+
+bool virt_is_mapped(uintptr_t virt);
+
+/**
  * Switch to the kernel's page table
  */
 void switch_page_table();

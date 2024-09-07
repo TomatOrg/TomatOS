@@ -53,7 +53,8 @@
 // 0xFFFFFF7F_BFC00000 - 0xFFFFFF7F_BFDFFFFF: Page Mapping Level 3 (PDPTs / Page-Directory-Pointer Tables)
 // 0xFFFFFF7F_BFDFE000 - 0xFFFFFF7F_BFDFEFFF: Page Mapping Level 4 (PML4)
 // 0xFFFFFF80_00000000 - 0xFFFFFFFF_7FFFFFFF: --- Free ---
-// 0xFFFFFFFF_80000000 - 0xFFFFFFFF_FFFFFFFF: Kernel
+// 0xFFFFFFFF_80000000 - 0xFFFFFFFF_8FFFFFFF: Kernel
+// 0xFFFFFFFF_90000000 - 0xFFFFFFFF_FFFFFFFF: Jit code and data
 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -79,6 +80,11 @@
  */
 #define THREADS_ADDR        (0xFFFFA00000000000ULL)
 #define THREADS_ADDR_END    (0xFFFFA07FFFFFFFFFULL)
+
+/**
+ * This is where the jit code and data lives
+ */
+#define JIT_ADDR            (0xFFFFFFFF90000000ULL)
 
 /**
  * Convert direct map pointers as required
