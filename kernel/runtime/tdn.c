@@ -103,3 +103,14 @@ void* tdn_host_map(size_t size) {
 void tdn_host_map_rx(void* ptr, size_t size) {
     virt_remap_range((uintptr_t)ptr, SIZE_TO_PAGES(size), MAP_PERM_X);
 }
+
+static void* m_low_memory = (void*)BASE_2GB;
+
+void* tdn_host_mallocz_low(size_t size) {
+    void* ptr = m_low_memory;
+    m_low_memory += ALIGN_UP(size, 8);
+    return ptr;
+}
+
+void tdn_host_free_low(void* ptr) {
+}

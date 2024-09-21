@@ -251,6 +251,18 @@ static void free_at_level(memory_region_t* region, void* ptr, int level) {
 
 static void add_memory_to_region(memory_region_t* region, void* base, size_t page_count) {
     // and add the rest
+    while (((uintptr_t)base % BUDDY_TOP_LEVEL_SIZE) != 0 && page_count != 0) {
+        free_at_level(region, base, 0);
+        base += SIZE_4KB;
+        page_count--;
+    }
+
+    while (page_count >= (BUDDY_TOP_LEVEL_SIZE / SIZE_4KB)) {
+        free_at_level(region, base, BUDDY_LEVEL_COUNT - 1);
+        base += BUDDY_TOP_LEVEL_SIZE;
+        page_count -= (BUDDY_TOP_LEVEL_SIZE / SIZE_4KB);
+    }
+
     while (page_count != 0) {
         free_at_level(region, base, 0);
         base += SIZE_4KB;

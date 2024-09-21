@@ -32,20 +32,25 @@ typedef struct gc_region {
 static gc_region_t m_gc_global_regions[27];
 
 void gc_init() {
+    LOG("GC Regions");
     for (int i = 0; i < ARRAY_LENGTH(m_gc_global_regions); i++) {
         gc_region_t* order = &m_gc_global_regions[i];
         list_init(&order->freelist);
         order->lock = INIT_SPINLOCK();
         order->watermark = (void*)GC_REGION_BOTTOM(i);
         order->top = (void*)GC_REGION_TOP(i);
+        LOG("\t[%d] %p-%p", i, GC_REGION_BOTTOM(i), GC_REGION_TOP(i));
     }
 }
 
 void* tdn_host_gc_alloc(size_t size) {
     // get the region for the correct order
-    size_t aligned_size = 1 << ((sizeof(size) * 8) - __builtin_clzl(size - 1));;
-    size_t order = ((sizeof(aligned_size) * 8) - 1 - __builtin_clzl(aligned_size)) - 5;
-    if (order >= ARRAY_LENGTH(m_gc_global_regions)) {
+    size_t aligned_size = 1 << ((sizeof(size) * 8) - __builtin_clzl(size - 1));
+    int order = ((sizeof(aligned_size) * 8) - 1 - __builtin_clzl(aligned_size)) - 5;
+    if (order < 0) {
+        order = 0;
+    } else if (order >= ARRAY_LENGTH(m_gc_global_regions)) {
+        LOG_WARN("Failed to allocate an object of size %lu", size);
         return NULL;
     }
     gc_region_t* region = &m_gc_global_regions[order];
