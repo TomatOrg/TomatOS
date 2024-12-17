@@ -51,6 +51,19 @@ size_t tdn_host_strnlen(const char* s, size_t n) {
     return p ? p - s : n;
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Resolving assemblies
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool tdn_host_resolve_assembly(const char* name, uint16_t revision, tdn_file_t* out_file) {
+    return false;
+}
+
+int tdn_host_read_file(tdn_file_t file, size_t offset, size_t size, void* buffer) {
+    // not implemented for now
+    return -1;
+}
+
 void tdn_host_close_file(tdn_file_t file) {
 }
 
@@ -58,11 +71,9 @@ void tdn_host_close_file(tdn_file_t file) {
 // Jit memory management
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- * Jit region, in the -2gb region to allow the code
- * to access the jit builtin functions using relative accesses
- */
-static void* m_jit_watermark = (void*)JIT_ADDR;
+//----------------------------------------------------------------------------------------------------------------------
+// Just normal allocator
+//----------------------------------------------------------------------------------------------------------------------
 
 void* tdn_host_mallocz(size_t size) {
     void* ptr = mem_alloc(size);
@@ -80,6 +91,16 @@ void tdn_host_free(void* ptr) {
     if (ptr == NULL) return;
     mem_free(ptr);
 }
+
+//----------------------------------------------------------------------------------------------------------------------
+// Mapping memory for the jit
+//----------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Jit region, in the -2gb region to allow the code
+ * to access the jit builtin functions using relative accesses
+ */
+static void* m_jit_watermark = (void*)JIT_ADDR;
 
 void* tdn_host_map(size_t size) {
     if ((UINTPTR_MAX - (uintptr_t)m_jit_watermark) < size) {
@@ -103,6 +124,11 @@ void* tdn_host_map(size_t size) {
 void tdn_host_map_rx(void* ptr, size_t size) {
     virt_remap_range((uintptr_t)ptr, SIZE_TO_PAGES(size), MAP_PERM_X);
 }
+
+//----------------------------------------------------------------------------------------------------------------------
+// Allocate memory between 2gb and 4gb
+// Just use a bump for now
+//----------------------------------------------------------------------------------------------------------------------
 
 static void* m_low_memory = (void*)BASE_2GB;
 

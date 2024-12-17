@@ -26,7 +26,7 @@ OPTIMIZE		?= 0
 
 BUILD_DIR		:= build
 BIN_DIR			:= $(BUILD_DIR)/bin
-OBJ_DIR			:= $(BUILD_DIR)/obj
+OBJS_DIR		:= $(BUILD_DIR)/obj
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Flags
@@ -35,46 +35,62 @@ OBJ_DIR			:= $(BUILD_DIR)/obj
 #
 # Toolchain
 #
-CC				:= ccache clang
+CC				:= clang
+AR				:= llvm-ar
 LD				:= ld.lld
 
-#
-# Compiler flags
-# 
-CFLAGS			:= -target x86_64-pc-none-elf
-CFLAGS			+= -Wall -Werror -std=gnu11 -fshort-wchar
-CFLAGS 			+= -Wno-address-of-packed-member
-CFLAGS			+= -mgeneral-regs-only -msse2
-CFLAGS			+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
-CFLAGS			+= -mcmodel=kernel -mno-red-zone -mgeneral-regs-only
-CFLAGS			+= -nostdlib
-CFLAGS			+= -Ikernel
-CFLAGS			+= -flto
-CFLAGS			+= -g
-CFLAGS			+= -march=x86-64-v3
-
-# We are relying on frame pointers for proper stack unwinding
-# in both managed and unmanaged environment
-CFLAGS 			+= -fno-omit-frame-pointer
-CFLAGS			+= -Ilib/flanterm
-CFLAGS			+= -I$(BUILD_DIR)/limine
-
-CFLAGS			+= -fms-extensions -Wno-microsoft
-CFLAGS			+= -Ilib/TomatoDotNet/include
-
-# Debug flags
 ifeq ($(DEBUG),1)
-CFLAGS			+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
-CFLAGS			+= -D__DEBUG__
-CFLAGS			+= -fsanitize=undefined
-CFLAGS 			+= -fno-sanitize=alignment
+TDN_BIN_DIR	:= lib/TomatoDotNet/out/debug/bin
 else
-CFLAGS			+= -DNDEBUG
+TDN_BIN_DIR	:= lib/TomatoDotNet/out/release/bin
 endif
+
+#
+# Common compilation flags, also passed to the libraries
+# 
+COMMON_FLAGS	:= -target x86_64-pc-none-elf
+COMMON_FLAGS	+= -mgeneral-regs-only -msse2
+COMMON_FLAGS	+= -march=x86-64-v3
+COMMON_FLAGS	+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
+COMMON_FLAGS	+= -mcmodel=kernel -mno-red-zone
+COMMON_FLAGS	+= -nostdlib
+COMMON_FLAGS	+= -flto
+COMMON_FLAGS	+= -fno-omit-frame-pointer
 
 # Optimization flags
 ifeq ($(OPTIMIZE),1)
-CFLAGS			+= -Os
+COMMON_FLAGS	+= -Os
+else
+COMMON_FLAGS	+= -O0
+endif
+
+# Debug flags
+ifeq ($(DEBUG),1)
+COMMON_FLAGS	+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
+COMMON_FLAGS	+= -fsanitize=undefined
+COMMON_FLAGS 	+= -fno-sanitize=alignment
+endif
+
+# Our compilation flags
+CFLAGS			:= $(COMMON_FLAGS)
+CFLAGS			+= -Wall -Werror -std=gnu11
+CFLAGS 			+= -Wno-address-of-packed-member
+CFLAGS			+= -Ikernel
+CFLAGS			+= -g
+
+# We are relying on frame pointers for proper stack unwinding
+# in both managed and unmanaged environment
+CFLAGS 			+=
+CFLAGS			+= -Ilib/flanterm
+CFLAGS			+= -I$(BUILD_DIR)/limine
+
+# Things required by TDN
+CFLAGS			+= -fms-extensions -Wno-microsoft
+CFLAGS			+= -Ilib/TomatoDotNet/include
+CFLAGS			+= -Ilib/TomatoDotNet/libs/spidir/c-api/include
+
+ifeq ($(DEBUG),1)
+CFLAGS			+= -D__DEBUG__
 endif
 
 #
@@ -95,19 +111,20 @@ CFLAGS 			+= -DSTB_SPRINTF_NOFLOAT
 # Get list of source files
 SRCS 		:= $(shell find kernel -name '*.c')
 
-# TomatoDotNet sources
-SRCS 		+= $(shell find lib/TomatoDotNet/src -name '*.c')
-TDN_CFLAGS 	+= -D__JIT_SPIDIR__ -Ilib/TomatoDotNet/libs/spidir/c-api/include
-
 # Add the flanterm code for early console
 SRCS 		+= lib/flanterm/flanterm.c
 SRCS 		+= lib/flanterm/backends/fb.c
 
 # The objects/deps 
-OBJ 		:= $(addprefix $(OBJ_DIR)/,$(SRCS:.c=.c.o))
-DEPS		:= $(addprefix $(OBJ_DIR)/,$(SRCS:.c=.c.d))
+OBJS 		:= $(addprefix $(OBJS_DIR)/,$(SRCS:.c=.c.o))
+DEPS		:= $(addprefix $(OBJS_DIR)/,$(SRCS:.c=.c.d))
 
-OBJ			+= lib/TomatoDotNet/libs/spidir/target/x86_64-unknown-none/release/libspidir.a
+# Link against TomatoDotNet
+OBJS 		+= $(TDN_BIN_DIR)/libtdn.a
+
+# The C# DLLs we need
+DLLS		:= $(BIN_DIR)/Tomato.Kernel.dll
+DLLS		+= $(TDN_BIN_DIR)/System.Private.CoreLib.dll
 
 # Default target.
 .PHONY: all
@@ -117,60 +134,50 @@ all: $(BIN_DIR)/$(KERNEL).elf
 -include $(DEPS)
 
 # Link rules for the final kernel executable.
-$(BIN_DIR)/$(KERNEL).elf: Makefile kernel/linker.ld $(OBJ)
+$(BIN_DIR)/$(KERNEL).elf: Makefile kernel/linker.ld $(OBJS)
 	@echo LD $@
 	@mkdir -p "$$(dirname $@)"
-	@$(LD) $(OBJ) $(LDFLAGS) -o $@
-
-# Compilation rules for TomatoDotNet *.c files.
-$(OBJ_DIR)/lib/TomatoDotNet/src/%.c.o: lib/TomatoDotNet/src/%.c Makefile
-	@echo CC $@
-	@mkdir -p $(@D)
-	@$(CC) -MMD $(CFLAGS) $(TDN_CFLAGS) -Ilib/TomatoDotNet/src -c $< -o $@
+	@$(LD) $(OBJS) $(LDFLAGS) -o $@
 
 # Compilation rules for *.c files.
-$(OBJ_DIR)/%.c.o: %.c Makefile $(BUILD_DIR)/limine/limine.h
+$(OBJS_DIR)/%.c.o: %.c Makefile $(BUILD_DIR)/limine/limine.h
 	@echo CC $@
 	@mkdir -p $(@D)
 	@$(CC) -MMD $(CFLAGS) -c $< -o $@
 
 .PHONY: clean
 clean:
-	rm -rf $(OBJ_DIR) $(BIN_DIR)
+	rm -rf $(OBJS_DIR) $(BIN_DIR)
 
 .PHONY: distclean
 distclean: clean
 	rm -rf $(BUILD_DIR)
 
 #-----------------------------------------------------------------------------------------------------------------------
-# Spidir lib
+# TomatoDotNet
 #-----------------------------------------------------------------------------------------------------------------------
 
 .PHONY: force
 
-# spidir targets
-lib/TomatoDotNet/libs/spidir/target/x86_64-unknown-none/release/libspidir.a: force
-	cd lib/TomatoDotNet/libs/spidir/c-api && cargo build --release -p c-api --target x86_64-unknown-none
-
-lib/TomatoDotNet/libs/spidir/target/x86_64-unknown-none/debug/libspidir.a: force
-	cd lib/TomatoDotNet/libs/spidir/c-api && cargo build -p c-api --target x86_64-unknown-none
+$(TDN_BIN_DIR)/libtdn.a: force
+	@echo MAKE $@
+	@$(MAKE) -C lib/TomatoDotNet \
+		CC="$(CC)" \
+		AR="$(AR)" \
+		LD="$(LD)" \
+		DEBUG="$(DEBUG)" \
+		CFLAGS="$(COMMON_CFLAGS)"
 
 #-----------------------------------------------------------------------------------------------------------------------
-# C# binaries
+# All the binaries
 #-----------------------------------------------------------------------------------------------------------------------
 
-lib/TomatoDotNet/TdnCoreLib/System.Private.CoreLib/bin/Debug/net8.0/System.Private.CoreLib.dll: force
-	cd lib/TomatoDotNet/TdnCoreLib/System.Private.CoreLib && dotnet build
-
-lib/TomatoDotNet/TdnCoreLib/Tests/bin/Debug/net8.0/Tests.dll: force
-	cd lib/TomatoDotNet/TdnCoreLib/Tests && dotnet build
+$(BIN_DIR)/Tomato.Kernel.dll: ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll
+	@mkdir -p $(@D)
+	cp $^ $@
 
 ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll: force
-	cd ManagedKernel/Tomato.Kernel && dotnet build
-
-DLLS 	:= lib/TomatoDotNet/TdnCoreLib/System.Private.CoreLib/bin/Debug/net8.0/System.Private.CoreLib.dll
-DLLS 	+= ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll
-DLLS 	+= lib/TomatoDotNet/TdnCoreLib/Tests/bin/Debug/net8.0/Tests.dll
+	cd ManagedKernel/Tomato.Kernel && dotnet build --configuration Debug
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Quick test

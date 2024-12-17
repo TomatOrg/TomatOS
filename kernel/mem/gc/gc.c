@@ -67,7 +67,7 @@ void* tdn_host_gc_alloc(size_t size) {
     // if we did not allocate anything, request a GC
     // and try again
     if (block == NULL) {
-        // TODO: request an allocation and try again
+        // TODO: request a gc and try again
     }
 
     // return whatever we allocated
@@ -75,5 +75,9 @@ void* tdn_host_gc_alloc(size_t size) {
 }
 
 void tdn_host_gc_register_root(void* root) {
+    // TODO: register a new root for the collector
+}
 
+void tdn_host_gc_pin_object(void* object) {
+    // TODO: pin an object so it won't get collected
 }
