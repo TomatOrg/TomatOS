@@ -511,11 +511,6 @@ void phys_reclaim_bootloader() {
 // Page allocation
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- * A per CPU stack for allocating
- */
-static CPU_LOCAL void* m_alloc_stack = NULL;
-
 static int get_level_by_size(uint32_t size) {
     // allocation is too big, return invalid
     if (size > SIZE_2MB) {
@@ -537,16 +532,7 @@ static int get_level_by_size(uint32_t size) {
     return level - 12;
 }
 
-/**
- * Performs the actual allocation, this uses a per-cpu stack that is meant
- * specifically for allocation, this ensures that we won't run into a case
- * where an allocation is needed to fill the demand paging of the stack while
- * already allocating
- */
-__attribute__((used))
 static void* internal_phys_alloc(int level) {
-    spinlock_lock(&m_memory_region_lock);
-
     void* ptr = NULL;
     for (int i = 0; i < m_memory_region_count; i++) {
         ptr = allocate_from_level(&m_memory_regions[i], level);
@@ -554,64 +540,94 @@ static void* internal_phys_alloc(int level) {
             break;
         }
     }
-
-    spinlock_unlock(&m_memory_region_lock);
-
     return ptr;
 }
 
-__attribute__((naked))
-static void* call_internal_phys_alloc(int size, void* stack) {
-    asm(
-        "mov %rsp, %rbx\n"
-        "mov %rsi, %rsp\n"
-        "call internal_phys_alloc\n"
-        "mov %rbx, %rsp\n"
-        "ret"
-    );
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// IRQ allocation
+//
+// This is meant for cases where a palloc caused a PF for demand paging (can happen with stack growing)
+// which means that we need to properly be able to allocate memory for such a case without trying to take
+// the allocator lock again
+//
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * The lock which taken the cpu
+ */
+static int m_lock_cpu = -1;
+
+/**
+ * A reserved page used for
+ */
+static CPU_LOCAL void* m_reserved_page;
+
+/**
+ * There is one case where an on-demand stack expansion may
+ * happen inside the physical allocator, for that case we need
+ * allocate a page for it while already locked, we do it with the
+ * reserved page, and assume that it will always be enough
+ */
+static void* irq_alloc(size_t size) {
+    if (m_lock_cpu == get_cpu_id()) {
+        ASSERT(size <= PAGE_SIZE);
+        ASSERT(m_reserved_page != NULL);
+        void* ptr = m_reserved_page;
+        m_reserved_page = NULL;
+        return ptr;
+    }
+
+    return NULL;
 }
 
 /**
- * Same as the internal_phys_alloc, but for freeing
+ * Fill the reserved pool with pages so IRQ context can use them
  */
-__attribute__((used))
-static void internal_phys_free(void* ptr) {
-    spinlock_lock(&m_memory_region_lock);
-
-    // get the region
-    memory_region_t* region = find_region(ptr);
-    ASSERT(region != NULL);
-
-    // get and verify the metadata
-    page_metadata_t* metadata = page_metadata(region, ptr);
-    int level = metadata->level;
-    ASSERT(((uintptr_t)ptr & ((1 << (level + 12)) - 1)) == 0);
-
-    // and now actually free it
-    free_at_level(region, ptr, level);
-
-    spinlock_unlock(&m_memory_region_lock);
+static void fill_irq_alloc() {
+    if (m_reserved_page == NULL) {
+        void* page = internal_phys_alloc(0);
+        if (page == NULL) {
+            LOG_WARN("phys: out of memory to fill the reserved pages pool");
+            return;
+        }
+        memset(page, 0, PAGE_SIZE);
+        m_reserved_page = page;
+    }
 }
 
-__attribute__((naked))
-static void call_internal_phys_free(void* ptr, void* stack) {
-    asm(
-        "mov %rsp, %rbx\n"
-        "mov %rsi, %rsp\n"
-        "call internal_phys_free\n"
-        "mov %rbx, %rsp\n"
-        "ret"
-    );
-}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Implementation
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void* phys_alloc(size_t size) {
+    // attempt to allocate using the irq alloc
+    // if returns NULL then attempt to use the
+    // normal route
+    void* ptr = irq_alloc(size);
+    if (ptr != NULL) {
+        return ptr;
+    }
+
+    // calculate the size
     int level = get_level_by_size(size);
     if (level == -1) {
         return NULL;
     }
 
+    // lock and record that we are the locker
     bool irq = irq_save();
-    void* ptr = call_internal_phys_alloc(level, m_alloc_stack);
+    spinlock_lock(&m_memory_region_lock);
+    m_lock_cpu = get_cpu_id();
+
+    // perform the allocation safely
+    ptr = internal_phys_alloc(level);
+
+    // fill the IRQ allocation if need be
+    fill_irq_alloc();
+
+    // remove the lock
+    m_lock_cpu = -1;
+    spinlock_unlock(&m_memory_region_lock);
     irq_restore(irq);
 
     return ptr;
@@ -637,19 +653,25 @@ void phys_free(void* ptr) {
     }
 
     bool irq = irq_save();
-    call_internal_phys_free(ptr, m_alloc_stack);
+    spinlock_lock(&m_memory_region_lock);
+
+    // get the region
+    memory_region_t* region = find_region(ptr);
+    ASSERT(region != NULL);
+
+    // get and verify the metadata
+    page_metadata_t* metadata = page_metadata(region, ptr);
+    int level = metadata->level;
+    ASSERT(((uintptr_t)ptr & ((1 << (level + 12)) - 1)) == 0);
+
+    // and now actually free it
+    free_at_level(region, ptr, level);
+
+    spinlock_unlock(&m_memory_region_lock);
     irq_restore(irq);
 }
 
-err_t init_phys_per_cpu() {
-    err_t err = NO_ERROR;
-
-    // allocate the alloc stack without using it
-    void* ptr = internal_phys_alloc(0);
-    CHECK_ERROR(ptr != NULL, ERROR_OUT_OF_MEMORY);
-
-    m_alloc_stack = ptr + PAGE_SIZE;
-
-cleanup:
-    return err;
+void init_phys_per_cpu() {
+    // make sure we have an available reserved page
+    fill_irq_alloc();
 }

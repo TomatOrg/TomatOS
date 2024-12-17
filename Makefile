@@ -213,7 +213,6 @@ run: $(IMAGE_NAME).hdd
 		--enable-kvm \
 		-cpu host,+invtsc,+tsc-deadline \
 		-machine q35 \
-		-m 2G \
 		-smp 4 \
 		-s \
 		-hda $(IMAGE_NAME).hdd \

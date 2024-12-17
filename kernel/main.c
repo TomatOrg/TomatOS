@@ -157,7 +157,7 @@ static void smp_entry(struct limine_smp_info* info) {
     // And now setup the per-cpu
     //
     pcpu_init_per_core(info->extra_argument);
-    RETHROW(init_phys_per_cpu());
+    init_phys_per_cpu();
     RETHROW(init_tss());
 
     // and now we can init
@@ -240,7 +240,7 @@ void _start() {
     // Continue with the rest of the initialization
     // now that we have a working pcpu data
     //
-    RETHROW(init_phys_per_cpu());
+    init_phys_per_cpu();
     RETHROW(init_tss());
     RETHROW(init_virt());
     RETHROW(init_phys_mappings());

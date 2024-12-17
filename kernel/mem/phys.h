@@ -20,7 +20,7 @@ err_t init_phys_mappings();
  * stack and enable running
  * on it when allocating
  */
-err_t init_phys_per_cpu();
+void init_phys_per_cpu();
 
 /**
  * Reclaim the bootloader memory since we are done

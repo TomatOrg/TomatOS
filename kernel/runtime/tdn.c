@@ -75,7 +75,7 @@ void tdn_host_close_file(tdn_file_t file) {
 // Just normal allocator
 //----------------------------------------------------------------------------------------------------------------------
 
-void* tdn_host_mallocz(size_t size) {
+void* tdn_host_mallocz(size_t size, size_t align) {
     void* ptr = mem_alloc(size);
     if (ptr != NULL) {
         memset(ptr, 0, size);
