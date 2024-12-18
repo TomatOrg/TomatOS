@@ -86,6 +86,17 @@ static void init_thread_entry(void* arg) {
      CHECK(corelib != NULL, "Failed to find corelib");
      TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
 
+    // load the kernel itself
+    struct limine_file* kernel = get_module_by_name("/Tomato.Kernel.dll");
+    CHECK(kernel != NULL, "Failed to find kernel");
+    RuntimeAssembly kernel_assembly;
+    TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &kernel_assembly));
+
+    // jit the entry point and call it
+    TDN_RETHROW(tdn_jit_method(kernel_assembly->EntryPoint));
+    void (*entry_point)(void) = kernel_assembly->EntryPoint->MethodPtr;
+    entry_point();
+
 cleanup:
      if (IS_ERROR(err)) {
          LOG_CRITICAL("Can't continue loading the OS");

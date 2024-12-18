@@ -2,7 +2,7 @@
 
 #include <arch/gdt.h>
 #include <lib/list.h>
-#include <lib/stb_sprintf.h>
+#include <lib/printf.h>
 #include <lib/string.h>
 #include <sync/spinlock.h>
 
@@ -66,7 +66,7 @@ thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt
     // set the name
     va_list va;
     va_start(va, name_fmt);
-    stbsp_vsnprintf(thread->name, sizeof(thread->name) - 1, name_fmt, va);
+    ksnprintf(thread->name, sizeof(thread->name) - 1, name_fmt, va);
     va_end(va);
 
     // initialize the callback, this will be used by the thread_entry to

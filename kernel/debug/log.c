@@ -2,7 +2,6 @@
 
 #include "arch/intrin.h"
 #include "sync/spinlock.h"
-#include "lib/stb_sprintf.h"
 #include "lib/defs.h"
 
 #include <stdarg.h>
@@ -11,6 +10,7 @@
 #include <flanterm.h>
 
 #include <limine.h>
+#include <lib/printf.h>
 
 /**
  * The framebuffer request
@@ -37,50 +37,39 @@ void init_early_logging() {
     }
 }
 
-static char* debug_callback(const char* buf, void* user, int len) {
+static void kputchar(char c) {
     if (m_flanterm_context != NULL) {
-        flanterm_write(m_flanterm_context, buf, len);
+        flanterm_write(m_flanterm_context, &c, 1);
     }
 
-    while (*buf && len--) {
-        __outbyte(0xE9, *buf);
-        buf++;
-    }
-
-    return user;
+    __outbyte(0xE9, c);
 }
 
 static spinlock_t m_debug_lock = INIT_SPINLOCK();
 
 void debug_printf(const char* fmt, ...) {
-    char buffer[STB_SPRINTF_MIN];
-
     spinlock_lock(&m_debug_lock);
 
     va_list args;
     va_start(args, fmt);
-    stbsp_vsprintfcb(debug_callback, buffer, buffer, fmt, args);
+    kvprintf(fmt, args);
     va_end(args);
 
     spinlock_unlock(&m_debug_lock);
 }
 
 void debug_vprintf(const char* fmt, va_list ap) {
-    char buffer[STB_SPRINTF_MIN];
-
     spinlock_lock(&m_debug_lock);
-    stbsp_vsprintfcb(debug_callback, buffer, buffer, fmt, ap);
+    kvprintf(fmt, ap);
     spinlock_unlock(&m_debug_lock);
 }
 
 void log_vprintf(const char* prefix, const char* fmt, va_list ap) {
-    char buffer[STB_SPRINTF_MIN];
-
     spinlock_lock(&m_debug_lock);
 
-    debug_callback(prefix, NULL, __builtin_strlen(prefix));
-    stbsp_vsprintfcb(debug_callback, buffer, buffer, fmt, ap);
-    debug_callback("\n", NULL, 1);
+    kprintf("%s", prefix);
+    kvprintf(fmt, ap);
+    kputchar('\n');
 
     spinlock_unlock(&m_debug_lock);
 }

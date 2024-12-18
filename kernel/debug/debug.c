@@ -1,11 +1,11 @@
 #include "debug.h"
 
-#include <lib/stb_sprintf.h>
 #include <lib/elf64.h>
 #include <lib/except.h>
 #include <lib/string.h>
 #include <mem/alloc.h>
 #include <limine.h>
+#include <lib/printf.h>
 
 static symbol_t* m_symbols = NULL;
 static int m_symbols_count = 0;
@@ -150,8 +150,8 @@ symbol_t* debug_lookup_symbol(uintptr_t addr) {
 void debug_format_symbol(uintptr_t addr, char* buffer, size_t buffer_size) {
     symbol_t* sym = debug_lookup_symbol(addr);
     if (sym == NULL) {
-        stbsp_snprintf(buffer, buffer_size, "%016lx", addr);
+        ksnprintf(buffer, buffer_size, "%016lx", addr);
     } else {
-        stbsp_snprintf(buffer, buffer_size, "%s+0x%03lx", sym->name, addr - sym->address);
+        ksnprintf(buffer, buffer_size, "%s+0x%03lx", sym->name, addr - sym->address);
     }
 }
