@@ -1355,9 +1355,7 @@ static inline void format_string_loop(output_gadget_t* output, const char* forma
         width = sizeof(void*) * 2U + 2; // 2 hex chars per byte + the "0x" prefix
         flags |= FLAGS_ZEROPAD | FLAGS_POINTER;
         uintptr_t value = (uintptr_t)va_arg(args, void*);
-        (value == (uintptr_t) NULL) ?
-          out_rev_(output, ")lin(", 5, width, flags) :
-          print_integer(output, (printf_unsigned_value_t) value, false, BASE_HEX, precision, width, flags);
+        print_integer(output, (printf_unsigned_value_t) value, false, BASE_HEX, precision, width, flags);
         format++;
         break;
       }
