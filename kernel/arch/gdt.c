@@ -105,7 +105,7 @@ static spinlock_t m_tss_lock = INIT_SPINLOCK();
 err_t init_tss(void) {
     err_t err = NO_ERROR;
 
-    tss64_t* tss = mem_alloc(sizeof(tss64_t));
+    tss64_t* tss = phys_alloc(sizeof(tss64_t));
     void* ist1 = phys_alloc(SIZE_4KB);
     void* ist2 = phys_alloc(SIZE_4KB);
     void* ist3 = phys_alloc(SIZE_4KB);

@@ -50,6 +50,8 @@
 //
 // 0xFFFFB000_00000000 - 0xFFFFB07F_FFFFFFFF: Thread structs
 //
+// 0xFFFFC000_00000000 - 0xFFFFCFFF_FFFFFFFF: Kernel heap
+//
 // 0xFFFFFF00_00000000 - 0xFFFFFF7F_FFFFFFFF: Page Mapping Level 1 (Page Tables)
 // 0xFFFFFF7F_80000000 - 0xFFFFFF7F_BFFFFFFF: Page Mapping Level 2 (Page Directories)
 // 0xFFFFFF7F_BFC00000 - 0xFFFFFF7F_BFDFFFFF: Page Mapping Level 3 (PDPTs / Page-Directory-Pointer Tables)

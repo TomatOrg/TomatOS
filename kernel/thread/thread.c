@@ -93,5 +93,7 @@ void thread_free(thread_t* thread) {
 }
 
 void thread_exit() {
-    // TODO: something in here
+    LOG_INFO("TODO: thread exit impl");
+    asm("cli");
+    asm("hlt");
 }

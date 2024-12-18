@@ -12,10 +12,17 @@ def get_func_and_line(addr):
 def process_input(elf_path):
     for line in sys.stdin:
         line = line[:-1]
-        if line.startswith('[-] RIP=ffffffff8'):
-            line += get_func_and_line(line[8:])
-        if line.startswith('[-] \tffffffff8'):
-            line += get_func_and_line(line[5:])
+        try:
+            if line.startswith('[-] RIP=ffffffff8'):
+                line += get_func_and_line(line[8:])
+        except:
+            pass
+
+        try:
+            if line.startswith('[-] \tffffffff8'):
+                line += get_func_and_line(line[5:])
+        except:
+            pass
 
         print(line)
 

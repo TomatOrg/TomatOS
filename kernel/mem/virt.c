@@ -337,6 +337,7 @@ bool virt_handle_page_fault(uintptr_t addr) {
     if (
         (THREADS_ADDR <= addr && addr < THREADS_ADDR_END) ||
         (0xFFFF810000000000 <= addr && addr < 0xFFFF8E8000000000) ||
+        (0xFFFFC00000000000 <= addr && addr < 0xFFFFD00000000000) ||
         (BASE_2GB <= addr && addr < BASE_4GB)
     ) {
         // thread structs and gc heap are allocated lazily as required

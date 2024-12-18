@@ -15,6 +15,7 @@
 #include <stddef.h>
 #include <stdatomic.h>
 #include <arch/apic.h>
+#include <debug/debug.h>
 #include <lib/string.h>
 #include <mem/gc/gc.h>
 #include <thread/pcpu.h>
@@ -237,6 +238,11 @@ void _start() {
     RETHROW(init_phys_mappings());
     set_cpu_features();
     switch_page_table();
+
+    init_alloc();
+
+    // load the debug symbols now that we have an allocator
+    debug_load_symbols();
 
     // we need acpi for some early sleep primitives
     RETHROW(init_acpi());
