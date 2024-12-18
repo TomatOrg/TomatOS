@@ -25,6 +25,11 @@ void scheduler_start_per_core(void);
 thread_t* scheduler_get_current_thread(void);
 
 /**
+ * Wakeup a thread and let it run
+ */
+void scheduler_wakeup_thread(thread_t* thread);
+
+/**
  * Yield to the next task right now 
  */
 void scheduler_yield(void);

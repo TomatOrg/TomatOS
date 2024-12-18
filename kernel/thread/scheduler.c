@@ -1,7 +1,9 @@
 #include "scheduler.h"
 
+#include <arch/intrin.h>
 #include <arch/smp.h>
 #include <mem/alloc.h>
+#include <mem/stack.h>
 #include <time/tsc.h>
 
 #include "pcpu.h"
@@ -48,9 +50,9 @@ err_t scheduler_init_per_core(void) {
     // save the pointer of the current process
     m_all_schedulers[get_cpu_id()] = &m_scheduler_context;
 
-    void* stack = mem_alloc(SIZE_4KB);
+    void* stack = small_stack_alloc();
     CHECK_ERROR(stack != NULL, ERROR_OUT_OF_MEMORY);
-    runnable_set_rsp(&m_scheduler_context.scheduler, stack + SIZE_4KB);
+    runnable_set_rsp(&m_scheduler_context.scheduler, stack);
 
 cleanup:
     return err;
@@ -88,9 +90,57 @@ static void scheduler_call(scheduler_func_t callback) {
 // Actual scheduler
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+/**
+ * Lock to protect the scheduler queue
+ */
+static spinlock_t m_scheduler_lock = INIT_SPINLOCK();
+
+/**
+ * Scheduler queue
+ */
+static list_t m_scheduler_queue = LIST_INIT(&m_scheduler_queue);
+
+void scheduler_wakeup_thread(thread_t* thread) {
+    spinlock_lock(&m_scheduler_lock);
+    list_add_tail(&m_scheduler_queue, &thread->link);
+    spinlock_unlock(&m_scheduler_lock);
+}
+
 static void scheduler_schedule(void) {
-    asm("cli");
-    asm("hlt");
+    // pop a thread from the queue, if null then go and do the same
+    spinlock_lock(&m_scheduler_lock);
+    list_entry_t* thread_link = list_pop(&m_scheduler_queue);
+    spinlock_unlock(&m_scheduler_lock);
+    if (thread_link == NULL) {
+        // if not running anything, then go to idle
+        if (m_scheduler_context.current_thread == NULL) {
+            // TODO: something
+            asm("cli");
+            asm("hlt");
+        }
+
+        // otherwise we can return right now
+        return;
+    }
+
+    // get the actual thread
+    thread_t* thread = containerof(thread_link, thread_t, link);
+
+    // save the current thread, if any
+    thread_t* current = m_scheduler_context.current_thread;
+    if (current != NULL) {
+        spinlock_lock(&m_scheduler_lock);
+        list_add_tail(&m_scheduler_queue, &current->link);
+        spinlock_unlock(&m_scheduler_lock);
+    }
+    // TODO: save fpu context
+
+    // set the current as this one
+    m_scheduler_context.current_thread = thread;
+
+    // resume the thread now
+    // TODO: restore fpu context
+    runnable_resume(&thread->runnable);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -109,7 +159,7 @@ void scheduler_start_per_core(void) {
     runnable_set_rip(&m_scheduler_context.scheduler, scheduler_schedule);
 
     // use the jump since we don't have a valid thread right now
-    runnable_jump(&m_scheduler_context.scheduler);
+    runnable_resume(&m_scheduler_context.scheduler);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

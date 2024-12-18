@@ -3,6 +3,8 @@
 #include <mem/phys.h>
 #include <mem/virt.h>
 #include <sync/spinlock.h>
+#include <thread/pcpu.h>
+#include <thread/scheduler.h>
 
 #include "apic.h"
 #include "lib/defs.h"
@@ -154,10 +156,16 @@ static void common_exception_handler(interrupt_frame_t* ctx, uint64_t int_num, u
     } else {
         LOG_ERROR("Got exception: #%d", int_num);
     }
+    LOG_ERROR("CPU: %d", get_cpu_id());
+    if (scheduler_get_current_thread() != NULL) {
+        LOG_ERROR("Thread: %s (%p)", scheduler_get_current_thread()->name, scheduler_get_current_thread());
+    }
     LOG_ERROR("");
 
     LOG_ERROR("Registers:");
     LOG_ERROR("RIP=%p RSP=%p", ctx->rip, ctx->rsp);
+    LOG_ERROR("CR2=%p", __readcr2());
+    LOG_ERROR("FS =%p", __rdmsr(MSR_IA32_FS_BASE));
     LOG_ERROR("");
 
     spinlock_unlock(&m_exception_lock);

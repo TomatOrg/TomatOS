@@ -36,7 +36,7 @@ void runnable_switch(runnable_t* from, runnable_t* to) {
 }
 
 __attribute__((naked))
-void runnable_jump(runnable_t* to) {
+void runnable_resume(runnable_t* to) {
     asm(
         "movq %P0(%%rdi), %%rsp\n"
         "ret"

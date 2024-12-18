@@ -218,4 +218,4 @@ run: $(IMAGE_NAME).hdd
 		-hda $(IMAGE_NAME).hdd \
 		-debugcon stdio \
 		-no-reboot \
-	 	-no-shutdown | ./scripts/addr_translate.py $(BIN_DIR)/$(KERNEL).elf
+	 	-no-shutdown

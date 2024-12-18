@@ -42,11 +42,13 @@
 // 0xFFFF8E00_00000000 - 0xFFFF8E7F_FFFFFFFF: GC Heap order 26 - 2gb
 // 0xFFFF8E80_00000000 - 0xFFFF8EFF_FFFFFFFF: --- barrier ---
 // 0xFFFF8F00_00000000 - 0xFFFF8F7F_FFFFFFFF: Stacks
-// 0xFFFF8F80_00000000 - 0xFFFF8FFF_FFFFFFFF: Managed Mappings
+// 0xFFFF8F80_00000000 - 0xFFFF8FFF_FFFFFFFF: Small stacks
+// 0xFFFF9000_00000000 - 0xFFFF9F7F_FFFFFFFF: Managed Mappings
+// 0xFFFF9F80_00000000 - 0xFFFF9FFF_FFFFFFFF: Unused
 //
-// 0xFFFF9000_00000000 - 0xFFFF9FFF_FFFFFFFF: RO copy of the entire heap + RW copy of the stacks and managed mappings
+// 0xFFFFA000_00000000 - 0xFFFFAFFF_FFFFFFFF: RO copy of the entire heap + RW copy of the stacks and managed mappings
 //
-// 0xFFFFA000_00000000 - 0xFFFFA07F_FFFFFFFF: Thread structs
+// 0xFFFFB000_00000000 - 0xFFFFB07F_FFFFFFFF: Thread structs
 //
 // 0xFFFFFF00_00000000 - 0xFFFFFF7F_FFFFFFFF: Page Mapping Level 1 (Page Tables)
 // 0xFFFFFF7F_80000000 - 0xFFFFFF7F_BFFFFFFF: Page Mapping Level 2 (Page Directories)
@@ -61,7 +63,7 @@
 /**
  * Direct map offset, static in memory, no KASLR please
  */
-#define DIRECT_MAP_OFFSET   0xFFFF800000000000ULL
+#define DIRECT_MAP_OFFSET       0xFFFF800000000000ULL
 
 /**
  * The bottom of the stack allocator
@@ -72,19 +74,29 @@
  * by managed code without any risk of overflowing and going to the
  * next stack
  */
-#define STACKS_ADDR         (0xFFFF8F0000000000ULL)
+#define STACKS_ADDR             (0xFFFF8F0000000000ULL)
+#define STACKS_ADDR_END         (0xFFFF8F8000000000ULL)
+
+/**
+ * The bottom of the small stack allocator
+ *
+ * Each task gets a 28kb stack + 4kb guard page, this should allow
+ * for around 16mil stacks in theory
+ */
+#define SMALL_STACKS_ADDR       (0xFFFF8F8000000000ULL)
+#define SMALL_STACKS_ADDR_END   (0xFFFF900000000000ULL)
 
 /**
  * The threads range, this is where the thread structs are allocated, we have
  * 8MB per thread in theory, we won't practically use all of it most likely
  */
-#define THREADS_ADDR        (0xFFFFA00000000000ULL)
-#define THREADS_ADDR_END    (0xFFFFA07FFFFFFFFFULL)
+#define THREADS_ADDR            (0xFFFFB00000000000ULL)
+#define THREADS_ADDR_END        (0xFFFFB08000000000ULL)
 
 /**
  * This is where the jit code and data lives
  */
-#define JIT_ADDR            (0xFFFFFFFF90000000ULL)
+#define JIT_ADDR                (0xFFFFFFFF90000000ULL)
 
 /**
  * Convert direct map pointers as required

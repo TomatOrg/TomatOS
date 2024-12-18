@@ -119,3 +119,10 @@ static inline INTRIN_ATTR void __wrmsr(uint32_t index, uint64_t value) {
     uint32_t high_data = value >> 32;
     __asm__ __volatile__("wrmsr" : : "c"(index), "a"(low_data), "d"(high_data));
 }
+
+static inline INTRIN_ATTR uint64_t __rdmsr(uint32_t index) {
+    uint32_t low_data;
+    uint32_t high_data;
+    __asm__ __volatile__("rdmsr" : "=a"(low_data), "=d"(high_data) : "c"(index));
+    return low_data | ((uint64_t)high_data << 32);
+}

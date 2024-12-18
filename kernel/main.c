@@ -47,59 +47,50 @@ static volatile LIMINE_REQUESTS_DELIMITER;
 // First thread
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// /**
-//  * The init thread
-//  */
-// static thread_t* m_init_thread;
-//
-// LIMINE_REQUEST struct limine_module_request g_limine_modules_request = {
-//     .id = LIMINE_MODULE_REQUEST
-// };
-//
-// static struct limine_file* get_module_by_name(const char* name) {
-//     struct limine_module_response* response = g_limine_modules_request.response;
-//     if (response == NULL) {
-//         return NULL;
-//     }
-//
-//     for (int i = 0; i < response->module_count; i++) {
-//         struct limine_file* module = response->modules[i];
-//         if (strcmp(module->path, name) == 0) {
-//             return module;
-//         }
-//     }
-//
-//     return NULL;
-// }
-//
-// static void init_thread_entry(void* arg) {
-//     err_t err = NO_ERROR;
-//
-//     LOG_INFO("Init thread started");
-//
-//     // initialize the garbage collector
-//     gc_init();
-//
-//     // first load the corelib
-//     struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
-//     CHECK(corelib != NULL, "Failed to find corelib");
-//     TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
-//
-//     RuntimeAssembly assembly = NULL;
-//     struct limine_file* kernel = get_module_by_name("/Tests.dll");
-//     CHECK(kernel != NULL, "Failed to find kernel");
-//     TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &assembly));
-//
-//     TDN_RETHROW(tdn_jit_method(assembly->EntryPoint));
-//     int (*test)() = assembly->EntryPoint->MethodPtr;
-//     LOG_INFO("%d", test());
-//
-// cleanup:
-//     if (IS_ERROR(err)) {
-//         LOG_CRITICAL("Can't continue loading the OS");
-//     }
-//     (void)err;
-// }
+/**
+ * The init thread
+ */
+static thread_t* m_init_thread;
+
+LIMINE_REQUEST struct limine_module_request g_limine_modules_request = {
+    .id = LIMINE_MODULE_REQUEST
+};
+
+static struct limine_file* get_module_by_name(const char* name) {
+    struct limine_module_response* response = g_limine_modules_request.response;
+    if (response == NULL) {
+        return NULL;
+    }
+
+    for (int i = 0; i < response->module_count; i++) {
+        struct limine_file* module = response->modules[i];
+        if (strcmp(module->path, name) == 0) {
+            return module;
+        }
+    }
+
+    return NULL;
+}
+
+static void init_thread_entry(void* arg) {
+     err_t err = NO_ERROR;
+
+     LOG_INFO("Init thread started");
+
+     // initialize the garbage collector
+     gc_init();
+
+     // first load the corelib
+     struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
+     CHECK(corelib != NULL, "Failed to find corelib");
+     TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
+
+cleanup:
+     if (IS_ERROR(err)) {
+         LOG_CRITICAL("Can't continue loading the OS");
+     }
+     (void)err;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Early startup
@@ -292,8 +283,8 @@ void _start() {
     }
 
     // we are about done, create the init thread and queue it
-    // m_init_thread = thread_create(init_thread_entry, NULL);
-    // scheduler_wakeup_thread(m_init_thread);
+    m_init_thread = thread_create(init_thread_entry, NULL, "init thread");
+    scheduler_wakeup_thread(m_init_thread);
 
     // and we are ready to start the scheduler
     scheduler_start_per_core();

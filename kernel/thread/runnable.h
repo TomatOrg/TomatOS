@@ -31,4 +31,4 @@ void runnable_switch(runnable_t* from, runnable_t* to);
  * Jump into a runnable, this will completely ignore whatever
  * is currently running
  */
-void runnable_jump(runnable_t* to);
+void runnable_resume(runnable_t* to);

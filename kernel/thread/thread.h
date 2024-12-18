@@ -37,6 +37,9 @@ typedef struct thread {
     // the entry point to actually run
     void* arg;
     thread_entry_t entry;
+
+    // The thread name, not null terminated
+    char name[256];
 } __attribute__((aligned(4096))) thread_t;
 
 STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);
@@ -49,7 +52,7 @@ STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);
 /**
 * Create a new thread, you need to schedule it yourself
 */
-thread_t* thread_create(thread_entry_t callback, void *arg);
+thread_t* thread_create(thread_entry_t callback, void *arg, const char* name_fmt, ...);
 
 /**
  * Free the given thread, returning it to the freelist

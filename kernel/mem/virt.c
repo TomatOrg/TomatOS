@@ -335,17 +335,23 @@ bool virt_handle_page_fault(uintptr_t addr) {
     err_t err = NO_ERROR;
 
     if (
-        (0xFFFFA00000000000 <= addr && addr < 0xFFFFA08000000000) ||
+        (THREADS_ADDR <= addr && addr < THREADS_ADDR_END) ||
         (0xFFFF810000000000 <= addr && addr < 0xFFFF8E8000000000) ||
         (BASE_2GB <= addr && addr < BASE_4GB)
     ) {
         // thread structs and gc heap are allocated lazily as required
 
-    } else if (0xFFFF8F0000000000 <= addr && addr < 0xFFFF8F8000000000) {
+    } else if (STACKS_ADDR <= addr && addr < STACKS_ADDR_END) {
         // stacks are allocated lazily as required, but we must not allocate if they
         // are inside of the guard zone of the range, which is the bottom 2mb of the
         // stack
         CHECK(ALIGN_DOWN(addr, SIZE_8MB) + SIZE_2MB <= addr);
+
+    } else if (SMALL_STACKS_ADDR <= addr && addr < SMALL_STACKS_ADDR_END) {
+        // stacks are allocated lazily as required, but we must not allocate if they
+        // are inside of the guard zone of the range, which is the bottom 2mb of the
+        // stack
+        CHECK(ALIGN_DOWN(addr, SIZE_32KB) + SIZE_4KB <= addr);
 
     } else {
         // unknown area, just return false

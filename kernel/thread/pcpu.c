@@ -40,7 +40,7 @@ err_t pcpu_init(int cpu_count) {
             continue;
         }
         CHECK(phdr == NULL);
-        phdr = phdrs;
+        phdr = &phdrs[i];
     }
     CHECK(phdr != NULL);
 
