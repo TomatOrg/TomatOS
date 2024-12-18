@@ -1,6 +1,5 @@
 #include "limine.h"
 #include "debug/log.h"
-#include "time/timer.h"
 #include "arch/gdt.h"
 #include "arch/idt.h"
 #include "lib/except.h"
@@ -20,6 +19,7 @@
 #include <mem/gc/gc.h>
 #include <thread/pcpu.h>
 #include <thread/scheduler.h>
+#include <time/tsc.h>
 
 #include <tomatodotnet/tdn.h>
 #include <tomatodotnet/jit/jit.h>
@@ -47,59 +47,59 @@ static volatile LIMINE_REQUESTS_DELIMITER;
 // First thread
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- * The init thread
- */
-static thread_t* m_init_thread;
-
-LIMINE_REQUEST struct limine_module_request g_limine_modules_request = {
-    .id = LIMINE_MODULE_REQUEST
-};
-
-static struct limine_file* get_module_by_name(const char* name) {
-    struct limine_module_response* response = g_limine_modules_request.response;
-    if (response == NULL) {
-        return NULL;
-    }
-
-    for (int i = 0; i < response->module_count; i++) {
-        struct limine_file* module = response->modules[i];
-        if (strcmp(module->path, name) == 0) {
-            return module;
-        }
-    }
-
-    return NULL;
-}
-
-static void init_thread_entry(void* arg) {
-    err_t err = NO_ERROR;
-
-    LOG_INFO("Init thread started");
-
-    // initialize the garbage collector
-    gc_init();
-
-    // first load the corelib
-    struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
-    CHECK(corelib != NULL, "Failed to find corelib");
-    TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
-
-    RuntimeAssembly assembly = NULL;
-    struct limine_file* kernel = get_module_by_name("/Tests.dll");
-    CHECK(kernel != NULL, "Failed to find kernel");
-    TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &assembly));
-
-    TDN_RETHROW(tdn_jit_method(assembly->EntryPoint));
-    int (*test)() = assembly->EntryPoint->MethodPtr;
-    LOG_INFO("%d", test());
-
-cleanup:
-    if (IS_ERROR(err)) {
-        LOG_CRITICAL("Can't continue loading the OS");
-    }
-    (void)err;
-}
+// /**
+//  * The init thread
+//  */
+// static thread_t* m_init_thread;
+//
+// LIMINE_REQUEST struct limine_module_request g_limine_modules_request = {
+//     .id = LIMINE_MODULE_REQUEST
+// };
+//
+// static struct limine_file* get_module_by_name(const char* name) {
+//     struct limine_module_response* response = g_limine_modules_request.response;
+//     if (response == NULL) {
+//         return NULL;
+//     }
+//
+//     for (int i = 0; i < response->module_count; i++) {
+//         struct limine_file* module = response->modules[i];
+//         if (strcmp(module->path, name) == 0) {
+//             return module;
+//         }
+//     }
+//
+//     return NULL;
+// }
+//
+// static void init_thread_entry(void* arg) {
+//     err_t err = NO_ERROR;
+//
+//     LOG_INFO("Init thread started");
+//
+//     // initialize the garbage collector
+//     gc_init();
+//
+//     // first load the corelib
+//     struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
+//     CHECK(corelib != NULL, "Failed to find corelib");
+//     TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
+//
+//     RuntimeAssembly assembly = NULL;
+//     struct limine_file* kernel = get_module_by_name("/Tests.dll");
+//     CHECK(kernel != NULL, "Failed to find kernel");
+//     TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &assembly));
+//
+//     TDN_RETHROW(tdn_jit_method(assembly->EntryPoint));
+//     int (*test)() = assembly->EntryPoint->MethodPtr;
+//     LOG_INFO("%d", test());
+//
+// cleanup:
+//     if (IS_ERROR(err)) {
+//         LOG_CRITICAL("Can't continue loading the OS");
+//     }
+//     (void)err;
+// }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Early startup
@@ -161,7 +161,7 @@ static void smp_entry(struct limine_smp_info* info) {
     RETHROW(init_tss());
 
     // and now we can init
-    scheduler_init_per_core();
+    RETHROW(scheduler_init_per_core());
 
     // we are done
     m_smp_count++;
@@ -251,7 +251,7 @@ void _start() {
     RETHROW(init_acpi());
 
     // we need to calibrate the timer now
-    init_timer();
+    init_tsc();
 
     // setup the scheduler
     // do that before the SMP startup so it can requests
@@ -269,7 +269,7 @@ void _start() {
                 LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
 
                 // allocate the per-cpu storage now that we know our id
-                scheduler_init_per_core();
+                RETHROW(scheduler_init_per_core());
 
                 m_smp_count++;
             } else {
@@ -292,8 +292,8 @@ void _start() {
     }
 
     // we are about done, create the init thread and queue it
-    m_init_thread = thread_create(init_thread_entry, NULL);
-    scheduler_wakeup_thread(m_init_thread);
+    // m_init_thread = thread_create(init_thread_entry, NULL);
+    // scheduler_wakeup_thread(m_init_thread);
 
     // and we are ready to start the scheduler
     scheduler_start_per_core();

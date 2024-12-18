@@ -7,28 +7,11 @@
 
 #include <stdatomic.h>
 #include <lib/list.h>
+#include <sync/spinlock.h>
 
-typedef enum thread_status {
-    /**
-     * Thread is sleeping, aka not in run-queue
-     */
-    THREAD_STATUS_SLEEPING,
+#include "runnable.h"
 
-    /**
-    * The thread is ready to run
-    */
-    THREAD_STATUS_READY,
-
-    /**
-    * The thread is running right now
-    */
-    THREAD_STATUS_RUNNING,
-
-    /**
-    * Thread is dead, free it on next schedule
-    */
-    THREAD_STATUS_DEAD,
-} thread_status_t;
+typedef void (*thread_entry_t)(void *arg);
 
 typedef enum thread_priority {
     THREAD_PRIORITY_LOWEST = 0,
@@ -36,63 +19,37 @@ typedef enum thread_priority {
     THREAD_PRIORITY_NORMAL = 2,
     THREAD_PRIORITY_ABOVE_NORMAL = 3,
     THREAD_PRIORITY_HIGHEST = 4,
+
+    THREAD_PRIORITY_MAX
 } thread_priority_t;
 
 typedef struct thread {
-    // link in the scheduler or allocation
-    list_entry_t link;
+    // the runnable of this thread, to queue on the scheduler
+    runnable_t runnable;
 
-    // the status of the current thread
-    thread_status_t status;
+    // either a freelist link or the scheduler link
+    list_t link;
 
-    //
-    // Parking lot context
-    //
+    // The actual stack of the thread
+    void* stack_start;
+    void* stack_end;
 
-    // Key that this thread is sleeping on. This may change if the thread is
-    // requeued to a different key
-    atomic_size_t key;
-
-    // Linked list of parked threads in a bucket
-    list_entry_t next_in_queue;
-
-    // Token passed to this thread when it is unparked
-    uint64_t unpark_token;
-
-    // Token value set by the thread when it was parked
-    uint64_t park_token;
-
-    // Is thie thread parked with a timeout?
-    bool parked_with_timeout;
-
-    //
-    // Context switching context
-    //
-
-    // The bottom of the stack, as allocated by the stack allocator
-    void *stack_top;
-
-    // the context of the thread, cpu fpu and what else
-    interrupt_context_t cpu_context;
+    // the entry point to actually run
+    void* arg;
+    thread_entry_t entry;
 } __attribute__((aligned(4096))) thread_t;
 
 STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);
 
-#define THREADS ((thread_t*)THREADS_ADDR)
-
 /**
-* Get the id of a thread
-*/
-static inline uint16_t thread_get_id(const thread_t *thread) {
-    return thread - THREADS;
-}
-
-typedef void (*thread_entry_t)(void *arg);
+ * The hard-threads are allocated from this place
+ */
+#define THREADS ((thread_t*)THREADS_ADDR)
 
 /**
 * Create a new thread, you need to schedule it yourself
 */
-thread_t *thread_create(thread_entry_t callback, void *arg);
+thread_t* thread_create(thread_entry_t callback, void *arg);
 
 /**
  * Free the given thread, returning it to the freelist

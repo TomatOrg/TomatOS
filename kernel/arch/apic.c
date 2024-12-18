@@ -1,9 +1,9 @@
 #include "apic.h"
 
 #include <stdint.h>
-#include <time/timer.h>
 #include <lib/except.h>
 #include <mem/memory.h>
+#include <time/tsc.h>
 
 #define XAPIC_ID                          (*(volatile uint32_t*)(DIRECT_MAP_OFFSET + 0xFEE00000 + 0x20))
 #define XAPIC_VERSION                     (*(volatile uint32_t*)(DIRECT_MAP_OFFSET + 0xFEE00000 + 0x30))
@@ -67,7 +67,7 @@ void init_lapic_per_core(void) {
     };
 
     // make sure timer is disabled
-    timer_set_deadline(0);
+    tsc_set_deadline(0);
 
     // set the timer, we configure it for tsc deadline
     XAPIC_LVT_TIMER = (LOCAL_APIC_LVT_TIMER){

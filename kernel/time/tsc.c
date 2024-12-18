@@ -1,4 +1,4 @@
-#include "timer.h"
+#include "tsc.h"
 
 #include "arch/cpuid.h"
 #include "debug/log.h"
@@ -12,12 +12,12 @@
  */
 static uint64_t m_tsc_resolution_hz = 0;
 
-uint64_t get_timer_cycles_precise() {
+uint64_t get_tsc_precise() {
     asm("lfence");
     return __builtin_ia32_rdtsc();
 }
 
-uint64_t get_timer_cycles() {
+uint64_t get_tsc() {
     return __builtin_ia32_rdtsc();
 }
 
@@ -48,20 +48,20 @@ static uint32_t calculate_tsc() {
     //       use the platform info MSR to calculate the TSC speed
 
     LOG_DEBUG("timer: TSC estimated using acpi_stall");
-    uint64_t start = get_timer_cycles_precise();
+    uint64_t start = get_tsc_precise();
     acpi_stall(100000);
-    return ALIGN_MUL_NEAR(get_timer_cycles_precise() - start, 1000000) * 10;
+    return ALIGN_MUL_NEAR(get_tsc_precise() - start, 1000000) * 10;
 }
 
-void init_timer() {
+void init_tsc() {
     m_tsc_resolution_hz = calculate_tsc();
     LOG_INFO("timer: TSC frequency %uMHz", m_tsc_resolution_hz / 1000000);
 }
 
-uint64_t timer_get_usecs() {
-    return get_timer_cycles_precise() / m_tsc_resolution_hz * 1000000;
+uint64_t tsc_get_usecs() {
+    return get_tsc_precise() / m_tsc_resolution_hz * 1000000;
 }
 
-void timer_set_deadline(uint64_t deadline) {
+void tsc_set_deadline(uint64_t deadline) {
     __wrmsr(MSR_IA32_TSC_DEADLINE, deadline);
 }

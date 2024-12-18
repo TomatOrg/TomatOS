@@ -41,12 +41,19 @@ static thread_t* thread_alloc() {
 
         // initialize anything that it needs, we multiply after the ++ because we want to get
         // the top of the stack, not the bottom of it
-        thread->stack_top = (void*)((STACKS_ADDR + SIZE_8MB * m_thread_top));
+        thread->stack_start = (void*)((STACKS_ADDR));
+        thread->stack_end = (void*)((STACKS_ADDR + SIZE_8MB * m_thread_top));
     }
 
     spinlock_unlock(&m_thread_freelist_lock);
 
     return thread;
+}
+
+static void thread_entry() {
+    thread_t* thread = scheduler_get_current_thread();
+    thread->entry(thread->arg);
+    thread_exit();
 }
 
 thread_t* thread_create(thread_entry_t callback, void* arg) {
@@ -55,22 +62,15 @@ thread_t* thread_create(thread_entry_t callback, void* arg) {
         return NULL;
     }
 
-    // initialize segments
-    thread->cpu_context.cs = GDT_CODE;
-    thread->cpu_context.ss = GDT_DATA;
+    // initialize the callback, this will be used by the thread_entry to
+    // call the real entry point
+    thread->entry = callback;
+    thread->arg = arg;
 
-    // set the entry point
-    thread->cpu_context.rip = (uintptr_t)callback;
-    thread->cpu_context.rdi = (uintptr_t)arg;
-    thread->cpu_context.rsp = (uintptr_t)thread->stack_top - 16;
-
-    // set the flags
-    thread->cpu_context.rflags.always_one = 1;
-    thread->cpu_context.rflags.IF = 1;
-
-    // set the thread exit as the return from the function
-    *((void**)(thread->cpu_context.rsp)) = thread_exit;
-    *((void**)(thread->cpu_context.rsp + sizeof(uintptr_t))) = 0;
+    // set the thread entry as the first function to run
+    // it will call the callback properly with its argument
+    runnable_set_rsp(&thread->runnable, thread->stack_end);
+    runnable_set_rip(&thread->runnable, thread_entry);
 
     // TODO: fpu context
 
@@ -86,9 +86,5 @@ void thread_free(thread_t* thread) {
 }
 
 void thread_exit() {
-    // disable preemption so we can
-    thread_t* thread = get_current_thread();
-    thread->status = THREAD_STATUS_DEAD;
-    scheduler_yield();
-    __builtin_trap();
+    // TODO: something in here
 }

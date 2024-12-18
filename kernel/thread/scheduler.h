@@ -1,36 +1,40 @@
 #pragma once
+#include <lib/except.h>
 
 #include "thread.h"
-#include "lib/except.h"
-
-err_t scheduler_init();
 
 /**
- * Initialize the scheduler
+ * Initialize the core of the scheduler
  */
-void scheduler_init_per_core();
+err_t scheduler_init(void);
 
 /**
- * Called to startup the scheduler per core
+ * Initialize the scheduler on each core, must be called
+ * before we start the scheduler
  */
-void scheduler_start_per_core();
+err_t scheduler_init_per_core(void);
 
 /**
- * Wakeup the given thread for scheduling
+ * Start the scheduler on the current core
  */
-void scheduler_wakeup_thread(thread_t* thread);
+void scheduler_start_per_core(void);
 
 /**
- * Yield from the current thread
+ * Get the currently running thread
  */
-void scheduler_yield();
+thread_t* scheduler_get_current_thread(void);
 
 /**
- * Handle a scheduler interrupt
+ * Yield to the next task right now 
  */
-void scheduler_interrupt(interrupt_context_t* ctx);
+void scheduler_yield(void);
 
 /**
- * Gets the currently running thread
+ * Disable preemption
  */
-thread_t* get_current_thread();
+void scheduler_disable_preemption(void);
+
+/**
+ * Enable preemption after disabling it
+ */
+void scheduler_enable_preemption(void);

@@ -11,7 +11,7 @@ void spinlock_lock(spinlock_t* spinlock) {
         }
 
         while (atomic_load_explicit(&spinlock->lock, memory_order_relaxed)) {
-            __builtin_ia32_pause();
+            cpu_relax();
         }
     }
 }

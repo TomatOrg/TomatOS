@@ -49,7 +49,7 @@ endif
 # Common compilation flags, also passed to the libraries
 # 
 COMMON_FLAGS	:= -target x86_64-pc-none-elf
-COMMON_FLAGS	+= -mgeneral-regs-only -msse2
+COMMON_FLAGS	+= -mgeneral-regs-only
 COMMON_FLAGS	+= -march=x86-64-v3
 COMMON_FLAGS	+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
 COMMON_FLAGS	+= -mcmodel=kernel -mno-red-zone

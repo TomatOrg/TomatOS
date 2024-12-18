@@ -1,132 +1,132 @@
 #include "scheduler.h"
 
-#include <arch/intrin.h>
 #include <arch/smp.h>
 #include <mem/alloc.h>
-#include <sync/spinlock.h>
-#include <time/timer.h>
+#include <time/tsc.h>
 
 #include "pcpu.h"
+#include "thread.h"
 
 typedef struct scheduler_cpu_context {
-    // lock on the run queue
-    spinlock_t run_queue_lock;
+    // the scheduler context
+    runnable_t scheduler;
 
-    // the current state of the scheduler
-    volatile bool wakeup_trigger;
+    thread_t* current_thread;
 
-    // the run-queue of threads
-    list_t run_queue;
+    // when set to true preemption should not switch the context
+    // but should set the want preemption flag instead
+    bool disable_preemption;
+
+    // we got an preemption request while preempt count was 0
+    // next time we enable preemption make sure to preempt
+    bool want_preemption;
 } scheduler_cpu_context_t;
 
 /**
- * The list of cpu contexts
+ * The current cpu's context
  */
-static scheduler_cpu_context_t* m_scheduler_contexts;
+static CPU_LOCAL scheduler_cpu_context_t m_scheduler_context = {};
 
 /**
- * The current cpu context
+ * The scheduler contexts of all cpus
  */
-static CPU_LOCAL scheduler_cpu_context_t m_current_context;
+static scheduler_cpu_context_t** m_all_schedulers = NULL;
 
-/**
- * The currently running thread
- */
-static CPU_LOCAL thread_t* m_current_thread = NULL;
-
-err_t scheduler_init() {
+err_t scheduler_init(void) {
     err_t err = NO_ERROR;
 
-    m_scheduler_contexts = mem_alloc(sizeof(scheduler_cpu_context_t) * g_cpu_count);
-    CHECK(m_scheduler_contexts != NULL);
-
-    // TODO: test for HFI/Thread Director support
+    m_all_schedulers = mem_alloc(g_cpu_count * sizeof(scheduler_cpu_context_t*));
+    CHECK_ERROR(m_all_schedulers != NULL, ERROR_OUT_OF_MEMORY);
 
 cleanup:
     return err;
 }
 
-void scheduler_init_per_core() {
-    // set the context of the current cpu
-    m_current_context = m_scheduler_contexts[get_cpu_id()];
-    list_init(&m_current_context.run_queue);
+err_t scheduler_init_per_core(void) {
+    err_t err = NO_ERROR;
+
+    // save the pointer of the current process
+    m_all_schedulers[get_cpu_id()] = &m_scheduler_context;
+
+    void* stack = mem_alloc(SIZE_4KB);
+    CHECK_ERROR(stack != NULL, ERROR_OUT_OF_MEMORY);
+    runnable_set_rsp(&m_scheduler_context.scheduler, stack + SIZE_4KB);
+
+cleanup:
+    return err;
 }
 
-void scheduler_start_per_core() {
-    // set the deadline to right now so it will trigger right away
-    scheduler_yield();
+thread_t* scheduler_get_current_thread(void) {
+    return m_scheduler_context.current_thread;
+}
 
-    // and now enable interrupts and start
-    asm("sti");
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Scheduler invocation
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+typedef void (*scheduler_func_t)(void);
+
+/**
+ * Performs a scheduler call, must be done with preemption disabled
+ */
+static void scheduler_do_call(scheduler_func_t callback) {
+    runnable_set_rip(&m_scheduler_context.scheduler, callback);
+    runnable_switch(&m_scheduler_context.current_thread->runnable, &m_scheduler_context.scheduler);
+}
+
+/**
+ * Perform a scheduler call, this will disable preemption between
+ * the calls to make sure we won't get any weird double switch
+ */
+static void scheduler_call(scheduler_func_t callback) {
+    m_scheduler_context.disable_preemption = true;
+    scheduler_do_call(callback);
+    m_scheduler_context.disable_preemption = false;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Actual scheduler
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void scheduler_schedule(void) {
+    asm("cli");
     asm("hlt");
 }
 
-void scheduler_wakeup_thread(thread_t* thread) {
-    thread->status = THREAD_STATUS_READY;
-    list_add_tail(&m_current_context.run_queue, &thread->link);
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Scheduler API
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void scheduler_yield(void) {
+    scheduler_call(scheduler_schedule);
 }
 
-void scheduler_yield() {
-    // just trigger the scheduler interrupt and let it run
-    timer_set_deadline(1);
+void scheduler_start_per_core(void) {
+    // enable interrupts at this point
+    asm("sti");
+
+    // set the scheduler_schedule as target
+    runnable_set_rip(&m_scheduler_context.scheduler, scheduler_schedule);
+
+    // use the jump since we don't have a valid thread right now
+    runnable_jump(&m_scheduler_context.scheduler);
 }
 
-thread_t* get_current_thread() {
-    return m_current_thread;
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Preemption handling
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void scheduler_disable_preemption(void) {
+    m_scheduler_context.disable_preemption = true;
 }
 
-void scheduler_interrupt(interrupt_context_t* ctx) {
-    // save the thread that was running
-    if (m_current_thread != NULL) {
-        if (m_current_thread->status == THREAD_STATUS_RUNNING) {
-            // thread was running, return to queue
-            m_current_thread->cpu_context = *ctx;
-            m_current_thread->status = THREAD_STATUS_READY;
-
-            // add the thread to the end of the run queue
-            spinlock_lock(&m_current_context.run_queue_lock);
-            list_add_tail(&m_current_context.run_queue, &m_current_thread->link);
-            spinlock_unlock(&m_current_context.run_queue_lock);
-
-        } else if (m_current_thread->status == THREAD_STATUS_DEAD) {
-            // the thread is dead, just free it
-            thread_free(m_current_thread);
-        }
-
-        m_current_thread = NULL;
+void scheduler_enable_preemption(void) {
+    // if we got a preemption request we need to call the scheduler, we already are
+    // without preemption so no need to use the normal scheduler_call
+    if (m_scheduler_context.want_preemption) {
+        scheduler_do_call(scheduler_schedule);
     }
 
-    for (;;) {
-        // take a thread from the run-queue
-        spinlock_lock(&m_current_context.run_queue_lock);
-        list_entry_t* entry = list_pop(&m_current_context.run_queue);
-        spinlock_unlock(&m_current_context.run_queue_lock);
-
-        // if we got something run it
-        if (entry != NULL) {
-            thread_t* thread = containerof(entry, thread_t, link);
-            *ctx = thread->cpu_context;
-            thread->status = THREAD_STATUS_RUNNING;
-            m_current_thread = thread;
-            return;
-        }
-
-        // first reset the trigger for waking up
-        m_current_context.wakeup_trigger = false;
-
-        // now setup the monitor, we are going to check that we have the
-        // value that we expect, in case between now and the monitor something
-        // has changed, and as the intel manual says we are going to check
-        // again and then actually mwait
-        // TODO: use umwait if supported so we can wakeup on a timer if any
-        uintptr_t eax = (uintptr_t)&m_current_context.wakeup_trigger;
-        uintptr_t ecx = BIT1;
-        uintptr_t edx = 0;
-        if (!m_current_context.wakeup_trigger) {
-            __monitor(eax, ecx, edx);
-            if (!m_current_context.wakeup_trigger) {
-                __mwait(eax, ecx);
-            }
-        }
-    }
+    // and now disable preemption now that we return
+    m_scheduler_context.disable_preemption = false;
 }
