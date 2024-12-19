@@ -94,9 +94,7 @@ void thread_free(thread_t* thread) {
 }
 
 void thread_exit() {
-    LOG_INFO("TODO: thread exit impl");
-    asm("cli");
-    asm("hlt");
+    scheduler_exit();
 }
 
 thread_status_t thread_get_status(thread_t* thread) {

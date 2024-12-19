@@ -350,7 +350,7 @@ static thread_t* core_run_queue_get(bool* inherit_time) {
         }
 
         // attempt to move the head and take the thread
-        thread_t* thread = m_core.run_queue[t % ARRAY_LENGTH(m_core.run_queue)];
+        thread_t* thread = m_core.run_queue[h % ARRAY_LENGTH(m_core.run_queue)];
         if (atomic_compare_exchange_strong_explicit(&m_core.run_queue_head, &h, h + 1, memory_order_release, memory_order_relaxed)) {
             return thread;
         }
@@ -432,6 +432,36 @@ static void scheduler_schedule(void) {
     }
 }
 
+static void scheduler_yield_internal(void) {
+    // update the thread to be runnable
+    thread_t* thread = m_core.current_thread;
+    thread_update_status(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
+
+    // put on the local core run queue
+    core_run_queue_put(thread, false);
+
+    // and schedule
+    scheduler_schedule();
+}
+
+static void scheduler_park_internal(void) {
+    thread_t* thread = m_core.current_thread;
+
+    // update to be waiting
+    thread_update_status(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);
+
+    // and schedule the next thread
+    scheduler_schedule();
+}
+
+static void scheduler_exit_internal(void) {
+    // free the thread
+    thread_free(m_core.current_thread);
+
+    // and schedule
+    scheduler_schedule();
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Scheduler API
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -451,7 +481,15 @@ void scheduler_ready(thread_t* thread) {
 }
 
 void scheduler_yield(void) {
-    scheduler_call(scheduler_schedule);
+    scheduler_call(scheduler_yield_internal);
+}
+
+void scheduler_park(void) {
+    scheduler_call(scheduler_park_internal);
+}
+
+void scheduler_exit(void) {
+    scheduler_call(scheduler_exit_internal);
 }
 
 void scheduler_start_per_core(void) {
@@ -474,9 +512,9 @@ void scheduler_preempt_disable(void) {
 }
 
 void scheduler_preempt_enable(void) {
-    if (--m_core.preempt_count) {
-        if (m_core.want_preemption) {
-            scheduler_do_call(scheduler_schedule);
-        }
+    if (m_core.preempt_count == 1 && m_core.want_preemption) {
+        scheduler_do_call(scheduler_schedule);
     }
+
+    --m_core.preempt_count;
 }

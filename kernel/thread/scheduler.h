@@ -35,6 +35,16 @@ void scheduler_ready(thread_t* thread);
 void scheduler_yield(void);
 
 /**
+ * Park the current thread
+ */
+void scheduler_park(void);
+
+/**
+ * Park the current thread
+ */
+void scheduler_exit(void);
+
+/**
  * Disable preemption
  */
 void scheduler_preempt_disable(void);

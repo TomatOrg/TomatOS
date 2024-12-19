@@ -7,6 +7,7 @@
 
 #include <stdatomic.h>
 #include <lib/list.h>
+#include <sync/parking_lot.h>
 #include <sync/spinlock.h>
 
 #include "runnable.h"
@@ -31,6 +32,9 @@ typedef enum thread_status {
 } thread_status_t;
 
 typedef struct thread {
+    // The thread name, not null terminated
+    char name[256];
+
     // the runnable of this thread, to queue on the scheduler
     runnable_t runnable;
 
@@ -56,8 +60,24 @@ typedef struct thread {
     // the status of the thread
     _Atomic(thread_status_t) status;
 
-    // The thread name, not null terminated
-    char name[256];
+    // The key that this thread is sleeping on. This may change if the thread
+    // is requeued to a different key
+    _Atomic(size_t) park_key;
+
+    // The next thread in the parked queue
+    struct thread* park_next_in_queue;
+
+    // Token passed to this thread when it is unparked
+    size_t unpark_token;
+
+    // Token set by the thread when it is parked
+    size_t park_token;
+
+    // Is this thread parked with timeout
+    bool parked_with_timeout;
+
+    // parking lot has seen this thread and initialized itself accordingly
+    bool parking_lot_seen;
 } __attribute__((aligned(4096))) thread_t;
 
 STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);
