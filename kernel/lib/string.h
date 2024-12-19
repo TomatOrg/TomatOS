@@ -9,3 +9,5 @@
 
 #define strlen __builtin_strlen
 #define strcmp __builtin_strcmp
+
+void string_verify_features(void);

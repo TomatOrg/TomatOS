@@ -35,7 +35,7 @@ static uint32_t calculate_tsc() {
     // very easily calculate the frequency right away
     uint32_t maxleaf = __get_cpuid_max(0, NULL);
     if (maxleaf >= CPUID_TIME_STAMP_COUNTER) {
-        __cpuid(CPUID_TIME_STAMP_COUNTER, a, b, c, d);
+        __cpuid(CPUID_TIME_STAMP_COUNTER, 0, a, b, c, d);
 
         // check that we have the ratio and the hz
         if (b != 0 && c != 0) {

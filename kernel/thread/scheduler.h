@@ -27,7 +27,7 @@ thread_t* scheduler_get_current_thread(void);
 /**
  * Wakeup a thread and let it run
  */
-void scheduler_wakeup_thread(thread_t* thread);
+void scheduler_ready(thread_t* thread);
 
 /**
  * Yield to the next task right now 
@@ -37,9 +37,9 @@ void scheduler_yield(void);
 /**
  * Disable preemption
  */
-void scheduler_disable_preemption(void);
+void scheduler_preempt_disable(void);
 
 /**
  * Enable preemption after disabling it
  */
-void scheduler_enable_preemption(void);
+void scheduler_preempt_enable(void);

@@ -23,6 +23,13 @@ typedef enum thread_priority {
     THREAD_PRIORITY_MAX
 } thread_priority_t;
 
+typedef enum thread_status {
+    THREAD_STATUS_WAITING,
+    THREAD_STATUS_RUNNABLE,
+    THREAD_STATUS_RUNNING,
+    THREAD_STATUS_DEAD,
+} thread_status_t;
+
 typedef struct thread {
     // the runnable of this thread, to queue on the scheduler
     runnable_t runnable;
@@ -36,7 +43,18 @@ typedef struct thread {
 
     // the entry point to actually run
     void* arg;
-    thread_entry_t entry;
+
+    union {
+        // the freelist link
+        // TODO: turn into singly linked list
+        thread_entry_t freelist;
+
+        // the scheduler link
+        struct thread* sched_link;
+    };
+
+    // the status of the thread
+    _Atomic(thread_status_t) status;
 
     // The thread name, not null terminated
     char name[256];
@@ -63,3 +81,13 @@ void thread_free(thread_t* thread);
 * Exit from the thread right now
 */
 void thread_exit();
+
+/**
+ * Get the status of the thread
+ */
+thread_status_t thread_get_status(thread_t* thread);
+
+/**
+ * Update the thread status properly
+ */
+void thread_update_status(thread_t* thread, thread_status_t from, thread_status_t to);

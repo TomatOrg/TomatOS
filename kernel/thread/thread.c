@@ -1,6 +1,7 @@
 #include "thread.h"
 
 #include <arch/gdt.h>
+#include <arch/intrin.h>
 #include <lib/list.h>
 #include <lib/printf.h>
 #include <lib/string.h>
@@ -53,7 +54,7 @@ static thread_t* thread_alloc() {
 
 static void thread_entry() {
     thread_t* thread = scheduler_get_current_thread();
-    thread->entry(thread->arg);
+    thread->freelist(thread->arg);
     thread_exit();
 }
 
@@ -71,7 +72,7 @@ thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt
 
     // initialize the callback, this will be used by the thread_entry to
     // call the real entry point
-    thread->entry = callback;
+    thread->freelist = callback;
     thread->arg = arg;
 
     // set the thread entry as the first function to run
@@ -96,4 +97,15 @@ void thread_exit() {
     LOG_INFO("TODO: thread exit impl");
     asm("cli");
     asm("hlt");
+}
+
+thread_status_t thread_get_status(thread_t* thread) {
+    return thread->status;
+}
+
+void thread_update_status(thread_t* thread, thread_status_t from, thread_status_t to) {
+    // TODO: something better
+    while (!atomic_compare_exchange_strong(&thread->status, &from, to)) {
+        cpu_relax();
+    }
 }

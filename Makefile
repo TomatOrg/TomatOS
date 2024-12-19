@@ -14,11 +14,11 @@ KERNEL			:= tomatos
 # Are we compiling as debug or not 
 DEBUG 			?= 1
 
-#ifeq ($(DEBUG),1)
+ifeq ($(DEBUG),1)
 OPTIMIZE		?= 0
-#else
-#OPTIMIZE		?= 1
-#endif
+else
+OPTIMIZE		?= 1
+endif
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Directories
