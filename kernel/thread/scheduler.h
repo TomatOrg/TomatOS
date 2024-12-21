@@ -19,15 +19,28 @@ err_t scheduler_init_per_core(void);
  */
 void scheduler_start_per_core(void);
 
+//----------------------------------------------------------------------------------------------------------------------
+// Primitives over any thread
+//----------------------------------------------------------------------------------------------------------------------
+
 /**
- * Get the currently running thread
+ * Start a new thread
  */
-thread_t* scheduler_get_current_thread(void);
+void scheduler_start_thread(thread_t* thread);
 
 /**
  * Wakeup a thread and let it run
  */
-void scheduler_ready(thread_t* thread);
+void scheduler_wakeup_thread(thread_t* thread);
+
+//----------------------------------------------------------------------------------------------------------------------
+// Primitives on the current thread
+//----------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Get the currently running thread
+ */
+thread_t* scheduler_get_current_thread(void);
 
 /**
  * Yield to the next task right now 
@@ -43,6 +56,10 @@ void scheduler_park(void);
  * Park the current thread
  */
 void scheduler_exit(void);
+
+//----------------------------------------------------------------------------------------------------------------------
+// Preemption handling
+//----------------------------------------------------------------------------------------------------------------------
 
 /**
  * Disable preemption

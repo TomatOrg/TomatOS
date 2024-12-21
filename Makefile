@@ -66,7 +66,6 @@ endif
 
 # Debug flags
 ifeq ($(DEBUG),1)
-COMMON_FLAGS	+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
 COMMON_FLAGS	+= -fsanitize=undefined
 COMMON_FLAGS 	+= -fno-sanitize=alignment
 endif
@@ -77,6 +76,11 @@ CFLAGS			+= -Wall -Werror -std=gnu11
 CFLAGS 			+= -Wno-address-of-packed-member
 CFLAGS			+= -Ikernel
 CFLAGS			+= -g
+
+# Debug flags
+ifeq ($(DEBUG),1)
+CFLAGS			+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
+endif
 
 # We are relying on frame pointers for proper stack unwinding
 # in both managed and unmanaged environment

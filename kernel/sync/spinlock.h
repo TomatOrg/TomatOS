@@ -4,7 +4,6 @@
 #include <stdbool.h>
 
 typedef struct spinlock {
-    __attribute__((aligned(128)))
     atomic_bool lock;
 } spinlock_t;
 

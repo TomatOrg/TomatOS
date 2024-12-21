@@ -8,32 +8,16 @@
 
 #include "pcpu.h"
 #include "thread.h"
+#include <stdnoreturn.h>
 
 typedef struct core_scheduler_context {
-    // the scheduler context
+    // the park location, scheduler will sleep on this
+    // location and wakeup on modifications to it
+    __attribute__((aligned(128)))
+    _Atomic(size_t) park;
+
+    // The scheduler's runnable
     runnable_t scheduler;
-
-    thread_t* current_thread;
-
-    //
-    // Scheduling
-    //
-
-    // the local run queue of threads to run
-    _Atomic(uint32_t) run_queue_head;
-    _Atomic(uint32_t) run_queue_tail;
-    thread_t* run_queue[256];
-
-    // the next thread to run, shares a time slice with
-    // the currently running thread
-    _Atomic(thread_t*) run_next;
-
-    // the park key
-    _Atomic(uintptr_t) park;
-
-    //
-    // Preemption
-    //
 
     // when set to true preemption should not switch the context
     // but should set the want preemption flag instead
@@ -42,6 +26,15 @@ typedef struct core_scheduler_context {
     // we got an preemption request while preempt count was 0
     // next time we enable preemption make sure to preempt
     bool want_preemption;
+
+    // the eevdf queue of the core
+    eevdf_queue_t queue;
+
+    // lock to protect the queue
+    spinlock_t queue_lock;
+
+    // the last time we had a schedule
+    uint64_t last_schedule;
 } core_scheduler_context_t;
 
 /**
@@ -53,6 +46,16 @@ static CPU_LOCAL core_scheduler_context_t m_core = {};
  * The scheduler contexts of all cpus
  */
 static core_scheduler_context_t** m_all_cores = NULL;
+
+/**
+ * Mask of cores that are in idle currently
+ */
+static _Atomic(uint64_t) m_idle_cores = 0;
+
+/**
+ * Sum of all the weights in the system
+ */
+static _Atomic(uint64_t) m_total_weights = 0;
 
 err_t scheduler_init(void) {
     err_t err = NO_ERROR;
@@ -79,40 +82,11 @@ cleanup:
 }
 
 thread_t* scheduler_get_current_thread(void) {
-    return m_core.current_thread;
+    return containerof(m_core.queue.current, thread_t, scheduler_node);
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-// Thread queue
-//----------------------------------------------------------------------------------------------------------------------
-
-typedef struct thread_queue {
-    thread_t* head;
-    thread_t* tail;
-} thread_queue_t;
-
-static thread_t* thread_queue_pop(thread_queue_t* q) {
-    thread_t* thread = q->head;
-    if (thread != NULL) {
-        q->head = thread->sched_link;
-        if (q->head == NULL) {
-            q->tail = NULL;
-        }
-    }
-    return thread;
-}
-
-static void thread_queue_push_back_all(thread_queue_t* q, thread_queue_t* q2) {
-    if (q2->tail == NULL) {
-        return;
-    }
-    q2->tail->sched_link = NULL;
-    if (q->tail != NULL) {
-        q->tail->sched_link = q2->head;
-    } else {
-        q->head = q2->head;
-    }
-    q->tail = q2->tail;
+static uint32_t scheduler_get_ideal_weight(void) {
+    return atomic_load_explicit(&m_total_weights, memory_order_relaxed) / g_cpu_count;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -126,7 +100,7 @@ typedef void (*scheduler_func_t)(void);
  */
 static void scheduler_do_call(scheduler_func_t callback) {
     runnable_set_rip(&m_core.scheduler, callback);
-    runnable_switch(&m_core.current_thread->runnable, &m_core.scheduler);
+    runnable_switch(&scheduler_get_current_thread()->runnable, &m_core.scheduler);
 }
 
 /**
@@ -140,343 +114,171 @@ static void scheduler_call(scheduler_func_t callback) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// Actual scheduler
+// Core sleeping and waking up
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- * The global scheduler lock
- */
-static spinlock_t m_scheduler_lock = INIT_SPINLOCK();
+static void core_wait(void) {
+    // set up the monitor
+    __monitor((uintptr_t)&m_core.park, 0, 0);
 
-/**
- * How many cores are idle
- */
-static _Atomic(int32_t) m_cores_idle = 0;
+    // ensure again that nothing changed
+    if (atomic_load_explicit(&m_core.park, memory_order_acquire) != 0) {
+        return;
+    }
 
-/**
- * Bitmask of cores in idle list, one bit per core.
- */
-static _Atomic(uint64_t) m_idle_mask = 0;
+    // and now wait for the memory write
+    __mwait(0, 0);
+}
 
-/**
- * The global run queue of threads
- */
-static thread_queue_t m_global_run_queue = {};
+static void core_prepare_park(void) {
+    atomic_store_explicit(&m_core.park, 1, memory_order_relaxed);
+}
 
-/**
- * The size of the run queue
- */
-static uint32_t m_global_run_queue_size = 0;
+static bool core_timed_out(void) {
+    return atomic_load_explicit(&m_core.park, memory_order_relaxed) != 0;
+}
 
-//----------------------------------------------------------------------------------------------------------------------
-// Core sleeping and waking up
-//----------------------------------------------------------------------------------------------------------------------
-
-static void core_stop(void) {
-    spinlock_lock(&m_scheduler_lock);
-    // TODO: idle list
-    m_idle_mask |= 1 << get_cpu_id();
-    m_cores_idle++;
-    spinlock_unlock(&m_scheduler_lock);
+static void core_park(void) {
+    // start by disabling the deadline so we
+    // won't have a spurious wakeup
+    tsc_set_deadline(0);
 
     // and now wait until someone tells us to wakeup
-    while (m_core.park == 0) {
-        // set up the monitor
-        __monitor((uintptr_t)&m_core.park, 0, 0);
+    while (atomic_load_explicit(&m_core.park, memory_order_acquire) != 0) {
+        core_wait();
+    }
+}
 
-        // ensure again that nothing changed
-        if (m_core.park != 0) {
-            break;
+static bool core_park_until(uint64_t deadline) {
+    // start by setting the deadline
+    tsc_set_deadline(deadline);
+
+    // as long as no one tells us to wakeup, wait
+    while (atomic_load_explicit(&m_core.park, memory_order_acquire) != 0) {
+        // check that we did not get a timeout in the meantime
+        uint64_t now = tsc_get_usecs();
+        if (deadline <= now) {
+            return false;
         }
 
-        // and now wait for the memory write
-        __mwait(0, 0);
+        // and now wait
+        core_wait();
     }
 
-    // and clear it
-    m_core.park = 0;
-}
-
-// static void core_wake(core_scheduler_context_t* core) {
-//     // TODO: wake up the core
-//     uint32_t old = atomic_exchange(&core->park, 1);
-//     ASSERT(old == 0 && !"double wakeup");
-// }
-
-//----------------------------------------------------------------------------------------------------------------------
-// Global run queue
-//----------------------------------------------------------------------------------------------------------------------
-
-static void core_run_queue_put(thread_t* thread, bool next);
-
-static void global_run_queue_put(thread_queue_t* batch, uint32_t n) {
-    thread_queue_push_back_all(&m_global_run_queue, batch);
-    m_global_run_queue_size += n;
-    *batch = (thread_queue_t){};
-}
-
-static thread_t* global_run_queue_get(uint32_t max) {
-    if (m_global_run_queue_size == 0) {
-        return NULL;
-    }
-
-    // limit by the global entries that would be available per core
-    uint32_t n = m_global_run_queue_size / g_cpu_count + 1;
-    if (n > m_global_run_queue_size) {
-        n = m_global_run_queue_size;
-    }
-
-    // limit by the maximum requested
-    if (max > 0 && n > max) {
-        n = max;
-    }
-
-    // only fill up to half the local run queue
-    if (n > ARRAY_LENGTH(m_core.run_queue) / 2) {
-        n = ARRAY_LENGTH(m_core.run_queue) / 2;
-    }
-
-    m_global_run_queue_size -= n;
-
-    // get the thread to run
-    thread_t* thread = thread_queue_pop(&m_global_run_queue);
-
-    // steal more into our local run queue while we are at it
-    n--;
-    for (; n > 0; n--) {
-        thread_t* thread2 = thread_queue_pop(&m_global_run_queue);
-        core_run_queue_put(thread2, false);
-    }
-
-    return thread;
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-// Local run queue management
-//----------------------------------------------------------------------------------------------------------------------
-
-static bool core_run_queue_put_slow(thread_t* thread, uint32_t h, uint32_t t) {
-    thread_t* batch[ARRAY_LENGTH(m_core.run_queue) / 2 + 1];
-
-    // First, grab a batch from local queue
-    uint32_t n = (t - h) / 2;
-    ASSERT(n == ARRAY_LENGTH(m_core.run_queue) / 2);
-
-    for (int i = 0; i < n; i++) {
-        batch[i] = m_core.run_queue[(h + i) % ARRAY_LENGTH(m_core.run_queue)];
-    }
-
-    if (!atomic_compare_exchange_strong_explicit(
-        &m_core.run_queue_head,
-        &h, h + n,
-        memory_order_release, memory_order_relaxed)
-    ) {
-        return false;
-    }
-
-    batch[n] = thread;
-
-    // Link the threads
-    for (int i = 0; i < n; i++) {
-        batch[i]->sched_link = batch[i + 1];
-    }
-
-    thread_queue_t q = {
-        .head = batch[0],
-        .tail = batch[n],
-    };
-
-    // Now put the batch on global queue
-    spinlock_lock(&m_scheduler_lock);
-    global_run_queue_put(&q, n + 1);
-    spinlock_unlock(&m_scheduler_lock);
     return true;
 }
 
-static void core_run_queue_put(thread_t* thread, bool next) {
-    if (next) {
-        thread_t* old_next = m_core.run_next;
-        for (;;) {
-            if (!atomic_compare_exchange_strong(&m_core.run_next, &old_next, thread)) {
-                continue;
-            }
-
-            if (old_next == NULL) {
-                return;
-            }
-
-            thread = old_next;
-            break;
-        }
-    }
-
-    for (;;) {
-        // load-acquire, synchronize with consumers
-        uint32_t h = atomic_load_explicit(&m_core.run_queue_head, memory_order_acquire);
-        uint32_t t = atomic_load_explicit(&m_core.run_queue_tail, memory_order_relaxed);
-        if (t - h < ARRAY_LENGTH(m_core.run_queue)) {
-            m_core.run_queue[t % ARRAY_LENGTH(m_core.run_queue)] = thread;
-
-            // store-release, makes the item available for consumption
-            atomic_store_explicit(&m_core.run_queue_tail, t + 1, memory_order_release);
-            return;
-        }
-
-        if (core_run_queue_put_slow(thread, h, t)) {
-            return;
-        }
-
-        // we can only reach here if the slow put failed, meaning
-        // we have space in the queue now
-    }
+static void core_unpark(core_scheduler_context_t* core) {
+    atomic_store_explicit(&m_core.park, 0, memory_order_release);
 }
 
-static thread_t* core_run_queue_get(bool* inherit_time) {
-    // if we have a next attempt to take it, do so atomically in case
-    // some other core is trying to steal our next thread, if we take
-    // it then inherit the time slice
-    thread_t* next = m_core.run_next;
-    if (next != NULL && atomic_compare_exchange_strong(&m_core.run_next, &next, NULL)) {
-        *inherit_time = true;
-        return next;
-    }
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Actual scheduler
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    for (;;) {
-        // load-acquire, synchronize with other consumers
-        uint32_t h = atomic_load_explicit(&m_core.run_queue_head, memory_order_acquire);
-        uint32_t t = atomic_load_explicit(&m_core.run_queue_tail, memory_order_relaxed);
-        if (t == h) {
-            return NULL;
-        }
+noreturn static void scheduler_execute(thread_t* thread) {
+    // TODO: if not running a task restore fpu context
 
-        // attempt to move the head and take the thread
-        thread_t* thread = m_core.run_queue[h % ARRAY_LENGTH(m_core.run_queue)];
-        if (atomic_compare_exchange_strong_explicit(&m_core.run_queue_head, &h, h + 1, memory_order_release, memory_order_relaxed)) {
-            return thread;
-        }
-    }
-}
-
-//----------------------------------------------------------------------------------------------------------------------
-// Scheduling itself
-//----------------------------------------------------------------------------------------------------------------------
-
-static thread_t* scheduler_find_runnable(bool* inherit_time, bool* try_wake_cpu) {
-    for (;;) {
-        thread_t* thread = NULL;
-
-        // TODO: check timers
-
-        // TODO: try schedule gc worker
-
-        // TODO: check global runnable queue
-
-        // TODO: wake up finalizer thread
-
-        // local run queue
-        thread = core_run_queue_get(inherit_time);
-        if (thread != NULL) {
-            return thread;
-        }
-
-        // global run queue
-        if (m_global_run_queue_size != 0) {
-            spinlock_lock(&m_scheduler_lock);
-            thread = global_run_queue_get(0);
-            spinlock_unlock(&m_scheduler_lock);
-            if (thread != NULL) {
-                return thread;
-            }
-        }
-
-        // TODO: poll interrupts?
-
-        /// TODO: spinning cores
-
-        // We have nothing to do.
-
-        // TODO: attempt to join GC work if any
-
-        // TODO: poll interrupts until next timer
-
-        // stop the core
-        core_stop();
-    }
-}
-
-static void scheduler_execute(thread_t* thread, bool inherit_time) {
-    // update into a running state
-    thread_update_status(thread, THREAD_STATUS_RUNNABLE, THREAD_STATUS_RUNNING);
-
-    // save as the current thread to run
-    m_core.current_thread = thread;
-
-    // TODO: deadline
+    // set the time slice
+    tsc_set_deadline(tsc_get_usecs() + thread->scheduler_node.time_slice);
 
     // we can safely resume the thread
-    // TODO: fpu context
     runnable_resume(&thread->runnable);
 }
 
-static void scheduler_schedule(void) {
-    for (;;) {
-        bool inherit_time = false;
-        bool try_wake_cpu = false;
-        thread_t* thread = scheduler_find_runnable(&inherit_time, &try_wake_cpu);
+static void scheduler_schedule(bool remove, bool requeue) {
+    uint64_t current = tsc_get_usecs();
+    int64_t time_slice = (int64_t)(current - m_core.last_schedule);
+    m_core.last_schedule = current;
 
-        if (try_wake_cpu) {
-            // TODO: wake cpu
+    for (;;) {
+        // choose the next thread to run
+        eevdf_node_t* choosen = eevdf_queue_schedule(&m_core.queue, time_slice, remove, requeue);
+
+        if (choosen == NULL) {
+            // TODO: attempt to steal from another core that is busy
         }
 
-        scheduler_execute(thread, inherit_time);
+        if (choosen != NULL) {
+            thread_t* thread = containerof(choosen, thread_t, scheduler_node);
+            scheduler_execute(thread);
+        }
+
+        // prepare the park
+        core_prepare_park();
+
+        // reset the scheduling stuff, since we will not have a current now
+        time_slice = 0;
+        remove = false;
+        requeue = false;
+
+        // mark as idle
+        atomic_fetch_or_explicit(&m_idle_cores, 1ull << get_cpu_id(), memory_order_relaxed);
+
+        // could not find one, put the core to sleep
+        // and wait until there is something available
+        core_park();
+
+        // mark as not idle
+        atomic_fetch_and_explicit(&m_idle_cores, ~(1ull << get_cpu_id()), memory_order_relaxed);
     }
 }
 
 static void scheduler_yield_internal(void) {
-    // update the thread to be runnable
-    thread_t* thread = m_core.current_thread;
-    thread_update_status(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_RUNNABLE);
-
-    // put on the local core run queue
-    core_run_queue_put(thread, false);
-
-    // and schedule
-    scheduler_schedule();
+    // requeue the current thread
+    scheduler_schedule(false, true);
 }
 
 static void scheduler_park_internal(void) {
-    thread_t* thread = m_core.current_thread;
-
-    // update to be waiting
-    thread_update_status(thread, THREAD_STATUS_RUNNING, THREAD_STATUS_WAITING);
-
-    // and schedule the next thread
-    scheduler_schedule();
+    // don't requeue the current thread
+    scheduler_schedule(false, false);
 }
 
 static void scheduler_exit_internal(void) {
     // free the thread
-    thread_free(m_core.current_thread);
+    thread_free(scheduler_get_current_thread());
 
     // and schedule
-    scheduler_schedule();
+    scheduler_schedule(true, false);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Scheduler API
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void scheduler_ready(thread_t* thread) {
-    // disable preemption because we are going to touch
-    // alot of core local structures
+/**
+ * Get the scheduler context of a parking thread
+ */
+static core_scheduler_context_t* get_thread_scheduler_context(thread_t* thread) {
+    return containerof(thread->scheduler_node.queue, core_scheduler_context_t, queue);
+}
+
+void scheduler_start_thread(thread_t* thread) {
     scheduler_preempt_disable();
+    spinlock_lock(&m_core.queue_lock);
 
-    // Mark as runnable and put on the run queue
-    thread_update_status(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
-    core_run_queue_put(thread, true);
+    // TODO: check if we should maybe push this to another core
 
-    // TODO: attempt to wakeup a core if need be
+    // just add the thread to the current queue
+    eevdf_queue_add(&m_core.queue, &thread->scheduler_node);
 
+    spinlock_unlock(&m_core.queue_lock);
+    scheduler_preempt_enable();
+}
+
+void scheduler_wakeup_thread(thread_t* thread) {
+    core_scheduler_context_t* ctx = get_thread_scheduler_context(thread);
+
+    scheduler_preempt_disable();
+    spinlock_lock(&ctx->queue_lock);
+
+    // and call the queue wakeup
+    eevdf_queue_wakeup(&ctx->queue, &thread->scheduler_node);
+
+    // force unpark the core
+    core_unpark(ctx);
+
+    spinlock_unlock(&ctx->queue_lock);
     scheduler_preempt_enable();
 }
 
@@ -497,7 +299,7 @@ void scheduler_start_per_core(void) {
     asm("sti");
 
     // set the scheduler_schedule as target
-    runnable_set_rip(&m_core.scheduler, scheduler_schedule);
+    runnable_set_rip(&m_core.scheduler, scheduler_yield_internal);
 
     // use the jump since we don't have a valid thread right now
     runnable_resume(&m_core.scheduler);
@@ -513,7 +315,7 @@ void scheduler_preempt_disable(void) {
 
 void scheduler_preempt_enable(void) {
     if (m_core.preempt_count == 1 && m_core.want_preemption) {
-        scheduler_do_call(scheduler_schedule);
+        scheduler_do_call(scheduler_yield_internal);
     }
 
     --m_core.preempt_count;

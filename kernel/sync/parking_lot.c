@@ -428,7 +428,7 @@ unpark_result_t parking_lot_unpark_one(
             current->unpark_token = token;
 
             // unpark the current
-            scheduler_ready(current);
+            scheduler_wakeup_thread(current);
 
             // unlock the bucket
             word_lock_unlock(&bucket->mutex);

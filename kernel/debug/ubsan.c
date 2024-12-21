@@ -236,3 +236,11 @@ void __ubsan_handle_type_mismatch_v1(type_mismatch_data_t* data, size_t pointer)
             m_type_check_kinds[data->type_check_kind], pointer, data->type->type_name);
     }
 }
+
+typedef struct unreachable_data {
+    source_location_t loc;
+} unreachable_data_t;
+
+void __ubsan_handle_builtin_unreachable(unreachable_data_t* data) {
+    LOG_UBSAN("execution reached a __builtin_unreachable() call");
+}

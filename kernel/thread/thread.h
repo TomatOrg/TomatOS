@@ -10,26 +10,10 @@
 #include <sync/parking_lot.h>
 #include <sync/spinlock.h>
 
+#include "eevdf.h"
 #include "runnable.h"
 
 typedef void (*thread_entry_t)(void *arg);
-
-typedef enum thread_priority {
-    THREAD_PRIORITY_LOWEST = 0,
-    THREAD_PRIORITY_BELOW_NORMAL = 1,
-    THREAD_PRIORITY_NORMAL = 2,
-    THREAD_PRIORITY_ABOVE_NORMAL = 3,
-    THREAD_PRIORITY_HIGHEST = 4,
-
-    THREAD_PRIORITY_MAX
-} thread_priority_t;
-
-typedef enum thread_status {
-    THREAD_STATUS_WAITING,
-    THREAD_STATUS_RUNNABLE,
-    THREAD_STATUS_RUNNING,
-    THREAD_STATUS_DEAD,
-} thread_status_t;
 
 typedef struct thread {
     // The thread name, not null terminated
@@ -47,18 +31,14 @@ typedef struct thread {
 
     // the entry point to actually run
     void* arg;
+    thread_entry_t entry;
 
-    union {
-        // the freelist link
-        // TODO: turn into singly linked list
-        thread_entry_t freelist;
+    // The node for the scheduler
+    eevdf_node_t scheduler_node;
 
-        // the scheduler link
-        struct thread* sched_link;
-    };
-
-    // the status of the thread
-    _Atomic(thread_status_t) status;
+    //
+    // Parking lot context
+    //
 
     // The key that this thread is sleeping on. This may change if the thread
     // is requeued to a different key
@@ -101,13 +81,3 @@ void thread_free(thread_t* thread);
 * Exit from the thread right now
 */
 void thread_exit();
-
-/**
- * Get the status of the thread
- */
-thread_status_t thread_get_status(thread_t* thread);
-
-/**
- * Update the thread status properly
- */
-void thread_update_status(thread_t* thread, thread_status_t from, thread_status_t to);

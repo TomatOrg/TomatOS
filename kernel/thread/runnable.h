@@ -1,7 +1,6 @@
 #pragma once
 
-#include <stdatomic.h>
-#include <stdbool.h>
+#include <stdnoreturn.h>
 
 typedef struct runnable {
     // The rsp of the task, as part of context switch
@@ -31,4 +30,4 @@ void runnable_switch(runnable_t* from, runnable_t* to);
  * Jump into a runnable, this will completely ignore whatever
  * is currently running
  */
-void runnable_resume(runnable_t* to);
+noreturn void runnable_resume(runnable_t* to);

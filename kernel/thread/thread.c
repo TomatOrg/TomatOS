@@ -53,8 +53,13 @@ static thread_t* thread_alloc() {
 }
 
 static void thread_entry() {
+    // we need to disable preemption manually since we
+    // are not coming from a scheduler_call stub
+    scheduler_preempt_disable();
+
+    // and now run the
     thread_t* thread = scheduler_get_current_thread();
-    thread->freelist(thread->arg);
+    thread->entry(thread->arg);
     thread_exit();
 }
 
@@ -72,7 +77,7 @@ thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt
 
     // initialize the callback, this will be used by the thread_entry to
     // call the real entry point
-    thread->freelist = callback;
+    thread->entry = callback;
     thread->arg = arg;
 
     // set the thread entry as the first function to run
@@ -95,15 +100,4 @@ void thread_free(thread_t* thread) {
 
 void thread_exit() {
     scheduler_exit();
-}
-
-thread_status_t thread_get_status(thread_t* thread) {
-    return thread->status;
-}
-
-void thread_update_status(thread_t* thread, thread_status_t from, thread_status_t to) {
-    // TODO: something better
-    while (!atomic_compare_exchange_strong(&thread->status, &from, to)) {
-        cpu_relax();
-    }
 }

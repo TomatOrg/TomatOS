@@ -24,8 +24,6 @@ static void runnable_switch_internal(runnable_t* from, runnable_t* to) {
     );
 }
 
-STATIC_ASSERT(sizeof(atomic_flag) == 1);
-
 void runnable_switch(runnable_t* from, runnable_t* to) {
     asm(
         "call %P0"

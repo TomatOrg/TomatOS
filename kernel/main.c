@@ -305,7 +305,7 @@ void _start() {
 
     // we are about done, create the init thread and queue it
     m_init_thread = thread_create(init_thread_entry, NULL, "init thread");
-    scheduler_ready(m_init_thread);
+    scheduler_start_thread(m_init_thread);
 
     // and we are ready to start the scheduler
     scheduler_start_per_core();
