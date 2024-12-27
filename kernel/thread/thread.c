@@ -53,9 +53,9 @@ static thread_t* thread_alloc() {
 }
 
 static void thread_entry() {
-    // we need to disable preemption manually since we
+    // we need to enable preemption manually since we
     // are not coming from a scheduler_call stub
-    scheduler_preempt_disable();
+    scheduler_preempt_enable();
 
     // and now run the
     thread_t* thread = scheduler_get_current_thread();

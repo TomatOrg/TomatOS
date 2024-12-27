@@ -28,13 +28,13 @@ typedef struct core_scheduler_context {
     bool want_preemption;
 
     // the eevdf queue of the core
-    eevdf_queue_t queue;
+    list_t queue;
 
     // lock to protect the queue
     spinlock_t queue_lock;
 
-    // the last time we had a schedule
-    uint64_t last_schedule;
+    // the current thread
+    thread_t* current;
 } core_scheduler_context_t;
 
 /**
@@ -73,20 +73,23 @@ err_t scheduler_init_per_core(void) {
     // save the pointer of the current process
     m_all_cores[get_cpu_id()] = &m_core;
 
+    // setup the task for the scheduler
     void* stack = small_stack_alloc();
     CHECK_ERROR(stack != NULL, ERROR_OUT_OF_MEMORY);
     runnable_set_rsp(&m_core.scheduler, stack);
+
+    // start with a preempt count of 1, because we go to the scheduler right away
+    m_core.preempt_count = 1;
+
+    // and init the queue
+    list_init(&m_core.queue);
 
 cleanup:
     return err;
 }
 
 thread_t* scheduler_get_current_thread(void) {
-    return containerof(m_core.queue.current, thread_t, scheduler_node);
-}
-
-static uint32_t scheduler_get_ideal_weight(void) {
-    return atomic_load_explicit(&m_total_weights, memory_order_relaxed) / g_cpu_count;
+    return m_core.current;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -108,9 +111,9 @@ static void scheduler_do_call(scheduler_func_t callback) {
  * the calls to make sure we won't get any weird double switch
  */
 static void scheduler_call(scheduler_func_t callback) {
-    m_core.preempt_count = true;
+    m_core.preempt_count++;
     scheduler_do_call(callback);
-    m_core.preempt_count = false;
+    m_core.preempt_count--;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -141,7 +144,7 @@ static bool core_timed_out(void) {
 static void core_park(void) {
     // start by disabling the deadline so we
     // won't have a spurious wakeup
-    tsc_set_deadline(0);
+    tsc_disable_timeout();
 
     // and now wait until someone tells us to wakeup
     while (atomic_load_explicit(&m_core.park, memory_order_acquire) != 0) {
@@ -149,15 +152,14 @@ static void core_park(void) {
     }
 }
 
-static bool core_park_until(uint64_t deadline) {
+static bool core_park_until(uint64_t timeout) {
     // start by setting the deadline
-    tsc_set_deadline(deadline);
+    uint64_t deadline = tsc_set_timeout(timeout);
 
     // as long as no one tells us to wakeup, wait
     while (atomic_load_explicit(&m_core.park, memory_order_acquire) != 0) {
         // check that we did not get a timeout in the meantime
-        uint64_t now = tsc_get_usecs();
-        if (deadline <= now) {
+        if (deadline <= get_tsc()) {
             return false;
         }
 
@@ -179,26 +181,39 @@ static void core_unpark(core_scheduler_context_t* core) {
 noreturn static void scheduler_execute(thread_t* thread) {
     // TODO: if not running a task restore fpu context
 
+    // set the current thread
+    m_core.current = thread;
+
     // set the time slice
-    tsc_set_deadline(tsc_get_usecs() + thread->scheduler_node.time_slice);
+    tsc_set_timeout(ms_to_tsc(10));
 
     // we can safely resume the thread
     runnable_resume(&thread->runnable);
 }
 
+/**
+ * Perform the scheduling, this function must be called on the scheduler stack
+ * and must be called with preemption disabled and interrupts enabled
+ */
 static void scheduler_schedule(bool remove, bool requeue) {
-    uint64_t current = tsc_get_usecs();
-    int64_t time_slice = (int64_t)(current - m_core.last_schedule);
-    m_core.last_schedule = current;
-
     for (;;) {
-        // choose the next thread to run
-        eevdf_node_t* choosen = eevdf_queue_schedule(&m_core.queue, time_slice, remove, requeue);
+        // choose the next thread to run, we need to disable interrupts to make sure
+        // that interrupts don't attempt to wake up any thread
+        asm("cli");
+        spinlock_lock(&m_core.queue_lock);
+        if (requeue && m_core.current != NULL) {
+            list_add_tail(&m_core.queue, &m_core.current->scheduler_node);
+        }
+        list_entry_t* choosen = list_pop(&m_core.queue);
+        spinlock_unlock(&m_core.queue_lock);
+        asm("sti");
 
+        // if we did not find anything, attempt to steal
         if (choosen == NULL) {
-            // TODO: attempt to steal from another core that is busy
+            // TODO: this
         }
 
+        // found something to run, so run it
         if (choosen != NULL) {
             thread_t* thread = containerof(choosen, thread_t, scheduler_node);
             scheduler_execute(thread);
@@ -208,7 +223,6 @@ static void scheduler_schedule(bool remove, bool requeue) {
         core_prepare_park();
 
         // reset the scheduling stuff, since we will not have a current now
-        time_slice = 0;
         remove = false;
         requeue = false;
 
@@ -246,13 +260,6 @@ static void scheduler_exit_internal(void) {
 // Scheduler API
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-/**
- * Get the scheduler context of a parking thread
- */
-static core_scheduler_context_t* get_thread_scheduler_context(thread_t* thread) {
-    return containerof(thread->scheduler_node.queue, core_scheduler_context_t, queue);
-}
-
 void scheduler_start_thread(thread_t* thread) {
     scheduler_preempt_disable();
     spinlock_lock(&m_core.queue_lock);
@@ -260,25 +267,22 @@ void scheduler_start_thread(thread_t* thread) {
     // TODO: check if we should maybe push this to another core
 
     // just add the thread to the current queue
-    eevdf_queue_add(&m_core.queue, &thread->scheduler_node);
+    list_add(&m_core.queue, &thread->scheduler_node);
 
     spinlock_unlock(&m_core.queue_lock);
     scheduler_preempt_enable();
 }
 
 void scheduler_wakeup_thread(thread_t* thread) {
-    core_scheduler_context_t* ctx = get_thread_scheduler_context(thread);
+    // TODO: wake on the core that it was already on
 
     scheduler_preempt_disable();
-    spinlock_lock(&ctx->queue_lock);
+    spinlock_lock(&m_core.queue_lock);
 
     // and call the queue wakeup
-    eevdf_queue_wakeup(&ctx->queue, &thread->scheduler_node);
+    list_add(&m_core.queue, &thread->scheduler_node);
 
-    // force unpark the core
-    core_unpark(ctx);
-
-    spinlock_unlock(&ctx->queue_lock);
+    spinlock_unlock(&m_core.queue_lock);
     scheduler_preempt_enable();
 }
 
@@ -292,6 +296,22 @@ void scheduler_park(void) {
 
 void scheduler_exit(void) {
     scheduler_call(scheduler_exit_internal);
+}
+
+void scheduler_preempt(void) {
+    // if we have a preempt count then don't call
+    // the yield
+    if (m_core.preempt_count != 0) {
+        m_core.want_preemption = true;
+        return;
+    }
+
+    // we can safely call the yield, this will ensure
+    // interrupts are enabled
+    m_core.preempt_count++;
+    runnable_set_rip(&m_core.scheduler, scheduler_yield_internal);
+    runnable_switch_enable_interrupts(&scheduler_get_current_thread()->runnable, &m_core.scheduler);
+    m_core.preempt_count--;
 }
 
 void scheduler_start_per_core(void) {

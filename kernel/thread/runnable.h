@@ -27,6 +27,12 @@ void runnable_set_rip(runnable_t* to, void* rip);
 void runnable_switch(runnable_t* from, runnable_t* to);
 
 /**
+ * Just like runnable_switch, but makes sure that we have interrupts
+ * enabled at the point we jump to
+ */
+void runnable_switch_enable_interrupts(runnable_t* from, runnable_t* to);
+
+/**
  * Jump into a runnable, this will completely ignore whatever
  * is currently running
  */

@@ -10,16 +10,7 @@
 /**
  * The calculated TSC resolution
  */
-static uint64_t m_tsc_resolution_hz = 0;
-
-uint64_t get_tsc_precise() {
-    asm("lfence");
-    return __builtin_ia32_rdtsc();
-}
-
-uint64_t get_tsc() {
-    return __builtin_ia32_rdtsc();
-}
+uint64_t g_tsc_resolution_hz = 0;
 
 /**
  * Calculate the TSC resolution, we have two supported methods:
@@ -47,21 +38,31 @@ static uint32_t calculate_tsc() {
     // TODO: it seems that in theory on certain intel cpus we can
     //       use the platform info MSR to calculate the TSC speed
 
+    // we are going to estimate the tsc, and we will align
+    // to 10MHz just for a more stable result
     LOG_DEBUG("timer: TSC estimated using acpi_stall");
-    uint64_t start = get_tsc_precise();
-    acpi_stall(100000);
-    return ALIGN_MUL_NEAR(get_tsc_precise() - start, 1000000) * 10;
+    uint64_t start = get_tsc();
+    acpi_stall(US_PER_S);
+    return ALIGN_MUL_NEAR(get_tsc() - start, 10000000);
 }
 
 void init_tsc() {
-    m_tsc_resolution_hz = calculate_tsc();
-    LOG_INFO("timer: TSC frequency %uMHz", m_tsc_resolution_hz / 1000000);
+    g_tsc_resolution_hz = calculate_tsc();
+    LOG_INFO("timer: TSC frequency %uMHz", g_tsc_resolution_hz / 1000000);
 }
 
-uint64_t tsc_get_usecs() {
-    return get_tsc_precise() / m_tsc_resolution_hz * 1000000;
-}
+//
+// Intel CPUs require a fence
+//
 
-void tsc_set_deadline(uint64_t deadline) {
+uint64_t tsc_set_timeout(uint64_t timeout) {
+    asm("mfence; lfence");
+    uint64_t deadline = get_tsc() + timeout;
     __wrmsr(MSR_IA32_TSC_DEADLINE, deadline);
+    return deadline;
+}
+
+void tsc_disable_timeout(void) {
+    asm("mfence; lfence");
+    __wrmsr(MSR_IA32_TSC_DEADLINE, 0);
 }

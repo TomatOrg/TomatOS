@@ -6,6 +6,7 @@
 #include <sync/spinlock.h>
 #include <thread/pcpu.h>
 #include <thread/scheduler.h>
+#include <time/tsc.h>
 
 #include "apic.h"
 #include "lib/defs.h"
@@ -434,6 +435,16 @@ static void common_exception_handler(exception_context_t* ctx) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Scheduler interrupt
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+__attribute__((interrupt))
+static void timer_interrupt_handler(interrupt_frame_t* frame) {
+    lapic_eoi();
+    scheduler_preempt();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // IDT setup
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -503,5 +514,6 @@ void init_idt() {
     set_idt_entry(0x1D, exception_handler_0x1D, 0, true);
     set_idt_entry(0x1E, exception_handler_0x1E, 0, true);
     set_idt_entry(0x1F, exception_handler_0x1F, 0, true);
+    set_idt_entry(0x20, timer_interrupt_handler, 0, true);
     asm volatile ("lidt %0" : : "m" (m_idt));
 }

@@ -36,7 +36,7 @@ static uintptr_t m_kernel_physical_base = 0;
 /**
  * Spinlock for mapping virtual pages
  */
-static spinlock_t m_virt_lock = INIT_SPINLOCK();
+static irq_spinlock_t m_virt_lock = INIT_IRQ_SPINLOCK();
 
 /**
  * The kernel top level cr3
@@ -81,7 +81,7 @@ static page_entry_t* get_next_level(page_entry_t* entry) {
 err_t virt_map_page(uint64_t phys, uintptr_t virt, map_flags_t flags) {
     err_t err = NO_ERROR;
 
-    spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_lock(&m_virt_lock);
 
     page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(virt)]);
     CHECK_ERROR(pml3 != NULL, ERROR_OUT_OF_MEMORY);
@@ -100,7 +100,7 @@ err_t virt_map_page(uint64_t phys, uintptr_t virt, map_flags_t flags) {
     };
 
 cleanup:
-    spinlock_unlock(&m_virt_lock);
+    irq_spinlock_unlock(&m_virt_lock, irq_state);
 
     return err;
 }
@@ -121,7 +121,7 @@ cleanup:
 err_t virt_alloc_range(uintptr_t virt, size_t page_count) {
     err_t err = NO_ERROR;
 
-    spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_lock(&m_virt_lock);
 
     size_t i;
     for (i = 0; i < page_count; i++) {
@@ -171,7 +171,7 @@ cleanup:
         }
     }
 
-    spinlock_unlock(&m_virt_lock);
+    irq_spinlock_unlock(&m_virt_lock, irq_state);
 
     return err;
 }
@@ -179,7 +179,7 @@ cleanup:
 err_t virt_remap_range(uintptr_t virt, size_t page_count, map_flags_t flags) {
     err_t err = NO_ERROR;
 
-    spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_lock(&m_virt_lock);
 
     for (size_t i = 0; i < page_count; i++) {
         uintptr_t vaddr = virt + (i * SIZE_4KB);
@@ -203,36 +203,36 @@ err_t virt_remap_range(uintptr_t virt, size_t page_count, map_flags_t flags) {
     }
 
 cleanup:
-    spinlock_unlock(&m_virt_lock);
+    irq_spinlock_unlock(&m_virt_lock, irq_state);
 
     return err;
 }
 
 bool virt_is_mapped(uintptr_t virt) {
-    spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_lock(&m_virt_lock);
 
     page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(virt)]);
     if (pml3 == NULL) {
-        spinlock_unlock(&m_virt_lock);
+        irq_spinlock_unlock(&m_virt_lock, irq_state);
         return false;
     }
 
     page_entry_t* pml2 = get_next_level(&pml3[PML3_INDEX(virt)]);
     if (pml2 == NULL) {
-        spinlock_unlock(&m_virt_lock);
+        irq_spinlock_unlock(&m_virt_lock, irq_state);
         return false;
     }
 
     page_entry_t* pml1 = get_next_level(&pml2[PML2_INDEX(virt)]);
     if (pml1 == NULL) {
-        spinlock_unlock(&m_virt_lock);
+        irq_spinlock_unlock(&m_virt_lock, irq_state);
         return false;
     }
 
     // must be present already
     bool mapped = pml1[PML1_INDEX(virt)].present;
 
-    spinlock_unlock(&m_virt_lock);
+    irq_spinlock_unlock(&m_virt_lock, irq_state);
 
     return mapped;
 }

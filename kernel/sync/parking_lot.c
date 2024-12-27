@@ -76,7 +76,7 @@ static parking_lot_hash_table_t* parking_lot_new_hash_table(size_t num_threads, 
     new_hash_table->prev = prev;
 
     // initialize all the entries
-    uint64_t now = tsc_get_usecs();
+    uint64_t now = tsc_get_ns();
     for (int i = 0; i < PARKING_LOT_LOAD_FACTOR; i++) {
         new_hash_table->entries[i].fair_deadline = now;
         new_hash_table->entries[i].fair_seed = i + 1;
@@ -374,11 +374,11 @@ static uint32_t parking_lot_gen_u32(parking_lot_bucket_t* bucket) {
 }
 
 static bool parking_lot_should_be_fair(parking_lot_bucket_t* bucket) {
-    uint64_t now = tsc_get_usecs();
+    uint64_t now = tsc_get_ns();
     if (now > bucket->fair_deadline) {
         // Time between 0 and 1ms
-        uint64_t micros = parking_lot_gen_u32(bucket) % 1000;
-        bucket->fair_deadline = now + micros;
+        uint64_t nanos = parking_lot_gen_u32(bucket) % 1000000;
+        bucket->fair_deadline = now + nanos;
         return true;
     } else {
         return false;

@@ -38,36 +38,17 @@ void* memmove(void* dest, const void* src, size_t n) {
         return dest;
     }
 
-    if (dest < src || (char*)dest >= (char*)src + n) {
-        // Non-overlapping or src is before dest: copy forward
-        asm volatile (
-            "rep movsb"
-            :
-            : "D"(dest), "S"(src), "c"(n)
-            : "memory"
-        );
-    } else {
-        const char *src_rear = (const char *)src + n;
-        char *dest_rear = (char *)dest + n;
-        size_t rear_size = (size_t)((char *)src + n - (char *)dest);
-
-        // Copy rear chunks (non-overlapping region)
-        asm volatile (
-            "rep movsb"
-            :
-            : "D"(dest_rear - rear_size), "S"(src_rear - rear_size), "c"(rear_size)
-            : "memory"
-        );
-
-        // Copy the rest (overlapping region)
-        size_t overlap_size = n - rear_size;
-        asm volatile (
-            "rep movsb"
-            :
-            : "D"(dest), "S"(src), "c"(overlap_size)
-            : "memory"
-        );
+    if (dest < src) {
+        return memcpy(dest, src, n);
     }
+
+    // perform a normal slow backwards copy
+    char* d = dest;
+    const char* s = src;
+    while (n--) {
+        d[n] = s[n];
+    }
+
     return dest;
 }
 

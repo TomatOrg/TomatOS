@@ -78,9 +78,9 @@ CFLAGS			+= -Ikernel
 CFLAGS			+= -g
 
 # Debug flags
-ifeq ($(DEBUG),1)
+# ifeq ($(DEBUG),1)
 CFLAGS			+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
-endif
+# endif
 
 # We are relying on frame pointers for proper stack unwinding
 # in both managed and unmanaged environment

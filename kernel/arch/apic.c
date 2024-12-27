@@ -67,7 +67,7 @@ void init_lapic_per_core(void) {
     };
 
     // make sure timer is disabled
-    tsc_set_deadline(0);
+    tsc_disable_timeout();
 
     // set the timer, we configure it for tsc deadline
     XAPIC_LVT_TIMER = (LOCAL_APIC_LVT_TIMER){

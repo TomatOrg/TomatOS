@@ -34,6 +34,28 @@ void runnable_switch(runnable_t* from, runnable_t* to) {
 }
 
 __attribute__((naked))
+static void runnable_switch_enable_interrupts_internal(runnable_t* from, runnable_t* to) {
+    asm(
+        "movq %%rsp, %P0(%%rdi)\n"
+        "movq %P0(%%rsi), %%rsp\n"
+        "sti\n"
+        "ret"
+        :
+        : "i"(offsetof(runnable_t, rsp))
+        : "memory"
+    );
+}
+
+void runnable_switch_enable_interrupts(runnable_t* from, runnable_t* to) {
+    asm(
+        "call %P0"
+        :
+        : "i"(runnable_switch_enable_interrupts_internal), "D"(from), "S"(to)
+        : "rax", "rbx", "rcx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15", "memory"
+    );
+}
+
+__attribute__((naked))
 void runnable_resume(runnable_t* to) {
     asm(
         "movq %P0(%%rdi), %%rsp\n"

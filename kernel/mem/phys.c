@@ -112,7 +112,7 @@ static size_t m_memory_region_count;
 /**
  * spinlock to protect against the allocator accesses
  */
-static spinlock_t m_memory_region_lock = INIT_SPINLOCK();
+static irq_spinlock_t m_memory_region_lock = INIT_IRQ_SPINLOCK();
 
 /**
  * Find a region from its pointer
@@ -615,8 +615,7 @@ void* phys_alloc(size_t size) {
     }
 
     // lock and record that we are the locker
-    bool irq = irq_save();
-    spinlock_lock(&m_memory_region_lock);
+    bool irq_state = irq_spinlock_lock(&m_memory_region_lock);
     m_lock_cpu = get_cpu_id();
 
     // perform the allocation safely
@@ -627,8 +626,7 @@ void* phys_alloc(size_t size) {
 
     // remove the lock
     m_lock_cpu = -1;
-    spinlock_unlock(&m_memory_region_lock);
-    irq_restore(irq);
+    irq_spinlock_unlock(&m_memory_region_lock, irq_state);
 
     return ptr;
 }
@@ -652,8 +650,7 @@ void phys_free(void* ptr) {
         return;
     }
 
-    bool irq = irq_save();
-    spinlock_lock(&m_memory_region_lock);
+    bool irq_state = irq_spinlock_lock(&m_memory_region_lock);
 
     // get the region
     memory_region_t* region = find_region(ptr);
@@ -667,8 +664,7 @@ void phys_free(void* ptr) {
     // and now actually free it
     free_at_level(region, ptr, level);
 
-    spinlock_unlock(&m_memory_region_lock);
-    irq_restore(irq);
+    irq_spinlock_unlock(&m_memory_region_lock, irq_state);
 }
 
 void init_phys_per_cpu() {

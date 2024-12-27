@@ -45,31 +45,31 @@ static void kputchar(char c) {
     __outbyte(0xE9, c);
 }
 
-static spinlock_t m_debug_lock = INIT_SPINLOCK();
+static irq_spinlock_t m_debug_lock = INIT_IRQ_SPINLOCK();
 
 void debug_printf(const char* fmt, ...) {
-    spinlock_lock(&m_debug_lock);
+    bool irq_state = irq_spinlock_lock(&m_debug_lock);
 
     va_list args;
     va_start(args, fmt);
     kvprintf(fmt, args);
     va_end(args);
 
-    spinlock_unlock(&m_debug_lock);
+    irq_spinlock_unlock(&m_debug_lock, irq_state);
 }
 
 void debug_vprintf(const char* fmt, va_list ap) {
-    spinlock_lock(&m_debug_lock);
+    bool irq_state = irq_spinlock_lock(&m_debug_lock);
     kvprintf(fmt, ap);
-    spinlock_unlock(&m_debug_lock);
+    irq_spinlock_unlock(&m_debug_lock, irq_state);
 }
 
 void log_vprintf(const char* prefix, const char* fmt, va_list ap) {
-    spinlock_lock(&m_debug_lock);
+    bool irq_state = irq_spinlock_lock(&m_debug_lock);
 
     kprintf("%s", prefix);
     kvprintf(fmt, ap);
     kputchar('\n');
 
-    spinlock_unlock(&m_debug_lock);
+    irq_spinlock_unlock(&m_debug_lock, irq_state);
 }

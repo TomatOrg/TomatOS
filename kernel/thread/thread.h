@@ -10,7 +10,6 @@
 #include <sync/parking_lot.h>
 #include <sync/spinlock.h>
 
-#include "eevdf.h"
 #include "runnable.h"
 
 typedef void (*thread_entry_t)(void *arg);
@@ -34,7 +33,7 @@ typedef struct thread {
     thread_entry_t entry;
 
     // The node for the scheduler
-    eevdf_node_t scheduler_node;
+    list_entry_t scheduler_node;
 
     //
     // Parking lot context
