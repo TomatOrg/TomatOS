@@ -1,4 +1,8 @@
 #include "acpi.h"
+
+#include <limine_requests.h>
+#include <mem/virt.h>
+
 #include "limine.h"
 #include "lib/defs.h"
 
@@ -10,11 +14,6 @@
  * The frequency of the acpi timer
  */
 #define ACPI_TIMER_FREQUENCY  3579545
-
-/**
- * ACPI request from the bootloader
- */
-LIMINE_REQUEST struct limine_rsdp_request m_limine_request = { .id = LIMINE_RSDP_REQUEST };
 
 /**
  * The RSDP, saved for after boot
@@ -48,8 +47,8 @@ cleanup:
 err_t init_acpi() {
     err_t err = NO_ERROR;
 
-    CHECK(m_limine_request.response != NULL);
-    m_rsdp = m_limine_request.response->address;
+    CHECK(g_limine_rsdp_request.response != NULL);
+    m_rsdp = PHYS_TO_DIRECT(g_limine_rsdp_request.response->address);
 
     // calculate the size nicely
     m_rsdp_size = m_rsdp->revision >= 2 ? m_rsdp->length : 20;

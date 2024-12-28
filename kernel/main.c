@@ -1,3 +1,5 @@
+#include <limine_requests.h>
+
 #include "limine.h"
 #include "debug/log.h"
 #include "arch/gdt.h"
@@ -27,39 +29,12 @@
 #include <tomatodotnet/jit/jit.h>
 
 /**
- * Use limine base revision 1 since its the newest
- */
-LIMINE_BASE_REVISION(1);
-
-/**
- * For logging, on other reason
- */
-LIMINE_REQUEST struct limine_bootloader_info_request g_limine_bootloader_info_request = {
-    .id = LIMINE_BOOTLOADER_INFO_REQUEST,
-};
-
-LIMINE_REQUEST struct limine_smp_request g_limine_smp_request = {
-    .id = LIMINE_SMP_REQUEST
-};
-
-__attribute__((used, section(".limine_requests_delimiter")))
-static volatile LIMINE_REQUESTS_DELIMITER;
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// First thread
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-/**
  * The init thread
  */
 static thread_t* m_init_thread;
 
-LIMINE_REQUEST struct limine_module_request g_limine_modules_request = {
-    .id = LIMINE_MODULE_REQUEST
-};
-
 static struct limine_file* get_module_by_name(const char* name) {
-    struct limine_module_response* response = g_limine_modules_request.response;
+    struct limine_module_response* response = g_limine_module_request.response;
     if (response == NULL) {
         return NULL;
     }
@@ -144,7 +119,7 @@ static void halt() {
     }
 }
 
-static void smp_entry(struct limine_smp_info* info) {
+static void smp_entry(struct limine_mp_info* info) {
     err_t err = NO_ERROR;
 
     LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d", info->extra_argument, info->lapic_id);
@@ -192,13 +167,7 @@ void _start() {
     LOG("------------------------------------------------------------------------------------------------------------");
     LOG("TomatOS");
     LOG("------------------------------------------------------------------------------------------------------------");
-
-    // basic boot information
-    if (g_limine_bootloader_info_request.response != NULL) {
-        LOG_DEBUG("Bootloader: %s - %s",
-            g_limine_bootloader_info_request.response->name,
-            g_limine_bootloader_info_request.response->version);
-    }
+    limine_check_revision();
 
     // check the available string features
     string_verify_features();
@@ -219,16 +188,16 @@ void _start() {
     //
     // setup the per-cpu data of the current cpu
     //
-    if (g_limine_smp_request.response != NULL) {
-        g_cpu_count = g_limine_smp_request.response->cpu_count;
+    if (g_limine_mp_request.response != NULL) {
+        g_cpu_count = g_limine_mp_request.response->cpu_count;
 
         // allocate all the storage needed
-        RETHROW(pcpu_init(g_limine_smp_request.response->cpu_count));
+        RETHROW(pcpu_init(g_limine_mp_request.response->cpu_count));
 
         // now find the correct cpu id and set it
         bool found = false;
-        for (int i = 0; i < g_limine_smp_request.response->cpu_count; i++) {
-            if (g_limine_smp_request.response->cpus[i]->lapic_id == g_limine_smp_request.response->bsp_lapic_id) {
+        for (int i = 0; i < g_limine_mp_request.response->cpu_count; i++) {
+            if (g_limine_mp_request.response->cpus[i]->lapic_id == g_limine_mp_request.response->bsp_lapic_id) {
                 pcpu_init_per_core(i);
                 found = true;
                 break;
@@ -271,8 +240,8 @@ void _start() {
     RETHROW(scheduler_init());
 
     // perform cpu startup
-    if (g_limine_smp_request.response != NULL) {
-        struct limine_smp_response* response = g_limine_smp_request.response;
+    if (g_limine_mp_request.response != NULL) {
+        struct limine_mp_response* response = g_limine_mp_request.response;
 
         LOG("smp: Starting CPUs (%d)", g_cpu_count);
 

@@ -80,10 +80,10 @@ void debug_create_symbol(const char* name, uintptr_t addr, size_t size) {
 /**
  * we need the elf so we can properly load the symbols
  */
-extern struct limine_kernel_file_request g_limine_kernel_file_request;
+extern struct limine_executable_file_request g_limine_executable_file_request;
 
 void debug_load_symbols() {
-    void* kernel = g_limine_kernel_file_request.response->kernel_file->address;
+    void* kernel = g_limine_executable_file_request.response->executable_file->address;
 
     Elf64_Ehdr* ehdr = kernel;
     Elf64_Shdr* symtab = NULL;

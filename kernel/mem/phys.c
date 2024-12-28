@@ -1,5 +1,7 @@
 #include "phys.h"
 
+#include <limine_requests.h>
+
 #include "lib/string.h"
 #include "lib/except.h"
 #include "lib/list.h"
@@ -9,10 +11,6 @@
 #include "limine.h"
 #include "thread/pcpu.h"
 
-LIMINE_REQUEST struct limine_memmap_request g_limine_memmap_request = {
-    .id = LIMINE_MEMMAP_REQUEST
-};
-
 static const char* m_limine_memmap_type_str[] = {
     [LIMINE_MEMMAP_USABLE] = "Usable",
     [LIMINE_MEMMAP_RESERVED] = "Reserved",
@@ -20,7 +18,7 @@ static const char* m_limine_memmap_type_str[] = {
     [LIMINE_MEMMAP_ACPI_NVS] = "ACPI NVS",
     [LIMINE_MEMMAP_BAD_MEMORY] = "Bad Memory",
     [LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE] = "Bootloader Reclaimable",
-    [LIMINE_MEMMAP_KERNEL_AND_MODULES] = "Kernel and Modules",
+    [LIMINE_MEMMAP_EXECUTABLE_AND_MODULES] = "Executable and Modules",
     [LIMINE_MEMMAP_FRAMEBUFFER] = "Framebuffer",
 };
 
@@ -154,10 +152,12 @@ static void* allocate_from_level(memory_region_t* region, int level) {
         // the next is the new allocation
         block = freelist->next;
 
+#ifdef __DEBUG__
         for (int i = sizeof(list_entry_t); i < 1 << (block_at_level + 12); i++) {
             uint8_t* ptr = (uint8_t*)block;
             ASSERT(ptr[i] == 0xAA);
         }
+#endif
 
         // and we can remove it
         list_del(block);
@@ -244,7 +244,9 @@ static void free_at_level(memory_region_t* region, void* ptr, int level) {
     metadata->free = true;
 
     // we now know the correct level, add the ptr to it
+#ifdef __DEBUG__
     memset(ptr, 0xAA, 1 << (level + 12));
+#endif
     list_entry_t* ptr_entry = ptr;
     list_add(&region->free_list[level], ptr_entry);
 }
@@ -335,7 +337,7 @@ static err_t create_memory_regions(void) {
                 }
 
             case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
-            case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+            case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
             case LIMINE_MEMMAP_ACPI_RECLAIMABLE: {
                 total_usable_pages += (entry->length / PAGE_SIZE);
 
@@ -386,7 +388,7 @@ static err_t create_memory_regions(void) {
         switch (entry->type) {
             case LIMINE_MEMMAP_USABLE:
             case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
-            case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+            case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
             case LIMINE_MEMMAP_ACPI_RECLAIMABLE: {
                 size_t page_count = entry->length / PAGE_SIZE;
 
@@ -468,10 +470,10 @@ err_t init_phys_mappings() {
                 break;
 
             // readonly mappings
-            case LIMINE_MEMMAP_RESERVED:
             case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
             case LIMINE_MEMMAP_ACPI_NVS:
-            case LIMINE_MEMMAP_KERNEL_AND_MODULES:
+            case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
+            case LIMINE_MEMMAP_RESERVED:
                 break;
 
             // map as Write Combining
@@ -494,10 +496,7 @@ err_t init_phys_mappings() {
         void* virt_base = PHYS_TO_DIRECT(phys_base);
         void* virt_end = PHYS_TO_DIRECT(ALIGN_UP(entry->base + entry->length, PAGE_SIZE));
         RETHROW(virt_map_range(phys_base, (uintptr_t)virt_base, (virt_end - virt_base) / PAGE_SIZE, flags));
-}
-
-    // Map the APIC as well
-    RETHROW(virt_map_page(0xFEE00000, (uintptr_t)PHYS_TO_DIRECT(0xFEE00000), MAP_PERM_W));
+    }
 
 cleanup:
     return err;
@@ -590,7 +589,6 @@ static void fill_irq_alloc() {
             LOG_WARN("phys: out of memory to fill the reserved pages pool");
             return;
         }
-        memset(page, 0, PAGE_SIZE);
         m_reserved_page = page;
     }
 }
@@ -638,9 +636,9 @@ void* early_phys_alloc(size_t size) {
         return NULL;
     }
 
-    bool irq = irq_save();
+    bool irq_state = irq_spinlock_lock(&m_memory_region_lock);
     void* ptr = internal_phys_alloc(level);
-    irq_restore(irq);
+    irq_spinlock_unlock(&m_memory_region_lock, irq_state);
 
     return ptr;
 }
@@ -669,5 +667,7 @@ void phys_free(void* ptr) {
 
 void init_phys_per_cpu() {
     // make sure we have an available reserved page
+    bool irq_state = irq_spinlock_lock(&m_memory_region_lock);
     fill_irq_alloc();
+    irq_spinlock_unlock(&m_memory_region_lock, irq_state);
 }

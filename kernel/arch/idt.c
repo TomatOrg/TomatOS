@@ -338,6 +338,7 @@ static void default_exception_handler(exception_context_t* ctx) {
     if (__rdmsr(MSR_IA32_FS_BASE) != 0) {
         thread_t* thread = scheduler_get_current_thread();
         if (thread != NULL) {
+            LOG_ERROR("%p", thread);
             LOG_ERROR("Thread: `%.*s`", sizeof(thread->name), thread->name);
         } else {
             LOG_ERROR("Thread: <none>");

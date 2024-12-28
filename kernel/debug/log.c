@@ -10,14 +10,8 @@
 #include <flanterm.h>
 
 #include <limine.h>
+#include <limine_requests.h>
 #include <lib/printf.h>
-
-/**
- * The framebuffer request
- */
-LIMINE_REQUEST struct limine_framebuffer_request g_limine_framebuffer_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST,
-};
 
 /**
  * The flanterm context used for early debugging

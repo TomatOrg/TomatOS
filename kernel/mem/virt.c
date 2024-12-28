@@ -1,6 +1,7 @@
 #include "lib/elf64.h"
 #include "virt.h"
 
+#include <limine_requests.h>
 #include <arch/regs.h>
 
 #include "arch/intrin.h"
@@ -9,19 +10,6 @@
 #include "phys.h"
 #include "sync/spinlock.h"
 #include "lib/string.h"
-
-
-LIMINE_REQUEST struct limine_kernel_address_request g_limine_kernel_address_request = {
-    .id = LIMINE_KERNEL_ADDRESS_REQUEST
-};
-
-LIMINE_REQUEST struct limine_hhdm_request g_limine_hhdm_request = {
-    .id = LIMINE_HHDM_REQUEST
-};
-
-LIMINE_REQUEST struct limine_kernel_file_request g_limine_kernel_file_request = {
-    .id = LIMINE_KERNEL_FILE_REQUEST
-};
 
 /**
  * The virtual base of the kernel
@@ -47,9 +35,9 @@ err_t init_virt_early() {
     err_t err = NO_ERROR;
 
     // get the base and address
-    CHECK(g_limine_kernel_address_request.response != NULL);
-    m_kernel_virtual_base = g_limine_kernel_address_request.response->virtual_base;
-    m_kernel_physical_base = g_limine_kernel_address_request.response->physical_base;
+    CHECK(g_limine_executable_address_request.response != NULL);
+    m_kernel_virtual_base = g_limine_executable_address_request.response->virtual_base;
+    m_kernel_physical_base = g_limine_executable_address_request.response->physical_base;
 
     // make sure the kernel is at the correct virtual address
     CHECK(m_kernel_virtual_base >= 0xFFFFFFFF800000);
@@ -250,8 +238,8 @@ err_t init_virt() {
     // hard)
     //
     LOG_INFO("memory: Kernel mappings");
-    CHECK(g_limine_kernel_file_request.response != NULL);
-    void* elf_base = g_limine_kernel_file_request.response->kernel_file->address;
+    CHECK(g_limine_executable_file_request.response != NULL);
+    void* elf_base = g_limine_executable_file_request.response->executable_file->address;
     Elf64_Ehdr* ehdr = elf_base;
     Elf64_Phdr* phdrs = elf_base + ehdr->e_phoff;
     for (int i = 0; i < ehdr->e_phnum; i++) {

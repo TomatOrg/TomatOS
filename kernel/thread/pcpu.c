@@ -10,7 +10,7 @@
 /**
  * we need the elf so we can properly allocate the pcpu segment
  */
-extern struct limine_kernel_file_request g_limine_kernel_file_request;
+extern struct limine_executable_file_request g_limine_executable_file_request;
 
 /**
  * The id of the current cpu
@@ -31,7 +31,7 @@ err_t pcpu_init(int cpu_count) {
     err_t err = NO_ERROR;
 
     // get the TLS segment
-    void* elf_base = g_limine_kernel_file_request.response->kernel_file->address;
+    void* elf_base = g_limine_executable_file_request.response->executable_file->address;
     Elf64_Ehdr* ehdr = elf_base;
     Elf64_Phdr* phdrs = elf_base + ehdr->e_phoff;
     Elf64_Phdr* phdr = NULL;

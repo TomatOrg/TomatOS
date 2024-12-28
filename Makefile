@@ -55,7 +55,7 @@ COMMON_FLAGS	+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
 COMMON_FLAGS	+= -mcmodel=kernel -mno-red-zone
 COMMON_FLAGS	+= -nostdlib
 COMMON_FLAGS	+= -flto
-COMMON_FLAGS	+= -fno-omit-frame-pointer
+COMMON_FLAGS	+= -fno-omit-frame-pointer -fvisibility=hidden
 
 # Optimization flags
 ifeq ($(OPTIMIZE),1)
@@ -76,6 +76,7 @@ CFLAGS			+= -Wall -Werror -std=gnu11
 CFLAGS 			+= -Wno-address-of-packed-member
 CFLAGS			+= -Ikernel
 CFLAGS			+= -g
+CFLAGS			+= -DLIMINE_API_REVISION=2
 
 # Debug flags
 # ifeq ($(DEBUG),1)
@@ -86,6 +87,7 @@ CFLAGS			+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
 # in both managed and unmanaged environment
 CFLAGS 			+=
 CFLAGS			+= -Ilib/flanterm
+CFLAGS			+= -Ilib/buddy_alloc -DBUDDY_HEADER
 CFLAGS			+= -I$(BUILD_DIR)/limine
 
 # Things required by TDN
@@ -147,11 +149,12 @@ $(BIN_DIR)/$(KERNEL).elf: Makefile kernel/linker.ld $(OBJS)
 $(OBJS_DIR)/%.c.o: %.c Makefile $(BUILD_DIR)/limine/limine.h
 	@echo CC $@
 	@mkdir -p $(@D)
-	@$(CC) -MMD $(CFLAGS) -c $< -o $@
+	@$(CC) -MMD -MP $(CFLAGS) -c $< -o $@
 
 .PHONY: clean
 clean:
 	rm -rf $(OBJS_DIR) $(BIN_DIR)
+	$(MAKE) -C lib/TomatoDotNet clean
 
 .PHONY: distclean
 distclean: clean
