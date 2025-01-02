@@ -108,8 +108,6 @@ static void set_cpu_features() {
     // TODO: enable all speculation that we want
 
     // TODO: enable all the extensions that we want to support
-
-    init_lapic_per_core();
 }
 
 static void halt() {
@@ -140,6 +138,7 @@ static void smp_entry(struct limine_mp_info* info) {
     RETHROW(init_tss());
 
     // and now we can init
+    init_lapic_per_core();
     RETHROW(scheduler_init_per_core());
 
     // we are done
@@ -240,37 +239,39 @@ void _start() {
     RETHROW(scheduler_init());
 
     // perform cpu startup
-    if (g_limine_mp_request.response != NULL) {
-        struct limine_mp_response* response = g_limine_mp_request.response;
+    CHECK(g_limine_mp_request.response != NULL);
+    struct limine_mp_response* response = g_limine_mp_request.response;
 
-        LOG("smp: Starting CPUs (%d)", g_cpu_count);
+    RETHROW(init_lapic());
 
-        for (size_t i = 0; i < g_cpu_count; i++) {
-            if (response->cpus[i]->lapic_id == response->bsp_lapic_id) {
-                LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
+    LOG("smp: Starting CPUs (%d)", g_cpu_count);
 
-                // allocate the per-cpu storage now that we know our id
-                RETHROW(scheduler_init_per_core());
+    for (size_t i = 0; i < g_cpu_count; i++) {
+        if (response->cpus[i]->lapic_id == response->bsp_lapic_id) {
+            LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
 
-                m_smp_count++;
-            } else {
-                // start it up
-                response->cpus[i]->extra_argument = i;
-                response->cpus[i]->goto_address = smp_entry;
+            // allocate the per-cpu storage now that we know our id
+            init_lapic_per_core();
+            RETHROW(scheduler_init_per_core());
 
-                while (m_smp_count != i + 1) {
-                    cpu_relax();
-                }
+            m_smp_count++;
+        } else {
+            // start it up
+            response->cpus[i]->extra_argument = i;
+            response->cpus[i]->goto_address = smp_entry;
+
+            while (m_smp_count != i + 1) {
+                cpu_relax();
             }
         }
-
-        // wait for smp to finish up
-        // TODO: timeout?
-        while (m_smp_count != g_cpu_count) {
-            cpu_relax();
-        }
-        LOG_DEBUG("smp: Finished SMP startup");
     }
+
+    // wait for smp to finish up
+    // TODO: timeout?
+    while (m_smp_count != g_cpu_count) {
+        cpu_relax();
+    }
+    LOG_DEBUG("smp: Finished SMP startup");
 
     // we are about done, create the init thread and queue it
     m_init_thread = thread_create(init_thread_entry, NULL, "init thread");

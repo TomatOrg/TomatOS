@@ -112,6 +112,18 @@ static inline INTRIN_ATTR void __monitor(uintptr_t eax, uintptr_t ecx, uintptr_t
 
 #define MSR_IA32_APIC_BASE 0x0000001B
 
+typedef union {
+    struct {
+        uint64_t : 8;
+        uint64_t bsp : 1;
+        uint64_t : 1;
+        uint64_t extd : 1;
+        uint64_t en : 1;
+        uint64_t apic_base : 52;
+    };
+    uint64_t packed;
+} MSR_IA32_APIC_BASE_REGISTER;
+
 #define MSR_IA32_TSC_DEADLINE  0x000006E0
 
 static inline INTRIN_ATTR void __wrmsr(uint32_t index, uint64_t value) {

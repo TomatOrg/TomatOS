@@ -56,13 +56,11 @@ void init_tsc() {
 //
 
 uint64_t tsc_set_timeout(uint64_t timeout) {
-    asm("mfence; lfence");
     uint64_t deadline = get_tsc() + timeout;
     __wrmsr(MSR_IA32_TSC_DEADLINE, deadline);
     return deadline;
 }
 
 void tsc_disable_timeout(void) {
-    asm("mfence; lfence");
     __wrmsr(MSR_IA32_TSC_DEADLINE, 0);
 }

@@ -1,6 +1,12 @@
 #pragma once
 
 #include <stdint.h>
+#include <lib/except.h>
+
+/**
+ * Initialize the APIC globally
+ */
+err_t init_lapic(void);
 
 /**
  * Initialize the APIC per core

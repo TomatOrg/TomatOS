@@ -66,7 +66,7 @@ __attribute__((section(".limine_requests")))
 volatile struct limine_mp_request g_limine_mp_request = {
     .id = LIMINE_MP_REQUEST,
     .revision = 0, .response = NULL,
-    .flags = 0
+    .flags = LIMINE_MP_X2APIC
 };
 
 __attribute__((used, section(".limine_requests_end_marker")))
