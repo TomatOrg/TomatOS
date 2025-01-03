@@ -12,11 +12,13 @@ typedef struct mutex {
     _Atomic(uint8_t) state;
 } mutex_t;
 
-bool mutex_lock_slow(mutex_t* mutex, uint64_t deadline);
+#define INIT_MUTEX() ((mutex_t){ .state = 0 })
+
+bool mutex_lock_slow(mutex_t* mutex, uint64_t ns_deadline);
 void mutex_unlock_slow(mutex_t* mutex);
 
 static inline void mutex_lock(mutex_t* mutex) {
-    uint8_t zero;
+    uint8_t zero = 0;
     if (!atomic_compare_exchange_weak_explicit(
         &mutex->state,
         &zero, MUTEX_LOCKED,
@@ -61,4 +63,15 @@ static inline void mutex_unlock(mutex_t* mutex) {
     mutex_unlock_slow(mutex);
 }
 
-// TODO: lock until/for
+static inline bool mutex_try_lock_until(mutex_t* mutex, uint64_t ns_deadline) {
+    uint8_t zero = 0;
+    if (atomic_compare_exchange_weak_explicit(
+        &mutex->state,
+        &zero, MUTEX_LOCKED,
+        memory_order_acquire, memory_order_relaxed
+    )) {
+        return true;
+    } else {
+        return mutex_lock_slow(mutex, ns_deadline);
+    }
+}

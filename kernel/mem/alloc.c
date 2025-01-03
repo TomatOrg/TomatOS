@@ -19,7 +19,7 @@ typedef struct alloc_region {
     spinlock_t lock;
 
     // already allocated blocks that can be used
-    list_t freelist;
+    void** freelist;
 
     // the watermark in the region
     void* watermark;
@@ -37,7 +37,7 @@ static alloc_region_t m_mem_global_regions[24];
 void init_alloc(void) {
     for (int i = 0; i < ARRAY_LENGTH(m_mem_global_regions); i++) {
         alloc_region_t* order = &m_mem_global_regions[i];
-        list_init(&order->freelist);
+        order->freelist = NULL;
         order->lock = INIT_SPINLOCK();
         order->watermark = (void*)ALLOC_REGION_BOTTOM(i);
         order->top = (void*)ALLOC_REGION_TOP(i);
@@ -66,8 +66,10 @@ void* mem_alloc(size_t size) {
 
     // pop a block from the region
     spinlock_lock(&region->lock);
-    void* block = list_pop(&region->freelist);
-    if (block == NULL && region->watermark < region->top) {
+    void** block = region->freelist;
+    if (block != NULL) {
+        region->freelist = *block;
+    } else if (region->watermark < region->top) {
         block = region->watermark;
         region->watermark += aligned_size;
     }
@@ -114,11 +116,17 @@ void* mem_realloc(void* ptr, size_t size) {
 }
 
 void mem_free(void* ptr) {
-    // int order = ((uintptr_t)ptr - 0xFFFFC00000000000ULL) / SIZE_512GB;
-    // alloc_region_t* region = &m_mem_global_regions[order];
-    //
-    // // push a the pointer back
-    // spinlock_lock(&region->lock);
-    // list_add(&region->freelist, ptr);
-    // spinlock_unlock(&region->lock);
+    if (ptr == NULL) {
+        return;
+    }
+
+    int order = ((uintptr_t)ptr - 0xFFFFC00000000000ULL) / SIZE_512GB;
+    alloc_region_t* region = &m_mem_global_regions[order];
+
+    // push a the pointer back
+    spinlock_lock(&region->lock);
+    void** block = ptr;
+    *block = region->freelist;
+    region->freelist = block;
+    spinlock_unlock(&region->lock);
 }

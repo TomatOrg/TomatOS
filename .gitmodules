@@ -4,3 +4,6 @@
 [submodule "lib/TomatoDotNet"]
 	path = lib/TomatoDotNet
 	url = git@github.com:TomatOrg/TomatoDotNet.git
+[submodule "lib/uACPI"]
+	path = lib/uACPI
+	url = git@github.com:UltraOS/uACPI.git

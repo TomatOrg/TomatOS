@@ -95,6 +95,8 @@ typedef union selector_error_code {
  */
 static void common_exception_handler(exception_context_t* ctx);
 
+#if 0
+
 #define EXCEPTION_STUB(num) \
     __attribute__((naked)) \
     static void exception_handler_##num() { \
@@ -111,6 +113,40 @@ static void common_exception_handler(exception_context_t* ctx);
             "pushq $" #num "\n" \
             "jmp common_exception_stub"); \
     }
+
+#else
+
+#define EXCEPTION_STUB(num) \
+    __attribute__((interrupt)) \
+    static void exception_handler_##num(interrupt_frame_t* frame) { \
+        exception_context_t ctx = { \
+            .cs = frame->cs, \
+            .rip = frame->rip, \
+            .rflags = frame->rflags, \
+            .rsp = frame->rsp, \
+            .ss = frame->ss, \
+            .int_num = num \
+        }; \
+        common_exception_handler(&ctx); \
+    }
+
+#define EXCEPTION_ERROR_STUB(num) \
+    __attribute__((interrupt)) \
+    static void exception_handler_##num(interrupt_frame_t* frame, uint64_t error_code) { \
+        exception_context_t ctx = { \
+            .cs = frame->cs, \
+            .rip = frame->rip, \
+            .rflags = frame->rflags, \
+            .rsp = frame->rsp, \
+            .ss = frame->ss, \
+            .int_num = num, \
+            .error_code = error_code \
+        }; \
+        common_exception_handler(&ctx); \
+    }
+
+
+#endif
 
 EXCEPTION_STUB(0x00);
 EXCEPTION_STUB(0x01);

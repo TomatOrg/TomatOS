@@ -7,7 +7,12 @@
  * Initialize the early acpi subsystem, should just be enough for
  * doing whatever we need to do
  */
-err_t init_acpi();
+err_t init_acpi(void);
+
+/**
+ * Initialize ACPI mode
+ */
+err_t init_acpi_mode(void);
 
 /**
  * Stall for the given amount of NS

@@ -27,6 +27,7 @@
 
 #include <tomatodotnet/tdn.h>
 #include <tomatodotnet/jit/jit.h>
+#include <uacpi/kernel_api.h>
 
 /**
  * The init thread
@@ -53,6 +54,9 @@ static void init_thread_entry(void* arg) {
      err_t err = NO_ERROR;
 
      LOG_INFO("Init thread started");
+
+    // now initialize acpi mode properly
+    RETHROW(init_acpi_mode());
 
      // initialize the garbage collector
      gc_init();

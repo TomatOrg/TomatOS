@@ -342,6 +342,11 @@ bool virt_handle_page_fault(uintptr_t addr) {
         // stack
         CHECK(ALIGN_DOWN(addr, SIZE_32KB) + SIZE_4KB <= addr);
 
+    } else if (DIRECT_MAP_OFFSET <= addr && addr < DIRECT_MAP_OFFSET + SIZE_512GB) {
+        // direct map will read pages on demand
+        RETHROW(virt_map_page(DIRECT_TO_PHYS(addr), addr & ~PAGE_MASK, MAP_PERM_W));
+        return true;
+
     } else {
         // unknown area, just return false
         return false;

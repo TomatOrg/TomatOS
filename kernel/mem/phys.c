@@ -464,16 +464,16 @@ err_t init_phys_mappings() {
         map_flags_t flags = 0;
         switch (entry->type) {
             // read-write memory
+            case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
+            case LIMINE_MEMMAP_ACPI_NVS:
+            case LIMINE_MEMMAP_RESERVED:
             case LIMINE_MEMMAP_USABLE:
             case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE:
                 flags = MAP_PERM_W;
                 break;
 
             // readonly mappings
-            case LIMINE_MEMMAP_ACPI_RECLAIMABLE:
-            case LIMINE_MEMMAP_ACPI_NVS:
             case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
-            case LIMINE_MEMMAP_RESERVED:
                 break;
 
             // map as Write Combining

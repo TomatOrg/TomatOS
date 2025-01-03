@@ -210,6 +210,59 @@ static parking_lot_bucket_t* parking_lot_lock_bucket(size_t key) {
     }
 }
 
+typedef struct bucket_pair {
+    parking_lot_bucket_t* bucket1;
+    parking_lot_bucket_t* bucket2;
+} bucket_pair_t;
+
+
+static inline bucket_pair_t parking_lot_lock_bucket_pair(size_t key1, size_t key2) {
+    for (;;) {
+        parking_lot_hash_table_t* hashtable = parking_lot_get_hash_table();
+
+        uint64_t hash1 = parking_lot_hash(key1, hashtable->hash_bits);
+        uint64_t hash2 = parking_lot_hash(key2, hashtable->hash_bits);
+
+        // Get the bucket at the lowest hash/index first
+        parking_lot_bucket_t* bucket1;
+        if (hash1 <= hash2) {
+            bucket1 = &hashtable->entries[hash1];
+        } else {
+            bucket1 = &hashtable->entries[hash2];
+        }
+
+        // Lock the bucket
+        word_lock_lock(&bucket1->mutex);
+
+        // If no other thread has rehashed the table before we grabbed the lock
+        // then we are good to go! The lock we grabbed prevents any rehashes.
+        if (atomic_load_explicit(&m_parking_lot_hash_table, memory_order_relaxed) == hashtable) {
+            // Now lock the second bucket and return the two buckets
+            if (hash1 == hash2) {
+                return (bucket_pair_t){ bucket1, bucket1 };
+            } else if (hash1 < hash2) {
+                parking_lot_bucket_t* bucket2 = &hashtable->entries[hash2];
+                word_lock_lock(&bucket2->mutex);
+                return (bucket_pair_t){ bucket1, bucket2 };
+            } else {
+                parking_lot_bucket_t* bucket2 = &hashtable->entries[hash1];
+                word_lock_lock(&bucket2->mutex);
+                return (bucket_pair_t){ bucket2, bucket1 };
+            }
+        }
+
+        // Unlock the bucket and try again
+        word_lock_unlock(&bucket1->mutex);
+    }
+}
+
+static inline void parking_lot_unlock_bucket_pair(parking_lot_bucket_t* bucket1, parking_lot_bucket_t* bucket2) {
+    word_lock_unlock(&bucket1->mutex);
+    if (bucket1 != bucket2) {
+        word_lock_unlock(&bucket2->mutex);
+    }
+}
+
 /**
  * Locks the bucket for the given key and returns a reference to it. But checks that the key
  * hasn't been changed in the meantime due to a requeue.
@@ -246,7 +299,7 @@ park_result_t parking_lot_park(
     parking_lot_park_timed_out_t timed_out,
     void* arg,
     size_t park_token,
-    uint64_t deadline
+    uint64_t ns_deadline
 ) {
     // get the thread, if it was not seen before increment the load
     thread_t* thread = scheduler_get_current_thread();
@@ -266,7 +319,7 @@ park_result_t parking_lot_park(
     }
 
     // Append our thread to the queue and unlock the bucket
-    thread->parked_with_timeout = deadline != 0;
+    thread->parked_with_timeout = ns_deadline != 0;
     thread->park_next_in_queue = NULL;
     thread->park_key = key;
     thread->park_token = park_token;
@@ -287,7 +340,7 @@ park_result_t parking_lot_park(
     // or by our timeout. Note that this isn't precise, we can still be unparked
     // since we are still in the queue
     bool unparked = false;
-    if (deadline != 0) {
+    if (ns_deadline != 0) {
         ASSERT(!"TODO: park with deadline");
     } else {
         scheduler_park();
@@ -387,7 +440,7 @@ static bool parking_lot_should_be_fair(parking_lot_bucket_t* bucket) {
 
 unpark_result_t parking_lot_unpark_one(
     size_t key,
-    parking_lot_unpark_callback callback,
+    parking_lot_unpark_callback_t callback,
     void* arg
 ) {
     // Lock the bucket for the given key
@@ -409,13 +462,12 @@ unpark_result_t parking_lot_unpark_one(
             } else {
                 // Scan the rest of the queue to see if there are any other
                 // entries with the given key.
-                thread_t* scan = next;
-                while (scan != NULL) {
+
+                for (thread_t* scan = next; scan != NULL; scan = scan->park_next_in_queue) {
                     if (atomic_load_explicit(&scan->park_key, memory_order_relaxed) == key) {
                         result.have_more_threads = true;
                         break;
                     }
-                    scan = scan->park_next_in_queue;
                 }
             }
 
@@ -427,7 +479,7 @@ unpark_result_t parking_lot_unpark_one(
             // Set the token for the target thread
             current->unpark_token = token;
 
-            // unpark the current
+            // wakeup the thread
             scheduler_wakeup_thread(current);
 
             // unlock the bucket
@@ -445,6 +497,112 @@ unpark_result_t parking_lot_unpark_one(
     // No threads with matching key were found in the bucket
     callback(arg, result);
     word_lock_unlock(&bucket->mutex);
+
+    return result;
+}
+
+unpark_result_t parking_lot_unpark_requeue(
+    size_t key_from,
+    size_t key_to,
+    parking_lot_unpark_requeue_validate_t validate,
+    parking_lot_unpark_requeue_callback_t callback,
+    void* arg
+) {
+    // Lock the two buckets for the given key
+    bucket_pair_t pair = parking_lot_lock_bucket_pair(key_from, key_to);
+    parking_lot_bucket_t* bucket_from = pair.bucket1;
+    parking_lot_bucket_t* bucket_to = pair.bucket2;
+
+    // If the validation function fails, just return
+    unpark_result_t result = {};
+    requeue_op_t op = validate(arg);
+    if (op == REQUEUE_OP_ABORT) {
+        parking_lot_unlock_bucket_pair(bucket_from, bucket_to);
+        return result;
+    }
+
+    // Remove all threads with the given key in the source bucket
+    thread_t** link = &bucket_from->queue_head;
+    thread_t* current = bucket_from->queue_head;
+    thread_t* previous = NULL;
+    thread_t* requeue_threads = NULL;
+    thread_t* requeue_threads_tail = NULL;
+    thread_t* wakeup_thread = NULL;
+    while (current != NULL) {
+        if (atomic_load_explicit(&current->park_key, memory_order_relaxed) == key_from) {
+            // Remove the thread from the queue
+            thread_t* next = current->park_next_in_queue;
+            *link = next;
+            if (bucket_from->queue_tail == current) {
+                bucket_from->queue_tail = previous;
+            }
+
+            // Prepare the first thread for wakeup and requeue the rest.
+            if (
+                (op == REQUEUE_OP_UNPARK_ONE_REQUEUE_REST || op == REQUEUE_OP_UNPARK_ONE) &&
+                wakeup_thread == NULL
+            ) {
+                wakeup_thread = current;
+                result.unparked_threads = 1;
+            } else {
+                if (requeue_threads != NULL) {
+                    requeue_threads_tail->park_next_in_queue = current;
+                } else {
+                    requeue_threads = current;
+                }
+
+                requeue_threads_tail = current;
+                atomic_store_explicit(&current->park_key, key_to, memory_order_relaxed);
+                result.requeued_threads++;
+            }
+
+            if (op == REQUEUE_OP_UNPARK_ONE || op == REQUEUE_OP_REQUEUE_ONE) {
+                // Scan the rest of the queue to see if there are any other
+                // entries with the given key.
+
+                for (thread_t* scan = next; scan != NULL; scan = scan->park_next_in_queue) {
+                    if (atomic_load_explicit(&scan->park_key, memory_order_relaxed) == key_from) {
+                        result.have_more_threads = true;
+                        break;
+                    }
+                }
+                break;
+            }
+
+            current = next;
+        } else {
+            link = &current->park_next_in_queue;
+            previous = current;
+            current = *link;
+        }
+    }
+
+    // Add the requeued threads to the destination bucket
+    if (requeue_threads != NULL) {
+        requeue_threads_tail->park_next_in_queue = NULL;
+        if (bucket_to->queue_head != NULL) {
+            bucket_to->queue_tail->park_next_in_queue = requeue_threads;
+        } else {
+            bucket_to->queue_head = requeue_threads;
+        }
+        bucket_to->queue_tail = requeue_threads_tail;
+    }
+
+    // Invoke the callback before waking up the thread
+    if (result.unparked_threads != 0) {
+        result.be_fair = parking_lot_should_be_fair(bucket_from);
+    }
+    size_t token = callback(arg, op, result);
+
+    // See comment in unpark_one for why we mess with the locking
+    if (wakeup_thread != NULL) {
+        wakeup_thread->unpark_token = token;
+        scheduler_wakeup_thread(wakeup_thread);
+        parking_lot_unlock_bucket_pair(bucket_from, bucket_to);
+
+    } else {
+        parking_lot_unlock_bucket_pair(bucket_from, bucket_to);
+    }
 
     return result;
 }

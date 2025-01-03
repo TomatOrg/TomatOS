@@ -12,7 +12,7 @@ KERNEL			:= tomatos
 #-----------------------------------------------------------------------------------------------------------------------
 
 # Are we compiling as debug or not 
-DEBUG 			?= 1
+DEBUG 			?= 0
 
 ifeq ($(DEBUG),1)
 OPTIMIZE		?= 0
@@ -40,42 +40,42 @@ AR				:= llvm-ar
 LD				:= ld.lld
 
 ifeq ($(DEBUG),1)
-TDN_BIN_DIR	:= lib/TomatoDotNet/out/debug/bin
+TDN_BIN_DIR		:= lib/TomatoDotNet/out/debug/bin
 else
-TDN_BIN_DIR	:= lib/TomatoDotNet/out/release/bin
+TDN_BIN_DIR		:= lib/TomatoDotNet/out/release/bin
 endif
 
 #
 # Common compilation flags, also passed to the libraries
 # 
-COMMON_FLAGS	:= -target x86_64-pc-none-elf
-COMMON_FLAGS	+= -mgeneral-regs-only
-COMMON_FLAGS	+= -march=x86-64-v3
-COMMON_FLAGS	+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
-COMMON_FLAGS	+= -mcmodel=kernel -mno-red-zone
-COMMON_FLAGS	+= -nostdlib
-COMMON_FLAGS	+= -flto
-COMMON_FLAGS	+= -fno-omit-frame-pointer -fvisibility=hidden
+COMMON_CFLAGS	:= -target x86_64-pc-none-elf
+COMMON_CFLAGS	+= -mgeneral-regs-only
+COMMON_CFLAGS	+= -march=x86-64-v3
+COMMON_CFLAGS	+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
+COMMON_CFLAGS	+= -mcmodel=kernel -mno-red-zone
+COMMON_CFLAGS	+= -nostdlib
+COMMON_CFLAGS	+= -flto -g
+COMMON_CFLAGS	+= -fno-omit-frame-pointer -fvisibility=hidden
+COMMON_CFLAGS 	+= -DUACPI_FORMATTED_LOGGING -DUACPI_OVERRIDE_LIBC
 
 # Optimization flags
 ifeq ($(OPTIMIZE),1)
-COMMON_FLAGS	+= -Os
+COMMON_CFLAGS	+= -O3
 else
-COMMON_FLAGS	+= -O0
+COMMON_CFLAGS	+= -O0
 endif
 
 # Debug flags
 ifeq ($(DEBUG),1)
-COMMON_FLAGS	+= -fsanitize=undefined
-COMMON_FLAGS 	+= -fno-sanitize=alignment
+COMMON_CFLAGS	+= -fsanitize=undefined
+COMMON_CFLAGS 	+= -fno-sanitize=alignment
 endif
 
 # Our compilation flags
-CFLAGS			:= $(COMMON_FLAGS)
+CFLAGS			:= $(COMMON_CFLAGS)
 CFLAGS			+= -Wall -Werror -std=gnu11
 CFLAGS 			+= -Wno-address-of-packed-member
 CFLAGS			+= -Ikernel
-CFLAGS			+= -g
 CFLAGS			+= -DLIMINE_API_REVISION=2
 
 # Debug flags
@@ -94,6 +94,9 @@ CFLAGS			+= -I$(BUILD_DIR)/limine
 CFLAGS			+= -fms-extensions -Wno-microsoft
 CFLAGS			+= -Ilib/TomatoDotNet/include
 CFLAGS			+= -Ilib/TomatoDotNet/libs/spidir/c-api/include
+
+# uACPI
+CFLAGS 			+= -Ilib/uACPI/include
 
 ifeq ($(DEBUG),1)
 CFLAGS			+= -D__DEBUG__
@@ -127,6 +130,7 @@ DEPS		:= $(addprefix $(OBJS_DIR)/,$(SRCS:.c=.c.d))
 
 # Link against TomatoDotNet
 OBJS 		+= $(TDN_BIN_DIR)/libtdn.a
+OBJS 		+= $(BIN_DIR)/libuacpi.a
 
 # The C# DLLs we need
 DLLS		:= $(BIN_DIR)/Tomato.Kernel.dll
@@ -155,6 +159,7 @@ $(OBJS_DIR)/%.c.o: %.c Makefile $(BUILD_DIR)/limine/limine.h
 clean:
 	rm -rf $(OBJS_DIR) $(BIN_DIR)
 	$(MAKE) -C lib/TomatoDotNet clean
+	$(MAKE) -f makefiles/uacpi.mk clean
 
 .PHONY: distclean
 distclean: clean
@@ -174,6 +179,15 @@ $(TDN_BIN_DIR)/libtdn.a: force
 		LD="$(LD)" \
 		DEBUG="$(DEBUG)" \
 		CFLAGS="$(COMMON_CFLAGS)"
+
+$(BIN_DIR)/libuacpi.a: force
+	@echo MAKE $@
+	@$(MAKE) -f makefiles/uacpi.mk \
+		CC="$(CC)" \
+		AR="$(AR)" \
+		LD="$(LD)" \
+		DEBUG="$(DEBUG)" \
+		CFLAGS="$(COMMON_CFLAGS) -Ikernel/acpi"
 
 #-----------------------------------------------------------------------------------------------------------------------
 # All the binaries

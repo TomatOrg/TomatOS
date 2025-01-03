@@ -21,7 +21,7 @@ typedef struct core_scheduler_context {
 
     // when set to true preemption should not switch the context
     // but should set the want preemption flag instead
-    uint32_t preempt_count;
+    int64_t preempt_count;
 
     // we got an preemption request while preempt count was 0
     // next time we enable preemption make sure to preempt
@@ -196,6 +196,8 @@ noreturn static void scheduler_execute(thread_t* thread) {
  * and must be called with preemption disabled and interrupts enabled
  */
 static void scheduler_schedule(bool remove, bool requeue) {
+    ASSERT(m_core.preempt_count != 0);
+
     for (;;) {
         // choose the next thread to run, we need to disable interrupts to make sure
         // that interrupts don't attempt to wake up any thread
@@ -306,6 +308,8 @@ void scheduler_preempt(void) {
         return;
     }
 
+    ASSERT(scheduler_get_current_thread() != NULL);
+
     // we can safely call the yield, this will ensure
     // interrupts are enabled
     m_core.preempt_count++;
@@ -315,6 +319,9 @@ void scheduler_preempt(void) {
 }
 
 void scheduler_start_per_core(void) {
+    // make sure the preempt count is non-zero
+    m_core.preempt_count++;
+
     // enable interrupts at this point
     asm("sti");
 
@@ -339,4 +346,5 @@ void scheduler_preempt_enable(void) {
     }
 
     --m_core.preempt_count;
+    ASSERT(m_core.preempt_count >= 0);
 }

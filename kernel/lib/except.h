@@ -23,6 +23,11 @@ typedef enum err {
      * Unknown tdn error
      */
     ERROR_TDN_ERROR,
+
+    /**
+     * Got a uACPI error
+     */
+    ERROR_UACPI_ERROR,
 } err_t;
 
 /**

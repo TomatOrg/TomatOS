@@ -20,7 +20,7 @@ typedef struct gc_region {
     spinlock_t lock;
 
     // already allocated blocks that can be used
-    list_t freelist;
+    void** freelist;
 
     // the watermark in the region
     void* watermark;
@@ -34,7 +34,7 @@ static gc_region_t m_gc_global_regions[27];
 void gc_init() {
     for (int i = 0; i < ARRAY_LENGTH(m_gc_global_regions); i++) {
         gc_region_t* order = &m_gc_global_regions[i];
-        list_init(&order->freelist);
+        order->freelist = NULL;
         order->lock = INIT_SPINLOCK();
         order->watermark = (void*)GC_REGION_BOTTOM(i);
         order->top = (void*)GC_REGION_TOP(i);
@@ -63,8 +63,10 @@ void* tdn_host_gc_alloc(size_t size) {
 
     // pop a block from the region
     spinlock_lock(&region->lock);
-    void* block = list_pop(&region->freelist);
-    if (block == NULL && region->watermark < region->top) {
+    void** block = region->freelist;
+    if (block != NULL) {
+        region->freelist = *block;
+    } else if (region->watermark < region->top) {
         block = region->watermark;
         region->watermark += aligned_size;
     }

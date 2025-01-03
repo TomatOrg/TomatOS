@@ -1430,7 +1430,7 @@ int kvsnprintf(char* s, size_t n, const char* format, va_list arg)
   return vsnprintf_impl(&gadget, format, arg);
 }
 
-int kvsprintf_(char* s, const char* format, va_list arg)
+int kvsprintf(char* s, const char* format, va_list arg)
 {
   return kvsnprintf(s, PRINTF_MAX_POSSIBLE_BUFFER_SIZE, format, arg);
 }

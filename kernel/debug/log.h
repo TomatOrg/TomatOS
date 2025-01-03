@@ -8,6 +8,7 @@ void debug_printf(const char* fmt, ...);
 void debug_vprintf(const char* fmt, va_list ap);
 
 void log_vprintf(const char* prefix, const char* fmt, va_list ap);
+void log_vprintf_nonewline(const char* prefix, const char* fmt, va_list ap);
 
 // the actual logging function
 #define __LOG(fmt, ...) \

@@ -30,7 +30,7 @@ static void mutex_park_timed_out(void* arg, size_t key, bool was_last_thread) {
 }
 
 __attribute__((cold))
-bool mutex_lock_slow(mutex_t* mutex, uint64_t deadline) {
+bool mutex_lock_slow(mutex_t* mutex, uint64_t ns_deadline) {
     spin_wait_t spin_wait = {};
     uint8_t state = atomic_load_explicit(&mutex->state, memory_order_relaxed);
     for (;;) {
@@ -72,7 +72,7 @@ bool mutex_lock_slow(mutex_t* mutex, uint64_t deadline) {
             mutex_park_timed_out,
             mutex,
             0,
-            deadline
+            ns_deadline
         );
 
         if (result.timed_out) {

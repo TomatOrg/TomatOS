@@ -45,8 +45,8 @@ static inline void __list_del(list_entry_t* prev, list_entry_t* next) {
 
 static inline void list_del(list_entry_t* entry) {
     __list_del(entry->prev, entry->next);
-    entry->next = NULL;
-    entry->prev = NULL;
+    entry->next = (void*)0xdead000000000000;
+    entry->prev = (void*)0xdead000010000000;
 }
 
 static inline bool list_is_empty(list_t* head) {

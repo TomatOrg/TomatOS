@@ -57,6 +57,10 @@ typedef struct thread {
 
     // parking lot has seen this thread and initialized itself accordingly
     bool parking_lot_seen;
+
+    // used to prevent threads from
+    // waking up before time
+    atomic_flag park_lock;
 } __attribute__((aligned(4096))) thread_t;
 
 STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);

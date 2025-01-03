@@ -67,3 +67,12 @@ void log_vprintf(const char* prefix, const char* fmt, va_list ap) {
 
     irq_spinlock_unlock(&m_debug_lock, irq_state);
 }
+
+void log_vprintf_nonewline(const char* prefix, const char* fmt, va_list ap) {
+    bool irq_state = irq_spinlock_lock(&m_debug_lock);
+
+    kprintf("%s", prefix);
+    kvprintf(fmt, ap);
+
+    irq_spinlock_unlock(&m_debug_lock, irq_state);
+}

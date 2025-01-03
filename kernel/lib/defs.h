@@ -15,6 +15,9 @@
 
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
+#define _STR(x) #x
+#define STR(x) _STR(x)
+
 #define ALIGN_MUL_CEIL(v, mul) ((((v) + (typeof(v))(mul) - 1) / ((typeof(v))(mul))) * (typeof(v))(mul))
 #define ALIGN_MUL_FLOOR(v, mul) (((v) / ((typeof(v))(mul))) * (typeof(v))(mul))
 

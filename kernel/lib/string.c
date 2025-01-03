@@ -10,26 +10,28 @@ void* memset(void* s, int c, size_t n) {
     // fast path for zero length
     if (n == 0) return s;
 
+    void* d = s;
     asm volatile (
         "rep stosb"
-        :
-        : "D"(s), "c"(n), "a"((unsigned char)c)
+        : "+D"(s), "+c"(n)
+        : "a"((unsigned char)c)
         : "memory"
     );
-    return s;
+    return d;
 }
 
 void* memcpy(void* restrict dest, const void* restrict src, size_t n) {
     // fast path for zero length
     if (n == 0) return dest;
 
+    void* d = dest;
     asm volatile (
         "rep movsb"
+        : "+D"(dest), "+S"(src), "+c"(n)
         :
-        : "D"(dest), "S"(src), "c"(n)
         : "memory"
     );
-    return dest;
+    return d;
 }
 
 void* memmove(void* dest, const void* src, size_t n) {
