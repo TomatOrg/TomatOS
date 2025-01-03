@@ -63,15 +63,16 @@ static void init_thread_entry(void* arg) {
      TDN_RETHROW(tdn_load_assembly_from_memory(corelib->address, corelib->size, NULL));
 
     // load the kernel itself
-    // struct limine_file* kernel = get_module_by_name("/Tomato.Kernel.dll");
-    // CHECK(kernel != NULL, "Failed to find kernel");
-    // RuntimeAssembly kernel_assembly;
-    // TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &kernel_assembly));
+    struct limine_file* kernel = get_module_by_name("/Tomato.Kernel.dll");
+    CHECK(kernel != NULL, "Failed to find kernel");
+    RuntimeAssembly kernel_assembly;
+    TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &kernel_assembly));
 
     // jit the entry point and call it
-    // TDN_RETHROW(tdn_jit_method(kernel_assembly->EntryPoint));
-    // void (*entry_point)(void) = kernel_assembly->EntryPoint->MethodPtr;
-    // entry_point();
+    TDN_RETHROW(tdn_jit_method(kernel_assembly->EntryPoint));
+    int (*entry_point)(void) = kernel_assembly->EntryPoint->MethodPtr;
+    int status = entry_point();
+    CHECK(status == 0, "Managed kernel returned non-zero status %d", status);
 
 cleanup:
      if (IS_ERROR(err)) {
