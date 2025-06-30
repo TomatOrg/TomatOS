@@ -100,7 +100,7 @@ void init_gdt() {
  * We are using the same gdt entry for each core, so we can't
  * have two cores loading it at the same time
  */
-static spinlock_t m_tss_lock = INIT_SPINLOCK();
+static spinlock_t m_tss_lock = SPINLOCK_INIT;
 
 err_t init_tss(void) {
     err_t err = NO_ERROR;
@@ -131,7 +131,7 @@ err_t init_tss(void) {
     tss->ist6 = (uintptr_t)ist6 + SIZE_4KB - 16;
     tss->ist7 = (uintptr_t)ist7 + SIZE_4KB - 16;
 
-    spinlock_lock(&m_tss_lock);
+    spinlock_acquire(&m_tss_lock);
 
     // setup the TSS gdt entry
     m_gdt.entries->tss.length = sizeof(tss64_t);
@@ -145,7 +145,7 @@ err_t init_tss(void) {
     // load the TSS into the cache
     asm volatile ("ltr %%ax" : : "a"(GDT_TSS) : "memory");
 
-    spinlock_unlock(&m_tss_lock);
+    spinlock_release(&m_tss_lock);
 
 cleanup:
     return err;

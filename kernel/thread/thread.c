@@ -22,12 +22,12 @@ static list_t m_thread_freelist = LIST_INIT(&m_thread_freelist);
 /**
  * Protect the thread list and the thread top variables
  */
-static spinlock_t m_thread_freelist_lock = INIT_SPINLOCK();
+static spinlock_t m_thread_freelist_lock = SPINLOCK_INIT;
 
 static thread_t* thread_alloc() {
     thread_t* thread = NULL;
 
-    spinlock_lock(&m_thread_freelist_lock);
+    spinlock_acquire(&m_thread_freelist_lock);
 
     // try to get an already free thread
     list_entry_t* entry = list_pop(&m_thread_freelist);
@@ -47,11 +47,12 @@ static thread_t* thread_alloc() {
         thread->stack_end = (void*)((STACKS_ADDR + SIZE_8MB * m_thread_top));
     }
 
-    spinlock_unlock(&m_thread_freelist_lock);
+    spinlock_release(&m_thread_freelist_lock);
 
     return thread;
 }
 
+__attribute__((force_align_arg_pointer))
 static void thread_entry() {
     // we need to enable preemption manually since we
     // are not coming from a scheduler_call stub
@@ -93,9 +94,9 @@ thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt
 void thread_free(thread_t* thread) {
     memset(thread, 0, sizeof(*thread));
 
-    spinlock_lock(&m_thread_freelist_lock);
+    spinlock_acquire(&m_thread_freelist_lock);
     list_add(&m_thread_freelist, &thread->link);
-    spinlock_unlock(&m_thread_freelist_lock);
+    spinlock_release(&m_thread_freelist_lock);
 }
 
 void thread_exit() {

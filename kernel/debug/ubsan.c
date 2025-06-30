@@ -88,13 +88,13 @@ typedef struct overflow_data {
     const type_descriptor_t* type;
 } overflow_data_t;
 
-#define LOG_UBSAN(fmt, ...) LOG_WARN("ubsan: " fmt " at %s:%d:%d", ## __VA_ARGS__, data->loc.filename, data->loc.line, data->loc.column);
+#define LOG_UBSAN(fmt, ...) WARN("ubsan: " fmt " at %s:%d:%d", ## __VA_ARGS__, data->loc.filename, data->loc.line, data->loc.column);
 
 static void handle_integer_overflow(overflow_data_t* data, size_t lhs, const char* operator, size_t rhs) {
     bool is_signed = is_signed_integer_ty(data->type);
 
     LOG_UBSAN("%s integer overflow: "
-        "%lld %s %llx cannot be represented in type %s",
+        "%zd %s %zx cannot be represented in type %s",
         is_signed ? "signed" : "unsigned", lhs, operator, rhs, data->type->type_name);
 }
 
@@ -106,18 +106,18 @@ void __ubsan_handle_negate_overflow(overflow_data_t* data, size_t old_val) {
     bool is_signed = is_signed_integer_ty(data->type);
 
     if (is_signed) {
-        LOG_UBSAN("negation of %lld cannot be represented in type %s; "
+        LOG_UBSAN("negation of %zd cannot be represented in type %s; "
             "cast to an unsigned type to negate this value to itself",
             old_val, data->type->type_name);
     } else {
-        LOG_UBSAN("negation of %llu cannot be represented in type %s",
+        LOG_UBSAN("negation of %zu cannot be represented in type %s",
             old_val, data->type->type_name);
     }
 }
 
 void __ubsan_handle_divrem_overflow(overflow_data_t* data, size_t lhs, size_t rhs) {
     if (is_minus_one(rhs, data->type)) {
-        LOG_UBSAN("division of %lld by -1 cannot be represented in type %s", data->type->type_name);
+        LOG_UBSAN("division of %zd by -1 cannot be represented in type %s", lhs, data->type->type_name);
     } else {
         LOG_UBSAN("division by zero");
     }
@@ -131,14 +131,14 @@ typedef struct shift_out_of_bounds_data {
 
 void __ubsan_handle_shift_out_of_bounds(shift_out_of_bounds_data_t* data, size_t lhs, size_t rhs) {
     if (is_negative(rhs, data->rhs_type)) {
-        LOG_UBSAN("shift exponent %lld is negative", rhs);
+        LOG_UBSAN("shift exponent %zd is negative", rhs);
     } else if (get_positive_int_value(rhs, data->rhs_type) >= get_integer_bit_width(data->lhs_type)) {
-        LOG_UBSAN("shift exponent %lld is too large for %d-bit type %s",
+        LOG_UBSAN("shift exponent %zd is too large for %d-bit type %s",
             rhs, get_integer_bit_width(data->lhs_type), data->lhs_type->type_name);
     } else if (is_negative(lhs, data->lhs_type)) {
-        LOG_UBSAN("left shift of negative value %lld", lhs);
+        LOG_UBSAN("left shift of negative value %zd", lhs);
     } else {
-        LOG_UBSAN("left shift of %llu by %llu places cannot be represented in type %s",
+        LOG_UBSAN("left shift of %zu by %zu places cannot be represented in type %s",
             lhs, rhs, data->lhs_type->type_name);
     }
 }
@@ -150,18 +150,32 @@ typedef struct out_of_bounds_data {
 } out_of_bounds_data_t;
 
 void __ubsan_handle_out_of_bounds(out_of_bounds_data_t* data, size_t index) {
-    LOG_UBSAN("index %lld out of bounds of type %s", index, data->array_type->type_name);
+    LOG_UBSAN("index %zd out of bounds of type %s", index, data->array_type->type_name);
+}
+
+typedef struct nonnull_arg_data {
+    source_location_t loc;
+    source_location_t attr_loc;
+    int arg_index;
+} nonnull_arg_data_t;
+
+void __ubsan_handle_nonnull_arg(nonnull_arg_data_t* data) {
+    LOG_UBSAN("null pointer passed as argument %d, which is declared to never be null", data->arg_index);
+    if (data->attr_loc.filename != NULL) {
+        WARN("ubsan: nonnull attribute specified at %s:%d:%d",
+            data->attr_loc.filename, data->attr_loc.line, data->attr_loc.column);
+    }
 }
 
 typedef struct pointer_overflow_data {
     source_location_t loc;
 } pointer_overflow_data_t;
 
-void __ubsan_handle_pointer_overflow(pointer_overflow_data_t* data, size_t base, size_t result) {
+void __ubsan_handle_pointer_overflow(pointer_overflow_data_t* data, void* base, void* result) {
     if (base == 0 && result == 0) {
         LOG_UBSAN("applying zero offset to null pointer");
     } else if (base == 0 && result != 0) {
-        LOG_UBSAN("applying non-zero offset %lld to null pointer", result);
+        LOG_UBSAN("applying non-zero offset %zd to null pointer", (intptr_t)result);
     } else if (base != 0 && result == 0) {
         LOG_UBSAN("applying non-zero offset to non-null pointer %p produced null pointer", base);
     } else if (((intptr_t)base >= 0) == ((intptr_t)result >= 0)) {
@@ -181,7 +195,7 @@ typedef struct invalid_value_data {
 } invalid_value_data_t;
 
 void __ubsan_handle_load_invalid_value(invalid_value_data_t* data, size_t val) {
-    LOG_UBSAN("load of value %lld, which is not a valid value for type %s", val, data->type->type_name);
+    LOG_UBSAN("load of value %zd, which is not a valid value for type %s", val, data->type->type_name);
 }
 
 typedef enum builtin_check_kind {
@@ -203,7 +217,7 @@ typedef struct function_type_mismatch_data {
     const type_descriptor_t* type;
 } function_type_mismatch_data_t;
 
-void __ubsan_handle_function_type_mismatch(function_type_mismatch_data_t* data, size_t function) {
+void __ubsan_handle_function_type_mismatch(function_type_mismatch_data_t* data, void* function) {
     LOG_UBSAN("call to function %p through pointer to incorrect function type %s", function, data->type->type_name);
 }
 
@@ -221,15 +235,15 @@ const char* const m_type_check_kinds[] = {
     "dynamic operation on"
 };
 
-void __ubsan_handle_type_mismatch_v1(type_mismatch_data_t* data, size_t pointer) {
+void __ubsan_handle_type_mismatch_v1(type_mismatch_data_t* data, void* pointer) {
     size_t alignment = (size_t)1 << data->log_alignment;
 
     if (pointer == 0) {
         LOG_UBSAN("%s null pointer of type %s", m_type_check_kinds[data->type_check_kind], data->type->type_name);
-    } else if (pointer & (alignment - 1)) {
+    } else if ((uintptr_t)pointer & (alignment - 1)) {
         LOG_UBSAN("%s misaligned address %p for type %s, "
-            "which requires %d byte alignment",
-            m_type_check_kinds[data->type_check_kind], pointer, alignment, data->type->type_name);
+            "which requires %zu byte alignment",
+            m_type_check_kinds[data->type_check_kind], pointer, data->type->type_name, alignment);
     } else {
         LOG_UBSAN("%s address %p with insufficient space "
             "for an object of type %s",

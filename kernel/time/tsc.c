@@ -1,16 +1,16 @@
 #include "tsc.h"
 
-#include "arch/cpuid.h"
-#include "debug/log.h"
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "cpuid.h"
 #include "acpi/acpi.h"
 #include "lib/defs.h"
-
-#include <stddef.h>
 
 /**
  * The calculated TSC resolution
  */
-uint64_t g_tsc_resolution_hz = 0;
+uint64_t g_tsc_freq_hz = 0;
 
 /**
  * Calculate the TSC resolution, we have two supported methods:
@@ -25,42 +25,32 @@ static uint32_t calculate_tsc() {
     // check if we have the time stamp counter cpuid, if we do we can
     // very easily calculate the frequency right away
     uint32_t maxleaf = __get_cpuid_max(0, NULL);
-    if (maxleaf >= CPUID_TIME_STAMP_COUNTER) {
-        __cpuid(CPUID_TIME_STAMP_COUNTER, 0, a, b, c, d);
+    if (maxleaf >= 0x15) {
+        __cpuid(0x15, a, b, c, d);
 
         // check that we have the ratio and the hz
         if (b != 0 && c != 0) {
-            LOG_DEBUG("timer: TSC Calculated from CPUID");
-            return c * (b / c);
+            TRACE("timer: TSC Calculated from CPUID");
+            return c * (b / a);
         }
     }
 
-    // TODO: it seems that in theory on certain intel cpus we can
-    //       use the platform info MSR to calculate the TSC speed
-
     // we are going to estimate the tsc, and we will align
     // to 10MHz just for a more stable result
-    LOG_DEBUG("timer: TSC estimated using acpi_stall");
-    uint64_t start = get_tsc();
-    acpi_stall(US_PER_S);
-    return ALIGN_MUL_NEAR(get_tsc() - start, 10000000);
+    TRACE("timer: TSC estimated using ACPI timer");
+
+    // set the counter to FFs
+
+    // start the timer
+    uint64_t start_tsc = get_tsc();
+    uint32_t ticks = acpi_get_timer_tick() + 363;
+    while (((ticks - acpi_get_timer_tick()) & BIT23) == 0);
+    uint64_t end_tsc = get_tsc();
+    return (end_tsc - start_tsc) * 9861;
 }
 
 void init_tsc() {
-    g_tsc_resolution_hz = calculate_tsc();
-    LOG_INFO("timer: TSC frequency %uMHz", g_tsc_resolution_hz / 1000000);
-}
-
-//
-// Intel CPUs require a fence
-//
-
-uint64_t tsc_set_timeout(uint64_t timeout) {
-    uint64_t deadline = get_tsc() + timeout;
-    __wrmsr(MSR_IA32_TSC_DEADLINE, deadline);
-    return deadline;
-}
-
-void tsc_disable_timeout(void) {
-    __wrmsr(MSR_IA32_TSC_DEADLINE, 0);
+    g_tsc_freq_hz = calculate_tsc();
+    TRACE("timer: TSC frequency %luMHz", g_tsc_freq_hz / 1000000);
+    ASSERT(g_tsc_freq_hz != 0);
 }

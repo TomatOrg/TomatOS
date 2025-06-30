@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <lib/except.h>
 
@@ -18,3 +19,5 @@ void init_lapic_per_core(void);
  */
 void lapic_eoi(void);
 
+void lapic_timer_set_timeout(uint64_t ms_timeout);
+void lapic_timer_clear(void);

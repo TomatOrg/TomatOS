@@ -76,13 +76,13 @@ void limine_check_revision() {
 
     // basic boot information
     if (g_limine_bootloader_info_request.response != NULL) {
-        LOG_DEBUG("Bootloader: %s - %s",
+        TRACE("Bootloader: %s - %s",
             g_limine_bootloader_info_request.response->name,
             g_limine_bootloader_info_request.response->version);
     }
 
     if (LIMINE_LOADED_BASE_REV_VALID == true) {
-        LOG_DEBUG("Bootloader has loaded us using base revision %d", LIMINE_LOADED_BASE_REVISION);
+        TRACE("Bootloader has loaded us using base revision %lu", LIMINE_LOADED_BASE_REVISION);
     }
 
     if (LIMINE_BASE_REVISION_SUPPORTED == false) {

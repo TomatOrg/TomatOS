@@ -46,8 +46,8 @@ err_t map_tdn_error(tdn_err_t err);
     do { \
         if (UNLIKELY(!(check))) { \
             err = error; \
-            IF(HAS_ARGS(__VA_ARGS__))(LOG_ERROR(__VA_ARGS__)); \
-            LOG_ERROR("Check failed with error %s (%d) in function %s (%s:%d)", get_error_code(err), err, __FUNCTION__, __FILE__, __LINE__); \
+            IF(HAS_ARGS(__VA_ARGS__))(ERROR(__VA_ARGS__)); \
+            ERROR("Check failed with error %s (%d) in function %s (%s:%d)", get_error_code(err), err, __FUNCTION__, __FILE__, __LINE__); \
             goto label; \
         } \
     } while(0)
@@ -77,7 +77,7 @@ err_t map_tdn_error(tdn_err_t err);
     do { \
         err = error; \
         if (UNLIKELY(IS_ERROR(err))) { \
-            LOG_ERROR("\trethrown at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
+            ERROR("\trethrown at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
             goto label; \
         } \
     } while(0)
@@ -88,7 +88,7 @@ err_t map_tdn_error(tdn_err_t err);
     do { \
         err = map_tdn_error(error); \
         if (UNLIKELY(IS_ERROR(err))) { \
-            LOG_ERROR("\trethrown at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
+            ERROR("\trethrown at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
             goto label; \
         } \
     } while(0)
@@ -102,7 +102,7 @@ err_t map_tdn_error(tdn_err_t err);
 #define ASSERT(expr) \
     do { \
         if (!(expr)) { \
-            LOG_ERROR("Assertion failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
+            ERROR("Assertion failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
             __builtin_trap(); \
         } \
     } while (0)

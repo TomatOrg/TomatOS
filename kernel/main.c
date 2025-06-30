@@ -20,14 +20,12 @@
 #include <debug/debug.h>
 #include <lib/string.h>
 #include <mem/gc/gc.h>
-#include <sync/mutex.h>
 #include <thread/pcpu.h>
 #include <thread/scheduler.h>
 #include <time/tsc.h>
 
 #include <tomatodotnet/tdn.h>
 #include <tomatodotnet/jit/jit.h>
-#include <uacpi/kernel_api.h>
 
 /**
  * The init thread
@@ -53,13 +51,17 @@ static struct limine_file* get_module_by_name(const char* name) {
 static void init_thread_entry(void* arg) {
      err_t err = NO_ERROR;
 
-     LOG_INFO("Init thread started");
-
-    // now initialize acpi mode properly
-    RETHROW(init_acpi_mode());
+     TRACE("Init thread started");
 
      // initialize the garbage collector
      gc_init();
+
+    // setup the tdn configuration
+    tdn_config_t* config = tdn_get_config();
+    config->jit_verify_trace = false;
+    config->jit_emit_trace = false;
+    config->jit_optimize = true;
+    config->jit_inline = true;
 
      // first load the corelib
      struct limine_file* corelib = get_module_by_name("/System.Private.CoreLib.dll");
@@ -80,7 +82,7 @@ static void init_thread_entry(void* arg) {
 
 cleanup:
      if (IS_ERROR(err)) {
-         LOG_CRITICAL("Can't continue loading the OS");
+         ERROR("Can't continue loading the OS");
      }
      (void)err;
 }
@@ -125,8 +127,6 @@ static void halt() {
 static void smp_entry(struct limine_mp_info* info) {
     err_t err = NO_ERROR;
 
-    LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d", info->extra_argument, info->lapic_id);
-
     //
     // Start by setting the proper CPU context
     //
@@ -134,6 +134,8 @@ static void smp_entry(struct limine_mp_info* info) {
     init_idt();
     set_cpu_features();
     switch_page_table();
+
+    TRACE("smp: \tCPU#%lu - LAPIC#%d", info->extra_argument, info->lapic_id);
 
     //
     // And now setup the per-cpu
@@ -168,9 +170,9 @@ void _start() {
     init_early_logging();
 
     // Welcome!
-    LOG("------------------------------------------------------------------------------------------------------------");
-    LOG("TomatOS");
-    LOG("------------------------------------------------------------------------------------------------------------");
+    TRACE("------------------------------------------------------------------------------------------------------------");
+    TRACE("TomatOS");
+    TRACE("------------------------------------------------------------------------------------------------------------");
     limine_check_revision();
 
     // check the available string features
@@ -211,7 +213,7 @@ void _start() {
     } else {
         // no SMP startup available from bootloader,
         // just assume we have a single cpu
-        LOG_WARN("smp: missing limine SMP support");
+        WARN("smp: missing limine SMP support");
         RETHROW(pcpu_init(1));
         pcpu_init_per_core(0);
     }
@@ -230,10 +232,11 @@ void _start() {
     init_alloc();
 
     // load the debug symbols now that we have an allocator
+    init_logging();
     debug_load_symbols();
 
     // we need acpi for some early sleep primitives
-    RETHROW(init_acpi());
+    RETHROW(init_acpi_tables());
 
     // we need to calibrate the timer now
     init_tsc();
@@ -249,11 +252,11 @@ void _start() {
 
     RETHROW(init_lapic());
 
-    LOG("smp: Starting CPUs (%d)", g_cpu_count);
+    TRACE("smp: Starting CPUs (%zu)", g_cpu_count);
 
     for (size_t i = 0; i < g_cpu_count; i++) {
         if (response->cpus[i]->lapic_id == response->bsp_lapic_id) {
-            LOG_DEBUG("smp: \tCPU#%d - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
+            TRACE("smp: \tCPU#%zu - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
 
             // allocate the per-cpu storage now that we know our id
             init_lapic_per_core();
@@ -276,7 +279,7 @@ void _start() {
     while (m_smp_count != g_cpu_count) {
         cpu_relax();
     }
-    LOG_DEBUG("smp: Finished SMP startup");
+    TRACE("smp: Finished SMP startup");
 
     // we are about done, create the init thread and queue it
     m_init_thread = thread_create(init_thread_entry, NULL, "init thread");

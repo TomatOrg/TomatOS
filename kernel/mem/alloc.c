@@ -38,7 +38,7 @@ void init_alloc(void) {
     for (int i = 0; i < ARRAY_LENGTH(m_mem_global_regions); i++) {
         alloc_region_t* order = &m_mem_global_regions[i];
         order->freelist = NULL;
-        order->lock = INIT_SPINLOCK();
+        order->lock = SPINLOCK_INIT;
         order->watermark = (void*)ALLOC_REGION_BOTTOM(i);
         order->top = (void*)ALLOC_REGION_TOP(i);
     }
@@ -56,7 +56,7 @@ void* mem_alloc(size_t size) {
     if (order < 0) {
         order = 0;
     } else if (order >= ARRAY_LENGTH(m_mem_global_regions)) {
-        LOG_WARN("Failed to allocate an object of size %lu", size);
+        WARN("Failed to allocate an object of size %lu", size);
         return NULL;
     }
 
@@ -65,7 +65,7 @@ void* mem_alloc(size_t size) {
     alloc_region_t* region = &m_mem_global_regions[order];
 
     // pop a block from the region
-    spinlock_lock(&region->lock);
+    spinlock_acquire(&region->lock);
     void** block = region->freelist;
     if (block != NULL) {
         region->freelist = *block;
@@ -73,7 +73,7 @@ void* mem_alloc(size_t size) {
         block = region->watermark;
         region->watermark += aligned_size;
     }
-    spinlock_unlock(&region->lock);
+    spinlock_release(&region->lock);
 
     return block;
 }
@@ -124,9 +124,9 @@ void mem_free(void* ptr) {
     alloc_region_t* region = &m_mem_global_regions[order];
 
     // push a the pointer back
-    spinlock_lock(&region->lock);
+    spinlock_acquire(&region->lock);
     void** block = ptr;
     *block = region->freelist;
     region->freelist = block;
-    spinlock_unlock(&region->lock);
+    spinlock_release(&region->lock);
 }

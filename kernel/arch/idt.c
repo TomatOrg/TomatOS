@@ -327,37 +327,37 @@ static const char* m_exception_names[] = {
 };
 STATIC_ASSERT(ARRAY_LENGTH(m_exception_names) == 32);
 
-static spinlock_t m_exception_lock = INIT_SPINLOCK();
+static spinlock_t m_exception_lock = SPINLOCK_INIT;
 
 /**
  * The default exception handler, simply panics...
  */
 static void default_exception_handler(exception_context_t* ctx) {
-    spinlock_lock(&m_exception_lock);
+    spinlock_acquire(&m_exception_lock);
 
     // reset the spinlock so we can print
-    LOG_ERROR("");
-    LOG_ERROR("****************************************************");
-    LOG_ERROR("Exception occurred: %s (%d)", m_exception_names[ctx->int_num], ctx->error_code);
-    LOG_ERROR("****************************************************");
-    LOG_ERROR("");
+    ERROR("");
+    ERROR("****************************************************");
+    ERROR("Exception occurred: %s (%lu)", m_exception_names[ctx->int_num], ctx->error_code);
+    ERROR("****************************************************");
+    ERROR("");
 
     page_fault_error_t page_fault_code = {};
     if (ctx->int_num == 0x0E) {
         page_fault_code = (page_fault_error_t) { .packed = ctx->error_code };
         if (page_fault_code.reserved_write) {
-            LOG_ERROR("one or more page directory entries contain reserved bits which are set to 1");
+            ERROR("one or more page directory entries contain reserved bits which are set to 1");
         } else if (page_fault_code.instruction_fetch) {
-            LOG_ERROR("tried to run non-executable code");
+            ERROR("tried to run non-executable code");
         } else {
             const char* rw = page_fault_code.write ? "write to" : "read from";
             if (!page_fault_code.present) {
-                LOG_ERROR("%s non-present page", rw);
+                ERROR("%s non-present page", rw);
             } else {
-                LOG_ERROR("page-protection violation when %s page", rw);
+                ERROR("page-protection violation when %s page", rw);
             }
         }
-        LOG_ERROR("");
+        ERROR("");
     } else if (ctx->int_num == 0x0D && ctx->error_code != 0) {
         selector_error_code_t selector = (selector_error_code_t) { .packed = ctx->error_code };
         static const char* table[] = {
@@ -366,43 +366,48 @@ static void default_exception_handler(exception_context_t* ctx) {
             "LDT",
             "IDT"
         };
-        LOG_ERROR("Accessing %s[%d]", table[selector.tbl], selector.index);
-        LOG_ERROR("");
+        ERROR("Accessing %s[%d]", table[selector.tbl], selector.index);
+        ERROR("");
     }
 
     // check if we have threading_old already
     if (__rdmsr(MSR_IA32_FS_BASE) != 0) {
         thread_t* thread = scheduler_get_current_thread();
         if (thread != NULL) {
-            LOG_ERROR("%p", thread);
-            LOG_ERROR("Thread: `%.*s`", sizeof(thread->name), thread->name);
+            ERROR("%p", thread);
+            ERROR("Thread: `%.*s`", (int)sizeof(thread->name), thread->name);
         } else {
-            LOG_ERROR("Thread: <none>");
+            ERROR("Thread: <none>");
         }
     }
-    LOG_ERROR("CPU: #%d", get_cpu_id());
-    LOG_ERROR("");
+    ERROR("CPU: #%d", get_cpu_id());
+    ERROR("");
 
     // registers
-    LOG_ERROR("RAX=%016p RBX=%016p RCX=%016p RDX=%016p", ctx->rax, ctx->rbx, ctx->rcx, ctx->rdx);
-    LOG_ERROR("RSI=%016p RDI=%016p RBP=%016p RSP=%016p", ctx->rsi, ctx->rdi, ctx->rbp, ctx->rsp);
-    LOG_ERROR("R8 =%016p R9 =%016p R10=%016p R11=%016p", ctx->r8 , ctx->r9 , ctx->r10, ctx->r11);
-    LOG_ERROR("R12=%016p R13=%016p R14=%016p R15=%016p", ctx->r12, ctx->r13, ctx->r14, ctx->r15);
-    LOG_ERROR("RIP=%016p RFL=%b", ctx->rip, ctx->rflags.packed);
-    LOG_ERROR("FS =%016p GS =%016p", __rdmsr(MSR_IA32_FS_BASE), 0); // TODO: GS BASE
-    LOG_ERROR("CR0=%08x CR2=%016p CR3=%016p CR4=%08x", __readcr0(), __readcr2(), __readcr3(), __readcr4());
+    ERROR("RAX=%016lx RBX=%016lx RCX=%016lx RDX=%016lx", ctx->rax, ctx->rbx, ctx->rcx, ctx->rdx);
+    ERROR("RSI=%016lx RDI=%016lx RBP=%016lx RSP=%016lx", ctx->rsi, ctx->rdi, ctx->rbp, ctx->rsp);
+    ERROR("R8 =%016lx R9 =%016lx R10=%016lx R11=%016lx", ctx->r8 , ctx->r9 , ctx->r10, ctx->r11);
+    ERROR("R12=%016lx R13=%016lx R14=%016lx R15=%016lx", ctx->r12, ctx->r13, ctx->r14, ctx->r15);
+    ERROR("RIP=%016lx RFL=%lb", ctx->rip, ctx->rflags.packed);
+    ERROR("FS =%016lx GS =%016x", __rdmsr(MSR_IA32_FS_BASE), 0); // TODO: GS BASE
+    ERROR("CR0=%08lx CR2=%016lx CR3=%016lx CR4=%08lx", __readcr0(), __readcr2(), __readcr3(), __readcr4());
 
-    LOG_ERROR("");
+    ERROR("");
 
     // print the opcode for nicer debugging
     char buffer[256] = { 0 };
     debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
-    LOG_ERROR("Code: %s", buffer);
+    ERROR("Code: %s", buffer);
+    ERROR("%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+        ((char*)ctx->rip)[0], ((char*)ctx->rip)[1], ((char*)ctx->rip)[2], ((char*)ctx->rip)[3],
+        ((char*)ctx->rip)[4], ((char*)ctx->rip)[5], ((char*)ctx->rip)[6], ((char*)ctx->rip)[7],
+        ((char*)ctx->rip)[8], ((char*)ctx->rip)[9], ((char*)ctx->rip)[10], ((char*)ctx->rip)[11],
+        ((char*)ctx->rip)[12], ((char*)ctx->rip)[13], ((char*)ctx->rip)[14], ((char*)ctx->rip)[15]);
     // debug_disasm_at((void*)ctx->rip, 5);
-    LOG_ERROR("");
+    ERROR("");
 
     // stack trace
-    LOG_ERROR("Stack trace:");
+    ERROR("Stack trace:");
     size_t* base_ptr = (size_t*)ctx->rbp;
 
     int depth = 0;
@@ -412,7 +417,7 @@ static void default_exception_handler(exception_context_t* ctx) {
     int to_print = 0;
     while (true) {
         if (!virt_is_mapped((uintptr_t)base_ptr)) {
-            LOG_ERROR("\t%p is unmapped!", base_ptr);
+            ERROR("\t%p is unmapped!", base_ptr);
             break;
         }
 
@@ -426,14 +431,14 @@ static void default_exception_handler(exception_context_t* ctx) {
             depth++;
         } else {
             if (depth > 1) {
-                LOG_ERROR("\t  ... repeating %d times", depth - 1);
+                ERROR("\t  ... repeating %d times", depth - 1);
             }
 
             last_ret = ret_addr;
             depth = 1;
 
             debug_format_symbol(ret_addr, buffer, sizeof(buffer));
-            LOG_ERROR("\t> %s (0x%p)", buffer, ret_addr);
+            ERROR("\t> %s (0x%p)", buffer, (void*)ret_addr);
 
             to_print--;
             if (to_print == 0) {
@@ -444,17 +449,17 @@ static void default_exception_handler(exception_context_t* ctx) {
         if (old_bp == 0) {
             break;
         } else if (old_bp <= (size_t)base_ptr) {
-            LOG_ERROR("\tGoes back to %p", old_bp);
+            ERROR("\tGoes back to %p", (void*)old_bp);
             break;
         }
         base_ptr = (size_t*)old_bp;
     }
 
-    LOG_ERROR("");
+    ERROR("");
 
     // stop
-    LOG_ERROR("Halting :(");
-    spinlock_unlock(&m_exception_lock);
+    ERROR("Halting :(");
+    spinlock_release(&m_exception_lock);
     asm("hlt");
 }
 

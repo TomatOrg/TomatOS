@@ -144,30 +144,12 @@ static bool core_timed_out(void) {
 static void core_park(void) {
     // start by disabling the deadline so we
     // won't have a spurious wakeup
-    tsc_disable_timeout();
+    pcpu_timer_clear();
 
     // and now wait until someone tells us to wakeup
     while (atomic_load_explicit(&m_core.park, memory_order_acquire) != 0) {
         core_wait();
     }
-}
-
-static bool core_park_until(uint64_t timeout) {
-    // start by setting the deadline
-    uint64_t deadline = tsc_set_timeout(timeout);
-
-    // as long as no one tells us to wakeup, wait
-    while (atomic_load_explicit(&m_core.park, memory_order_acquire) != 0) {
-        // check that we did not get a timeout in the meantime
-        if (deadline <= get_tsc()) {
-            return false;
-        }
-
-        // and now wait
-        core_wait();
-    }
-
-    return true;
 }
 
 static void core_unpark(core_scheduler_context_t* core) {
@@ -185,7 +167,7 @@ noreturn static void scheduler_execute(thread_t* thread) {
     m_core.current = thread;
 
     // set the time slice
-    tsc_set_timeout(ms_to_tsc(10));
+    pcpu_timer_set_timeout(10);
 
     // we can safely resume the thread
     runnable_resume(&thread->runnable);
@@ -202,12 +184,12 @@ static void scheduler_schedule(bool remove, bool requeue) {
         // choose the next thread to run, we need to disable interrupts to make sure
         // that interrupts don't attempt to wake up any thread
         asm("cli");
-        spinlock_lock(&m_core.queue_lock);
+        spinlock_acquire(&m_core.queue_lock);
         if (requeue && m_core.current != NULL) {
             list_add_tail(&m_core.queue, &m_core.current->scheduler_node);
         }
         list_entry_t* choosen = list_pop(&m_core.queue);
-        spinlock_unlock(&m_core.queue_lock);
+        spinlock_release(&m_core.queue_lock);
         asm("sti");
 
         // if we did not find anything, attempt to steal
@@ -264,14 +246,14 @@ static void scheduler_exit_internal(void) {
 
 void scheduler_start_thread(thread_t* thread) {
     scheduler_preempt_disable();
-    spinlock_lock(&m_core.queue_lock);
+    spinlock_acquire(&m_core.queue_lock);
 
     // TODO: check if we should maybe push this to another core
 
     // just add the thread to the current queue
     list_add(&m_core.queue, &thread->scheduler_node);
 
-    spinlock_unlock(&m_core.queue_lock);
+    spinlock_release(&m_core.queue_lock);
     scheduler_preempt_enable();
 }
 
@@ -279,12 +261,12 @@ void scheduler_wakeup_thread(thread_t* thread) {
     // TODO: wake on the core that it was already on
 
     scheduler_preempt_disable();
-    spinlock_lock(&m_core.queue_lock);
+    spinlock_acquire(&m_core.queue_lock);
 
     // and call the queue wakeup
     list_add(&m_core.queue, &thread->scheduler_node);
 
-    spinlock_unlock(&m_core.queue_lock);
+    spinlock_release(&m_core.queue_lock);
     scheduler_preempt_enable();
 }
 

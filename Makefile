@@ -56,7 +56,6 @@ COMMON_CFLAGS	+= -mcmodel=kernel -mno-red-zone
 COMMON_CFLAGS	+= -nostdlib
 COMMON_CFLAGS	+= -flto -g
 COMMON_CFLAGS	+= -fno-omit-frame-pointer -fvisibility=hidden
-COMMON_CFLAGS 	+= -DUACPI_FORMATTED_LOGGING -DUACPI_OVERRIDE_LIBC
 
 # Optimization flags
 ifeq ($(OPTIMIZE),1)
@@ -86,7 +85,7 @@ CFLAGS			+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
 # We are relying on frame pointers for proper stack unwinding
 # in both managed and unmanaged environment
 CFLAGS 			+=
-CFLAGS			+= -Ilib/flanterm
+CFLAGS			+= -Ilib/flanterm/src
 CFLAGS			+= -Ilib/buddy_alloc -DBUDDY_HEADER
 CFLAGS			+= -I$(BUILD_DIR)/limine
 
@@ -94,9 +93,6 @@ CFLAGS			+= -I$(BUILD_DIR)/limine
 CFLAGS			+= -fms-extensions -Wno-microsoft
 CFLAGS			+= -Ilib/TomatoDotNet/include
 CFLAGS			+= -Ilib/TomatoDotNet/libs/spidir/c-api/include
-
-# uACPI
-CFLAGS 			+= -Ilib/uACPI/include
 
 ifeq ($(DEBUG),1)
 CFLAGS			+= -D__DEBUG__
@@ -121,8 +117,9 @@ CFLAGS 			+= -DSTB_SPRINTF_NOFLOAT
 SRCS 		:= $(shell find kernel -name '*.c')
 
 # Add the flanterm code for early console
-SRCS 		+= lib/flanterm/flanterm.c
-SRCS 		+= lib/flanterm/backends/fb.c
+SRCS 		+= lib/flanterm/src/flanterm.c
+SRCS 		+= lib/flanterm/src/flanterm_backends/fb.c
+CFLAGS 		+= -DFLANTERM_FB_DISABLE_BUMP_ALLOC
 
 # The objects/deps 
 OBJS 		:= $(addprefix $(OBJS_DIR)/,$(SRCS:.c=.c.o))
@@ -130,11 +127,10 @@ DEPS		:= $(addprefix $(OBJS_DIR)/,$(SRCS:.c=.c.d))
 
 # Link against TomatoDotNet
 OBJS 		+= $(TDN_BIN_DIR)/libtdn.a
-OBJS 		+= $(BIN_DIR)/libuacpi.a
 
 # The C# DLLs we need
 DLLS		:= $(BIN_DIR)/Tomato.Kernel.dll
-DLLS		+= $(TDN_BIN_DIR)/System.Private.CoreLib.dll
+DLLS		+= $(BIN_DIR)/System.Private.CoreLib.dll
 
 # Default target.
 .PHONY: all
@@ -159,7 +155,6 @@ $(OBJS_DIR)/%.c.o: %.c Makefile $(BUILD_DIR)/limine/limine.h
 clean:
 	rm -rf $(OBJS_DIR) $(BIN_DIR)
 	$(MAKE) -C lib/TomatoDotNet clean
-	$(MAKE) -f makefiles/uacpi.mk clean
 
 .PHONY: distclean
 distclean: clean
@@ -178,27 +173,32 @@ $(TDN_BIN_DIR)/libtdn.a: force
 		AR="$(AR)" \
 		LD="$(LD)" \
 		DEBUG="$(DEBUG)" \
-		CFLAGS="$(COMMON_CFLAGS)"
-
-$(BIN_DIR)/libuacpi.a: force
-	@echo MAKE $@
-	@$(MAKE) -f makefiles/uacpi.mk \
-		CC="$(CC)" \
-		AR="$(AR)" \
-		LD="$(LD)" \
-		DEBUG="$(DEBUG)" \
-		CFLAGS="$(COMMON_CFLAGS) -Ikernel/acpi"
+		CFLAGS="$(COMMON_CFLAGS)" \
+		SPIDIR_CARGO_TARGET="x86_64-unknown-linux-none" \
+		SPIDIR_CARGO_FLAGS="--target=$(abspath artifacts/target.json) -Zbuild-std=core,alloc" \
+		SPIDIR_RUSTUP_TOOLCHAIN="nightly-2025-05-07"
 
 #-----------------------------------------------------------------------------------------------------------------------
 # All the binaries
 #-----------------------------------------------------------------------------------------------------------------------
 
+# Just build the debug one
 $(BIN_DIR)/Tomato.Kernel.dll: ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll
 	@mkdir -p $(@D)
 	cp $^ $@
 
+# Copy the corelib outside
+$(BIN_DIR)/System.Private.CoreLib.dll: ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/System.Private.CoreLib.dll
+	@mkdir -p $(@D)
+	cp $^ $@
+
+# Build the kernel itself
+# TODO: build the entire solution instead?
 ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll: force
 	cd ManagedKernel/Tomato.Kernel && dotnet build --configuration Debug
+
+# The C# build system handles this by copying it properly
+ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/System.Private.CoreLib.dll: ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Quick test

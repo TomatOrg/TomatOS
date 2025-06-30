@@ -2,15 +2,17 @@
 
 #include <lib/elf64.h>
 #include <limine.h>
-#include <arch/intrin.h>
 #include <lib/string.h>
-#include <mem/alloc.h>
 #include <mem/phys.h>
 
-/**
- * we need the elf so we can properly allocate the pcpu segment
- */
-extern struct limine_executable_file_request g_limine_executable_file_request;
+#include "limine_requests.h"
+#include "arch/apic.h"
+#include "arch/intrin.h"
+
+typedef struct pcpu_timer {
+    void (*set_timeout)(uint64_t ms_timeout);
+    void (*clear)(void);
+} pcpu_timer_t;
 
 /**
  * The id of the current cpu
@@ -26,6 +28,11 @@ static uint8_t* m_per_cpu_data;
  * The size of each cpu's data
  */
 static size_t m_per_cpu_size;
+
+/**
+ * The timer we are using
+ */
+static pcpu_timer_t m_pcpu_timer = {};
 
 err_t pcpu_init(int cpu_count) {
     err_t err = NO_ERROR;
@@ -51,7 +58,7 @@ err_t pcpu_init(int cpu_count) {
 
     // allocate everything
     m_per_cpu_data = early_phys_alloc(m_per_cpu_size * cpu_count);
-    CHECK_ERROR(m_per_cpu_data != NULL, ERROR_OUT_OF_MEMORY);
+    CHECK_ERROR(m_per_cpu_data != NULL, ERROR_OUT_OF_MEMORY, "%zu", m_per_cpu_size * cpu_count);
 
     // initialize it per-cpu
     for (int i = 0; i < cpu_count; i++) {
@@ -64,6 +71,12 @@ err_t pcpu_init(int cpu_count) {
         void* tcb = tls_start + (m_per_cpu_size - sizeof(uintptr_t));
         *(void**)(tcb) = tcb;
     }
+
+    // TODO: check if TSC deadline is supported, if so use it, otherwise use
+    //       lapic timer or whatever else we want
+
+    m_pcpu_timer.set_timeout = lapic_timer_set_timeout;
+    m_pcpu_timer.clear = lapic_timer_clear;
 
 cleanup:
     return err;
@@ -81,4 +94,16 @@ void pcpu_init_per_core(int cpu_id) {
 
 int get_cpu_id() {
     return m_cpu_id;
+}
+
+bool pcpu_check_timer(void) {
+    return true;
+}
+
+void pcpu_timer_set_timeout(uint64_t ms_timeout) {
+    m_pcpu_timer.set_timeout(ms_timeout);
+}
+
+void pcpu_timer_clear(void) {
+    m_pcpu_timer.clear();
 }

@@ -30,14 +30,18 @@ void phys_reclaim_bootloader();
 /**
  * Allocate physical memory, up to 128mb of contig memory
  */
-void* phys_alloc(size_t size);
+void* phys_alloc(size_t size) __attribute__((alloc_size(1), malloc));
+
+/**
+ * Performs a realloc operation
+ */
+void* phys_realloc(void* ptr, size_t size) __attribute__((alloc_size(2)));
 
 /**
  * Allocate physical memory before per-cpu data is initialized
  * this is needed to actually allocate the per-cpu data
  */
-void* early_phys_alloc(size_t size);
-
+void* early_phys_alloc(size_t size) __attribute__((alloc_size(1), malloc));
 
 /**
  * Free physical memory

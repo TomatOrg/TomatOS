@@ -24,7 +24,7 @@ static uintptr_t m_kernel_physical_base = 0;
 /**
  * Spinlock for mapping virtual pages
  */
-static irq_spinlock_t m_virt_lock = INIT_IRQ_SPINLOCK();
+static irq_spinlock_t m_virt_lock = IRQ_SPINLOCK_INIT;
 
 /**
  * The kernel top level cr3
@@ -69,7 +69,7 @@ static page_entry_t* get_next_level(page_entry_t* entry) {
 err_t virt_map_page(uint64_t phys, uintptr_t virt, map_flags_t flags) {
     err_t err = NO_ERROR;
 
-    bool irq_state = irq_spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_acquire(&m_virt_lock);
 
     page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(virt)]);
     CHECK_ERROR(pml3 != NULL, ERROR_OUT_OF_MEMORY);
@@ -88,7 +88,7 @@ err_t virt_map_page(uint64_t phys, uintptr_t virt, map_flags_t flags) {
     };
 
 cleanup:
-    irq_spinlock_unlock(&m_virt_lock, irq_state);
+    irq_spinlock_release(&m_virt_lock, irq_state);
 
     return err;
 }
@@ -109,7 +109,7 @@ cleanup:
 err_t virt_alloc_range(uintptr_t virt, size_t page_count) {
     err_t err = NO_ERROR;
 
-    bool irq_state = irq_spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_acquire(&m_virt_lock);
 
     size_t i;
     for (i = 0; i < page_count; i++) {
@@ -159,7 +159,7 @@ cleanup:
         }
     }
 
-    irq_spinlock_unlock(&m_virt_lock, irq_state);
+    irq_spinlock_release(&m_virt_lock, irq_state);
 
     return err;
 }
@@ -167,7 +167,7 @@ cleanup:
 err_t virt_remap_range(uintptr_t virt, size_t page_count, map_flags_t flags) {
     err_t err = NO_ERROR;
 
-    bool irq_state = irq_spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_acquire(&m_virt_lock);
 
     for (size_t i = 0; i < page_count; i++) {
         uintptr_t vaddr = virt + (i * SIZE_4KB);
@@ -191,36 +191,36 @@ err_t virt_remap_range(uintptr_t virt, size_t page_count, map_flags_t flags) {
     }
 
 cleanup:
-    irq_spinlock_unlock(&m_virt_lock, irq_state);
+    irq_spinlock_release(&m_virt_lock, irq_state);
 
     return err;
 }
 
 bool virt_is_mapped(uintptr_t virt) {
-    bool irq_state = irq_spinlock_lock(&m_virt_lock);
+    bool irq_state = irq_spinlock_acquire(&m_virt_lock);
 
     page_entry_t* pml3 = get_next_level(&m_cr3[PML4_INDEX(virt)]);
     if (pml3 == NULL) {
-        irq_spinlock_unlock(&m_virt_lock, irq_state);
+        irq_spinlock_release(&m_virt_lock, irq_state);
         return false;
     }
 
     page_entry_t* pml2 = get_next_level(&pml3[PML3_INDEX(virt)]);
     if (pml2 == NULL) {
-        irq_spinlock_unlock(&m_virt_lock, irq_state);
+        irq_spinlock_release(&m_virt_lock, irq_state);
         return false;
     }
 
     page_entry_t* pml1 = get_next_level(&pml2[PML2_INDEX(virt)]);
     if (pml1 == NULL) {
-        irq_spinlock_unlock(&m_virt_lock, irq_state);
+        irq_spinlock_release(&m_virt_lock, irq_state);
         return false;
     }
 
     // must be present already
     bool mapped = pml1[PML1_INDEX(virt)].present;
 
-    irq_spinlock_unlock(&m_virt_lock, irq_state);
+    irq_spinlock_release(&m_virt_lock, irq_state);
 
     return mapped;
 }
@@ -237,7 +237,7 @@ err_t init_virt() {
     // be signed anyways, so if we got so far it should be fine (and TOCTOU is
     // hard)
     //
-    LOG_INFO("memory: Kernel mappings");
+    TRACE("memory: Kernel mappings");
     CHECK(g_limine_executable_file_request.response != NULL);
     void* elf_base = g_limine_executable_file_request.response->executable_file->address;
     Elf64_Ehdr* ehdr = elf_base;
@@ -253,9 +253,9 @@ err_t init_virt() {
         uintptr_t paddr = (vaddr - m_kernel_virtual_base) + m_kernel_physical_base;
         uintptr_t pend = (vend - m_kernel_virtual_base) + m_kernel_physical_base;
 
-        LOG_INFO("memory: %p-%p (%p-%p) [%c%c%c] %08x",
-                 vaddr, vend,
-                 paddr, pend,
+        TRACE("memory: %p-%p (%p-%p) [%c%c%c] %08zx",
+                 (void*)vaddr, (void*)vend,
+                 (void*)paddr, (void*)pend,
                  ((phdrs[i].p_flags & PF_R) == 0) ? '-' : 'r',
                  ((phdrs[i].p_flags & PF_W) == 0) ? '-' : 'w',
                  ((phdrs[i].p_flags & PF_X) == 0) ? '-' : 'x',
@@ -325,8 +325,7 @@ bool virt_handle_page_fault(uintptr_t addr) {
     if (
         (THREADS_ADDR <= addr && addr < THREADS_ADDR_END) ||
         (0xFFFF810000000000 <= addr && addr < 0xFFFF8E8000000000) ||
-        (0xFFFFC00000000000 <= addr && addr < 0xFFFFD00000000000) ||
-        (BASE_2GB <= addr && addr < BASE_4GB)
+        (0xFFFFC00000000000 <= addr && addr < 0xFFFFD00000000000)
     ) {
         // thread structs and gc heap are allocated lazily as required
 

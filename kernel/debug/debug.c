@@ -89,7 +89,7 @@ void debug_load_symbols() {
     Elf64_Shdr* symtab = NULL;
 
     if (ehdr->e_shoff == 0) {
-        LOG_WARN("debug: kernel has no section table");
+        WARN("debug: kernel has no section table");
         return;
     }
 
@@ -102,7 +102,7 @@ void debug_load_symbols() {
         }
     }
     if (symtab == NULL) {
-        LOG_WARN("debug: kernel has no symbol table");
+        WARN("debug: kernel has no symbol table");
         return;
     }
 
@@ -119,7 +119,7 @@ void debug_load_symbols() {
         });
     }
 
-    LOG_INFO("debug: Loaded %d symbols", m_symbols_count);
+    TRACE("debug: Loaded %d symbols", m_symbols_count);
 }
 
 symbol_t* debug_lookup_symbol(uintptr_t addr) {

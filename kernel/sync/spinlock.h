@@ -3,42 +3,64 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 
+#include "arch/intrin.h"
+#include "lib/defs.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Simple spinlock
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct spinlock {
-    atomic_bool lock;
+    atomic_flag lock;
 } spinlock_t;
 
-#define INIT_SPINLOCK() ((spinlock_t){ .lock = false })
+#define SPINLOCK_INIT ((spinlock_t){ .lock = ATOMIC_FLAG_INIT })
 
-void spinlock_lock(spinlock_t* spinlock);
+static inline void spinlock_acquire(spinlock_t* lock) {
+    while (atomic_flag_test_and_set_explicit(&lock->lock, memory_order_acquire)) {
+        cpu_relax();
+    }
+}
 
-bool spinlock_try_lock(spinlock_t* spinlock);
+static inline void spinlock_release(spinlock_t* lock) {
+    atomic_flag_clear_explicit(&lock->lock, memory_order_release);
+}
 
-void spinlock_unlock(spinlock_t* spinlock);
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// IRQ enable/disable helpers
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool spinlock_is_locked(spinlock_t* spinlock);
+static inline bool irq_save() {
+    bool status = __builtin_ia32_readeflags_u64() & BIT9;
+    __asm__("cli");
+    return status;
+}
+
+static inline void irq_restore(bool status) {
+    if (status) {
+        __asm__("sti");
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Spinlock shared between in-irq and out-of-irq code
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct irq_spinlock {
-    spinlock_t lock;
+    atomic_flag lock;
 } irq_spinlock_t;
 
-#define INIT_IRQ_SPINLOCK() ((irq_spinlock_t){ .lock = INIT_SPINLOCK() })
+#define IRQ_SPINLOCK_INIT ((irq_spinlock_t){ .lock = ATOMIC_FLAG_INIT })
 
-bool irq_spinlock_lock(irq_spinlock_t* spinlock);
+static inline bool irq_spinlock_acquire(irq_spinlock_t* lock) {
+    bool irq_state = irq_save();
+    while (atomic_flag_test_and_set_explicit(&lock->lock, memory_order_acquire)) {
+        cpu_relax();
+    }
+    return irq_state;
+}
 
-void irq_spinlock_unlock(irq_spinlock_t* spinlock, bool irq_state);
-
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// IRQ enable/disable helpers
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool irq_save();
-
-void irq_restore(bool status);
+static inline void irq_spinlock_release(irq_spinlock_t* lock, bool irq_state) {
+    atomic_flag_clear_explicit(&lock->lock, memory_order_release);
+    irq_restore(irq_state);
+}

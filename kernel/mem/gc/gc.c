@@ -4,6 +4,8 @@
 #include <sync/spinlock.h>
 #include <thread/pcpu.h>
 
+#include "tomatodotnet/types/basic.h"
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // CPU Local caches
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -35,13 +37,13 @@ void gc_init() {
     for (int i = 0; i < ARRAY_LENGTH(m_gc_global_regions); i++) {
         gc_region_t* order = &m_gc_global_regions[i];
         order->freelist = NULL;
-        order->lock = INIT_SPINLOCK();
+        order->lock = SPINLOCK_INIT;
         order->watermark = (void*)GC_REGION_BOTTOM(i);
         order->top = (void*)GC_REGION_TOP(i);
     }
 }
 
-void* tdn_host_gc_alloc(size_t size) {
+Object tdn_host_gc_alloc(ObjectVTable* vtable, size_t size, size_t alignment) {
     // align to the smallest size we can allocate
     if (size < 32) {
         size = 32;
@@ -53,7 +55,7 @@ void* tdn_host_gc_alloc(size_t size) {
     if (order < 0) {
         order = 0;
     } else if (order >= ARRAY_LENGTH(m_gc_global_regions)) {
-        LOG_WARN("Failed to allocate an object of size %lu", size);
+        WARN("Failed to allocate an object of size %lu", size);
         return NULL;
     }
 
@@ -62,7 +64,7 @@ void* tdn_host_gc_alloc(size_t size) {
     gc_region_t* region = &m_gc_global_regions[order];
 
     // pop a block from the region
-    spinlock_lock(&region->lock);
+    spinlock_acquire(&region->lock);
     void** block = region->freelist;
     if (block != NULL) {
         region->freelist = *block;
@@ -70,7 +72,7 @@ void* tdn_host_gc_alloc(size_t size) {
         block = region->watermark;
         region->watermark += aligned_size;
     }
-    spinlock_unlock(&region->lock);
+    spinlock_release(&region->lock);
 
     // if we did not allocate anything, request a GC
     // and try again
@@ -79,7 +81,9 @@ void* tdn_host_gc_alloc(size_t size) {
     }
 
     // return whatever we allocated
-    return block;
+    Object obj = (Object)block;
+    obj->VTable = vtable;
+    return obj;
 }
 
 void tdn_host_gc_register_root(void* root) {

@@ -7,7 +7,6 @@
 
 #include <stdatomic.h>
 #include <lib/list.h>
-#include <sync/parking_lot.h>
 #include <sync/spinlock.h>
 
 #include "runnable.h"
@@ -34,33 +33,6 @@ typedef struct thread {
 
     // The node for the scheduler
     list_entry_t scheduler_node;
-
-    //
-    // Parking lot context
-    //
-
-    // The key that this thread is sleeping on. This may change if the thread
-    // is requeued to a different key
-    _Atomic(size_t) park_key;
-
-    // The next thread in the parked queue
-    struct thread* park_next_in_queue;
-
-    // Token passed to this thread when it is unparked
-    size_t unpark_token;
-
-    // Token set by the thread when it is parked
-    size_t park_token;
-
-    // Is this thread parked with timeout
-    bool parked_with_timeout;
-
-    // parking lot has seen this thread and initialized itself accordingly
-    bool parking_lot_seen;
-
-    // used to prevent threads from
-    // waking up before time
-    atomic_flag park_lock;
 } __attribute__((aligned(4096))) thread_t;
 
 STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);

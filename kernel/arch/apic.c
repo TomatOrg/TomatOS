@@ -1,15 +1,17 @@
 #include "apic.h"
 
-#include <limine_requests.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <lib/except.h>
-#include <mem/memory.h>
-#include <mem/virt.h>
-#include <time/tsc.h>
+#include "lib/string.h"
 
 #include "intrin.h"
-#include "smp.h"
+#include "acpi/acpi.h"
+#include "mem/memory.h"
+#include "mem/phys.h"
+#include "sync/spinlock.h"
+#include "time/tsc.h"
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// LAPIC driver
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define XAPIC_ID_OFFSET                          0x20
 #define XAPIC_VERSION_OFFSET                     0x30
@@ -55,6 +57,16 @@ typedef union {
 
 typedef union {
     struct {
+        uint32_t divide_value_1 : 2;
+        uint32_t : 1;
+        uint32_t divide_value_2 : 1;
+        uint32_t : 28;
+    };
+    uint32_t packed;
+} LOCAL_APIC_DCR;
+
+typedef union {
+    struct {
         uint32_t vector : 8;
         uint32_t delivery_mode : 3;
         uint32_t : 1;
@@ -91,38 +103,78 @@ static bool m_x2apic_mode = false;
  */
 static uint8_t* m_xapic_base = NULL;
 
+/**
+ * The frequency of the lapic timer
+ */
+static uint64_t m_lapic_timer_freq = 0;
+
+static void lapic_write(size_t offset, uint32_t value) {
+    if (m_x2apic_mode) {
+        __asm__("" ::: "memory");
+        __wrmsr((offset >> 4) + X2APIC_MSR_BASE_ADDRESS, value);
+    } else {
+        *((uint32_t*)(m_xapic_base + offset)) = value;
+    }
+}
+
+static uint32_t lapic_read(size_t offset) {
+    if (m_x2apic_mode) {
+        return __rdmsr((offset >> 4) + X2APIC_MSR_BASE_ADDRESS);
+    } else {
+        return *((uint32_t*)(m_xapic_base + offset));
+    }
+}
+
+static uint32_t calculate_lapic_freq() {
+    // set the counter to FFs
+    lapic_write(XAPIC_TIMER_INIT_COUNT_OFFSET, UINT32_MAX);
+
+    // start the timer
+    uint32_t ticks = acpi_get_timer_tick() + 363;
+    while (((ticks - acpi_get_timer_tick()) & BIT23) == 0);
+    uint32_t end_ticks = lapic_read(XAPIC_TIMER_CURRENT_COUNT_OFFSET);
+
+    // and clear the timer
+    lapic_timer_clear();
+
+    return (UINT32_MAX - end_ticks) * 9861;
+}
+
 err_t init_lapic(void) {
     err_t err = NO_ERROR;
+
+    // we are going to use 0xFF as the spurious interrupt vector
+    // ASSERT(!IS_ERROR(irq_reserve(0xFF)));
+
+    // we are going to use 0x20 as the timer handler
+    // ASSERT(!IS_ERROR(irq_reserve(0x20)));
 
     // check the apic state
     MSR_IA32_APIC_BASE_REGISTER apic_base = { .packed = __rdmsr(MSR_IA32_APIC_BASE) };
     CHECK(apic_base.en);
     if (apic_base.extd) {
         m_x2apic_mode = true;
-        LOG_INFO("apic: using x2apic");
+        TRACE("apic: using x2apic");
 
     } else {
         m_x2apic_mode = false;
-        LOG_INFO("apic: using xapic");
+        TRACE("apic: using xapic");
 
         // calculate the address
         m_xapic_base = PHYS_TO_DIRECT(apic_base.apic_base << 12);
 
         // make sure the apic is mapped properly
-        RETHROW(virt_map_page(apic_base.apic_base << 12, (uintptr_t)m_xapic_base, MAP_PERM_W));
+        // TODO: RETHROW(virt_map_page(apic_base.apic_base << 12, (uintptr_t)m_xapic_base, MAP_PERM_W));
     }
+
+    // perform the per-core init
+    init_lapic_per_core();
+
+    // calculate the frequency of the lapic
+    m_lapic_timer_freq = calculate_lapic_freq();
 
 cleanup:
     return err;
-}
-
-static void lapic_write(size_t offset, uint32_t value) {
-    if (m_x2apic_mode) {
-        asm("" ::: "memory");
-        __wrmsr((offset >> 4) + X2APIC_MSR_BASE_ADDRESS, value);
-    } else {
-        *((uint32_t*)(m_xapic_base + offset)) = value;
-    }
 }
 
 void init_lapic_per_core(void) {
@@ -133,17 +185,42 @@ void init_lapic_per_core(void) {
     };
     lapic_write(XAPIC_SPURIOUS_VECTOR_OFFSET, svr.packed);
 
-    // make sure timer is disabled
-    tsc_disable_timeout();
+    // divide by 1, aka I don't want any division
+    LOCAL_APIC_DCR dcr = {
+        .divide_value_1 = 0b11,
+        .divide_value_2 = 0b01,
+    };
+    lapic_write(XAPIC_TIMER_DIVIDE_CONFIGURATION_OFFSET, dcr.packed);
 
-    // set the timer, we configure it for tsc deadline
+    // ensure the timer is clear
+    lapic_timer_clear();
+
+    // enable the lapic timer properly
     LOCAL_APIC_LVT_TIMER timer = {
         .vector = 0x20,
-        .timer_mode = 2
+        .mask = 0,
+        .timer_mode = 0
     };
     lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
 }
 
 void lapic_eoi(void) {
     lapic_write(XAPIC_EOI_OFFSET, 0);
+}
+
+void lapic_timer_set_timeout(uint64_t ms_timeout) {
+    // calculate the amount of ticks we need to set, if too much then
+    // just truncate, its up to the timer subsystem to be able to handle
+    // it
+    uint64_t timer_count = (ms_timeout * m_lapic_timer_freq) / MS_PER_S;
+    if (timer_count > UINT32_MAX) {
+        timer_count = 429496730;
+    }
+
+    // set the count
+    lapic_write(XAPIC_TIMER_INIT_COUNT_OFFSET, timer_count);
+}
+
+void lapic_timer_clear(void) {
+    lapic_write(XAPIC_TIMER_INIT_COUNT_OFFSET, 0);
 }

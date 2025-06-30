@@ -10,28 +10,28 @@
 void tdn_host_log_trace(const char* format, ...) {
     va_list ap;
     va_start(ap, format);
-    log_vprintf("[*] ", format, ap);
+    debug_vprint("[*] ", "\n", format, ap);
     va_end(ap);
 }
 
 void tdn_host_log_warn(const char* format, ...) {
     va_list ap;
     va_start(ap, format);
-    log_vprintf("[!] ", format, ap);
+    debug_vprint("[!] ", "\n", format, ap);
     va_end(ap);
 }
 
 void tdn_host_log_error(const char* format, ...) {
     va_list ap;
     va_start(ap, format);
-    log_vprintf("[-] ", format, ap);
+    debug_vprint("[-] ", "\n", format, ap);
     va_end(ap);
 }
 
 void tdn_host_printf(const char* format, ...) {
     va_list ap;
     va_start(ap, format);
-    debug_vprintf(format, ap);
+    debug_vprint("", "", format, ap);
     va_end(ap);
 }
 
@@ -59,9 +59,8 @@ bool tdn_host_resolve_assembly(const char* name, uint16_t revision, tdn_file_t* 
     return false;
 }
 
-int tdn_host_read_file(tdn_file_t file, size_t offset, size_t size, void* buffer) {
-    // not implemented for now
-    return -1;
+tdn_err_t tdn_host_read_file(void* file, size_t offset, size_t size, void* buffer) {
+    return TDN_ERROR_CHECK_FAILED;
 }
 
 void tdn_host_close_file(tdn_file_t file) {
@@ -102,7 +101,7 @@ void tdn_host_free(void* ptr) {
  */
 static void* m_jit_watermark = (void*)JIT_ADDR;
 
-void* tdn_host_map(size_t size) {
+void* tdn_host_jit_alloc(size_t size) {
     if ((UINTPTR_MAX - (uintptr_t)m_jit_watermark) < size) {
         return NULL;
     }
@@ -121,22 +120,21 @@ void* tdn_host_map(size_t size) {
     return ptr;
 }
 
-void tdn_host_map_rx(void* ptr, size_t size) {
+void tdn_host_jit_set_exec(void* ptr, size_t size) {
     virt_remap_range((uintptr_t)ptr, SIZE_TO_PAGES(size), MAP_PERM_X);
 }
 
 //----------------------------------------------------------------------------------------------------------------------
-// Allocate memory between 2gb and 4gb
-// Just use a bump for now
+// TODO: Dumping spidir
 //----------------------------------------------------------------------------------------------------------------------
 
-static void* m_low_memory = (void*)BASE_2GB;
-
-void* tdn_host_mallocz_low(size_t size) {
-    void* ptr = m_low_memory;
-    m_low_memory += ALIGN_UP(size, 8);
-    return ptr;
+void* tdn_host_jit_start_dump(void) {
+    return NULL;
 }
 
-void tdn_host_free_low(void* ptr) {
+void tdn_host_jit_end_dump(void* ctx) {
+}
+
+spidir_dump_status_t tdn_host_jit_dump_callback(const char* data, size_t size, void* ctx) {
+    return SPIDIR_DUMP_STOP;
 }
