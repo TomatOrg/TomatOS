@@ -65,14 +65,6 @@ void thread_switch_status(thread_t* thread, thread_status_t old_value, thread_st
     }
 }
 
-__attribute__((force_align_arg_pointer))
-static void thread_entry() {
-    // and now run the
-    thread_t* thread = scheduler_get_current_thread();
-    thread->entry(thread->arg);
-    thread_exit();
-}
-
 thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt, ...) {
     thread_t* thread = thread_alloc();
     if (thread == NULL) {
@@ -86,15 +78,15 @@ thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt
     ksnprintf(thread->name, sizeof(thread->name) - 1, name_fmt, va);
     va_end(va);
 
-    // initialize the callback, this will be used by the thread_entry to
-    // call the real entry point
-    thread->entry = callback;
-    thread->arg = arg;
-
-    // set the thread entry as the first function to run
-    // it will call the callback properly with its argument
-    thread->cpu_state = thread->stack_end - sizeof(*thread->cpu_state);
-    thread->cpu_state->rip = (uintptr_t)thread_entry;
+    // set the thread callback as the function to jump to and the rdi
+    // as the first parameter, we are going to push to the stack the
+    // thread_exit function to ensure it will exit the thread at the end,
+    // this also ensures the stack is properly aligned at its entry
+    uintptr_t* stack = thread->stack_end;
+    *--stack = (uintptr_t)thread_exit;
+    thread->cpu_state = (void*)stack - sizeof(*thread->cpu_state);
+    thread->cpu_state->rip = (uintptr_t)callback;
+    thread->cpu_state->rdi = (uintptr_t)arg;
 
     // setup the extended state
     xsave_legacy_region_t* extended_state = (xsave_legacy_region_t*)thread->extended_state;

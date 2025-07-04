@@ -43,7 +43,7 @@ typedef struct intr {
 // Exception handling - has a bunch of code to save registers so we can debug more easily
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-typedef struct exception_context {
+typedef struct exception_frame {
     uint64_t r15;
     uint64_t r14;
     uint64_t r13;
@@ -66,7 +66,7 @@ typedef struct exception_context {
     rflags_t rflags;
     uint64_t rsp;
     uint64_t ss;
-} exception_context_t;
+} exception_frame_t;
 
 typedef union page_fault_error {
     struct {
@@ -94,7 +94,7 @@ typedef union selector_error_code {
 /**
  * Forward declare the exception handler
  */
-static void common_exception_handler(exception_context_t* ctx);
+void common_exception_handler(exception_frame_t* ctx);
 
 #define EXCEPTION_STUB(num) \
     __attribute__((naked)) \
@@ -146,115 +146,6 @@ EXCEPTION_ERROR_STUB(0x1D);
 EXCEPTION_ERROR_STUB(0x1E);
 EXCEPTION_STUB(0x1F);
 
-__asm__ (
-    ".cfi_sections .eh_frame, .debug_frame\n"
-    ".section .text\n"
-    ".global common_exception_stub\n"
-    "common_exception_stub:\n"
-    ".cfi_startproc simple\n"
-    ".cfi_signal_frame\n"
-    ".cfi_def_cfa %rsp, 0\n"
-    ".cfi_offset %rip, 16\n"
-    ".cfi_offset %rsp, 40\n"
-    "cld\n"
-    "pushq %rax\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %rax, 0\n"
-    "pushq %rbx\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %rbx, 0\n"
-    "pushq %rcx\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %rcx, 0\n"
-    "pushq %rdx\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %rdx, 0\n"
-    "pushq %rsi\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %rsi, 0\n"
-    "pushq %rdi\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %rdi, 0\n"
-    "pushq %rbp\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %rbp, 0\n"
-    "pushq %r8\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r8, 0\n"
-    "pushq %r9\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r9, 0\n"
-    "pushq %r10\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r10, 0\n"
-    "pushq %r11\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r11, 0\n"
-    "pushq %r12\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r12, 0\n"
-    "pushq %r13\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r13, 0\n"
-    "pushq %r14\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r14, 0\n"
-    "pushq %r15\n"
-    ".cfi_adjust_cfa_offset 8\n"
-    ".cfi_rel_offset %r15, 0\n"
-    "movq %rsp, %rdi\n"
-    "call common_exception_handler\n"
-    "popq %r15\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r15\n"
-    "popq %r14\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r14\n"
-    "popq %r13\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r13\n"
-    "popq %r12\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r12\n"
-    "popq %r11\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r11\n"
-    "popq %r10\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r10\n"
-    "popq %r9\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r9\n"
-    "popq %r8\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %r8\n"
-    "popq %rbp\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %rbp\n"
-    "popq %rdi\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %rdi\n"
-    "popq %rsi\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %rsi\n"
-    "popq %rdx\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %rdx\n"
-    "popq %rcx\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %rcx\n"
-    "popq %rbx\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %rbx\n"
-    "popq %rax\n"
-    ".cfi_adjust_cfa_offset -8\n"
-    ".cfi_restore %rax\n"
-    "addq $16, %rsp\n"
-    ".cfi_adjust_cfa_offset -16\n"
-    "iretq\n"
-    ".cfi_endproc\n"
-);
-
 /**
  * Pretty print exception names
  */
@@ -299,7 +190,7 @@ static spinlock_t m_exception_lock = SPINLOCK_INIT;
 /**
  * The default exception handler, simply panics...
  */
-static void default_exception_handler(exception_context_t* ctx) {
+static void default_exception_handler(exception_frame_t* ctx) {
     spinlock_acquire(&m_exception_lock);
 
     // reset the spinlock so we can print
@@ -426,7 +317,7 @@ static void default_exception_handler(exception_context_t* ctx) {
 }
 
 __attribute__((used))
-static void common_exception_handler(exception_context_t* ctx) {
+static void common_exception_handler(exception_frame_t* ctx) {
     // special case for page
     if (ctx->int_num == EXCEPT_IA32_PAGE_FAULT) {
         if (virt_handle_page_fault(__readcr2())) {

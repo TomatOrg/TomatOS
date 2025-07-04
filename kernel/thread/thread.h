@@ -48,13 +48,27 @@ typedef enum thread_status {
  * switches to the scheduler
  */
 typedef struct thread_frame {
-    size_t r15;
-    size_t r14;
-    size_t r13;
-    size_t r12;
-    size_t rbx;
-    size_t rbp;
-    size_t rip;
+    // we are going to save all the registers just for easier
+    // debugging, even tho we could just save only the
+    // callee-saved registers
+    uint64_t r15;
+    uint64_t r14;
+    uint64_t r13;
+    uint64_t r12;
+    uint64_t r11;
+    uint64_t r10;
+    uint64_t r9;
+    uint64_t r8;
+    uint64_t rdi;
+    uint64_t rsi;
+    uint64_t rdx;
+    uint64_t rcx;
+    uint64_t rbx;
+    uint64_t rax;
+
+    // this is to ensure a nice stack unwind
+    uint64_t rbp;
+    uint64_t rip;
 } thread_frame_t;
 
 typedef struct thread {
@@ -70,10 +84,6 @@ typedef struct thread {
     // The actual stack of the thread
     void* stack_start;
     void* stack_end;
-
-    // the entry point to actually run
-    void* arg;
-    thread_entry_t entry;
 
     // The node for the scheduler
     list_entry_t scheduler_node;

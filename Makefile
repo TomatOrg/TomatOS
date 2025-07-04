@@ -146,13 +146,11 @@ $(BIN_DIR)/$(KERNEL).elf: kernel/linker.ld $(OBJS)
 	@mkdir -p "$$(dirname $@)"
 	@$(LD) $(OBJS) $(LDFLAGS) -o $@
 
-# Compilation rules for *.c files.
 $(OBJS_DIR)/%.c.o: %.c
 	@echo CC $@
 	@mkdir -p $(@D)
 	@$(CC) -MMD -MP $(CFLAGS) -c $< -o $@
 
-# Compilation rules for *.c files.
 $(OBJS_DIR)/%.S.o: %.S
 	@echo CC $@
 	@mkdir -p $(@D)

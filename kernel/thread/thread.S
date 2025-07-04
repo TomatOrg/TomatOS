@@ -8,12 +8,21 @@ thread_resume_finish:
     /* restore the stack of the thread */
     movq %rdi, %rsp
 
-    /* restore the callee-saved registers */
+    /* restore the register state */
     popq %r15
     popq %r14
     popq %r13
     popq %r12
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
     popq %rbx
+    popq %rax
     popq %rbp
 
     /*
@@ -28,9 +37,18 @@ thread_resume_finish:
  */
 .global switch_to_scheduler
 switch_to_scheduler:
-    /* save callee-saved registers */
+    /* save the register state */
     pushq %rbp
+    pushq %rax
     pushq %rbx
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
     pushq %r12
     pushq %r13
     pushq %r14
