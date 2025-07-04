@@ -42,14 +42,15 @@ static thread_t* thread_alloc() {
         thread = &THREADS[m_thread_top];
         m_thread_top++;
 
-        // initialize anything that it needs, we multiply after the ++ because we want to get
-        // the top of the stack, not the bottom of it
-        thread->stack_start = (void*)((STACKS_ADDR));
-        thread->stack_end = (void*)((STACKS_ADDR + SIZE_8MB * m_thread_top));
-
         // switch to a dead state, just so we can wake it up properly
         thread_switch_status(thread, THREAD_STATUS_IDLE, THREAD_STATUS_DEAD);
     }
+
+    // initialize anything that it needs, we multiply after the ++ because we want to get
+    // the top of the stack, not the bottom of it
+    size_t stack_offset = STACKS_ADDR + SIZE_8MB * get_thread_id(thread);
+    thread->stack_start = (void*)stack_offset + SIZE_2MB;
+    thread->stack_end = (void*)stack_offset + SIZE_8MB;
 
     spinlock_release(&m_thread_freelist_lock);
 

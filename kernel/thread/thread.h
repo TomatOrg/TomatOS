@@ -105,6 +105,11 @@ STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);
 #define THREADS ((thread_t*)THREADS_ADDR)
 
 /**
+ * Calculate the ID of the thread
+ */
+static inline size_t get_thread_id(thread_t* thread) { return thread - THREADS; }
+
+/**
  * Switch the thread status, ensuring we first arrive at the status
  * we want before we try to do anything
  *

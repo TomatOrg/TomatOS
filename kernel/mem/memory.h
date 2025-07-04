@@ -75,6 +75,9 @@
  * This should be able to contain 1mb struct allocated on the stack
  * by managed code without any risk of overflowing and going to the
  * next stack
+ *
+ * TODO: maybe we should have the threads and stacks be at the same
+ *       region? it could fit
  */
 #define STACKS_ADDR             (0xFFFF8F0000000000ULL)
 #define STACKS_ADDR_END         (0xFFFF8F8000000000ULL)
