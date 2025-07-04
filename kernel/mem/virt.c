@@ -333,13 +333,13 @@ bool virt_handle_page_fault(uintptr_t addr) {
         // stacks are allocated lazily as required, but we must not allocate if they
         // are inside of the guard zone of the range, which is the bottom 2mb of the
         // stack
-        CHECK(ALIGN_DOWN(addr, SIZE_8MB) + SIZE_2MB <= addr);
+        CHECK(ALIGN_DOWN(addr, SIZE_8MB) + SIZE_2MB <= addr, "Stack overflow!");
 
     } else if (SMALL_STACKS_ADDR <= addr && addr < SMALL_STACKS_ADDR_END) {
         // stacks are allocated lazily as required, but we must not allocate if they
         // are inside of the guard zone of the range, which is the bottom 2mb of the
         // stack
-        CHECK(ALIGN_DOWN(addr, SIZE_32KB) + SIZE_4KB <= addr);
+        CHECK(ALIGN_DOWN(addr, SIZE_32KB) + SIZE_4KB <= addr, "Small stack overflow!");
 
     } else if (DIRECT_MAP_OFFSET <= addr && addr < DIRECT_MAP_OFFSET + SIZE_512GB) {
         // direct map will read pages on demand

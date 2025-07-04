@@ -24,11 +24,6 @@ void scheduler_start_per_core(void);
 //----------------------------------------------------------------------------------------------------------------------
 
 /**
- * Start a new thread
- */
-void scheduler_start_thread(thread_t* thread);
-
-/**
  * Wakeup a thread and let it run
  */
 void scheduler_wakeup_thread(thread_t* thread);
@@ -48,9 +43,15 @@ thread_t* scheduler_get_current_thread(void);
 void scheduler_yield(void);
 
 /**
+ * A callback to run after we set the thread to sleep properly
+ * but before anyone can actually wake it up
+ */
+typedef bool (*scheduler_park_callback_t)(void* arg);
+
+/**
  * Park the current thread
  */
-void scheduler_park(void);
+void scheduler_park(scheduler_park_callback_t callback, void* arg);
 
 /**
  * Park the current thread
@@ -58,9 +59,10 @@ void scheduler_park(void);
 void scheduler_exit(void);
 
 /**
- * Scheduler preemption handling
+ * Request a reschedule, if the preempt count is positive this will be delayed until the preempt
+ * count reaches zero
  */
-void scheduler_preempt(void);
+void scheduler_reschedule(void);
 
 //----------------------------------------------------------------------------------------------------------------------
 // Preemption handling
@@ -75,3 +77,8 @@ void scheduler_preempt_disable(void);
  * Enable preemption after disabling it
  */
 void scheduler_preempt_enable(void);
+
+/**
+ * Is preemption currently disabled
+ */
+bool scheduler_is_preempt_disabled(void);

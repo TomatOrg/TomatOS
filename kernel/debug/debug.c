@@ -77,6 +77,41 @@ void debug_create_symbol(const char* name, uintptr_t addr, size_t size) {
     });
 }
 
+static void swap_symbols(int i, int j) {
+    symbol_t tmp = m_symbols[i];
+    m_symbols[i] = m_symbols[j];
+    m_symbols[j] = tmp;
+}
+
+static int partition_symbols(int low, int high) {
+    uintptr_t p = m_symbols[low].address;
+    int i = low;
+    int j = high;
+    while (i < j) {
+        while (m_symbols[i].address <= p && i <= high - 1) {
+            i++;
+        }
+
+        while (m_symbols[j].address > p && j >= low + 1) {
+            j--;
+        }
+
+        if (i < j) {
+            swap_symbols(i, j);
+        }
+    }
+    swap_symbols(low, j);
+    return j;
+}
+
+static void sort_symbols(int low, int high) {
+    if (low < high) {
+        int pi = partition_symbols(low, high);
+        sort_symbols(low, pi - 1);
+        sort_symbols(pi + 1, high);
+    }
+}
+
 /**
  * we need the elf so we can properly load the symbols
  */
@@ -109,15 +144,20 @@ void debug_load_symbols() {
     // get the strtab of the symtab
     char* strtab = kernel + sections[symtab->sh_link].sh_offset;
 
-    // load all the symbols into an array we can easily search
+    // load all the symbols into an array
     Elf64_Sym* symbols = kernel + symtab->sh_offset;
-    for (int i = 0; i < symtab->sh_size / sizeof(Elf64_Sym); i++) {
-        insert_symbol((symbol_t){
-            .address = symbols[i].st_value,
-            .size = symbols[i].st_size,
-            .name = strdup(strtab + symbols[i].st_name)
-        });
+    m_symbols_count = symtab->sh_size / sizeof(Elf64_Sym);
+    m_symbols = mem_realloc(m_symbols, m_symbols_count * sizeof(symbol_t));
+    ASSERT(m_symbols != NULL);
+    for (int i = 0; i < m_symbols_count; i++) {
+        symbol_t* symbol = &m_symbols[i];
+        symbol->address = symbols[i].st_value;
+        symbol->size = symbols[i].st_size;
+        symbol->name = strdup(strtab + symbols[i].st_name);
     }
+
+    // sort it for easy searching
+    sort_symbols(0, m_symbols_count - 1);
 
     TRACE("debug: Loaded %d symbols", m_symbols_count);
 }

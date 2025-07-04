@@ -8,9 +8,10 @@
 #include "limine_requests.h"
 #include "arch/apic.h"
 #include "arch/intrin.h"
+#include "time/tsc.h"
 
 typedef struct pcpu_timer {
-    void (*set_timeout)(uint64_t ms_timeout);
+    void (*set_deadline)(uint64_t tsc_deadline);
     void (*clear)(void);
 } pcpu_timer_t;
 
@@ -75,8 +76,15 @@ err_t pcpu_init(int cpu_count) {
     // TODO: check if TSC deadline is supported, if so use it, otherwise use
     //       lapic timer or whatever else we want
 
-    m_pcpu_timer.set_timeout = lapic_timer_set_timeout;
-    m_pcpu_timer.clear = lapic_timer_clear;
+    if (tsc_deadline_is_supported()) {
+        TRACE("timer: using TSC deadline");
+        m_pcpu_timer.set_deadline = tsc_timer_set_deadline;
+        m_pcpu_timer.clear = tsc_timer_clear;
+    } else {
+        TRACE("timer: using APIC timer");
+        m_pcpu_timer.set_deadline = lapic_timer_set_deadline;
+        m_pcpu_timer.clear = lapic_timer_clear;
+    }
 
 cleanup:
     return err;
@@ -100,8 +108,8 @@ bool pcpu_check_timer(void) {
     return true;
 }
 
-void pcpu_timer_set_timeout(uint64_t ms_timeout) {
-    m_pcpu_timer.set_timeout(ms_timeout);
+void pcpu_timer_set_deadline(uint64_t tsc_deadline) {
+    m_pcpu_timer.set_deadline(tsc_deadline);
 }
 
 void pcpu_timer_clear(void) {

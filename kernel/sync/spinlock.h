@@ -30,15 +30,19 @@ static inline void spinlock_release(spinlock_t* lock) {
 // IRQ enable/disable helpers
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+static inline void irq_enable() { asm("sti"); }
+static inline void irq_disable() { asm("cli"); }
+static inline bool is_irq_enabled() { return __builtin_ia32_readeflags_u64() & BIT9; }
+
 static inline bool irq_save() {
-    bool status = __builtin_ia32_readeflags_u64() & BIT9;
-    __asm__("cli");
+    bool status = is_irq_enabled();
+    irq_disable();
     return status;
 }
 
-static inline void irq_restore(bool status) {
-    if (status) {
-        __asm__("sti");
+static inline void irq_restore(bool irq_status) {
+    if (irq_status) {
+        irq_enable();
     }
 }
 

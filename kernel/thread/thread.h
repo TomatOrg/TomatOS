@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arch/idt.h>
+#include <arch/intr.h>
 #include <mem/memory.h>
 
 #include "lib/defs.h"
@@ -8,17 +8,61 @@
 #include <stdatomic.h>
 #include <lib/list.h>
 #include <sync/spinlock.h>
-
-#include "runnable.h"
+#include <stdnoreturn.h>
 
 typedef void (*thread_entry_t)(void *arg);
+
+typedef enum thread_status {
+    /**
+     * The thread was just allocated and has
+     * not yet been initialized
+     */
+    THREAD_STATUS_IDLE,
+
+    /**
+     * The thread is queued in the scheduler, and
+     * is not currently running code
+     */
+    THREAD_STATUS_RUNNABLE,
+
+    /**
+     * The thread is currently running, it is not
+     * queued in the scheduler
+     */
+    THREAD_STATUS_RUNNING,
+
+    /**
+     * The thread is blocked, it is not in a run queue
+     * and it is not running code.
+     */
+    THREAD_STATUS_WAITING,
+
+    /**
+     * The thread is dead, it may be on the freelist at this point
+     */
+    THREAD_STATUS_DEAD,
+} thread_status_t;
+
+/**
+ * The saved state of the thread as it
+ * switches to the scheduler
+ */
+typedef struct thread_frame {
+    size_t r15;
+    size_t r14;
+    size_t r13;
+    size_t r12;
+    size_t rbx;
+    size_t rbp;
+    size_t rip;
+} thread_frame_t;
 
 typedef struct thread {
     // The thread name, not null terminated
     char name[256];
 
-    // the runnable of this thread, to queue on the scheduler
-    runnable_t runnable;
+    // the status of the current thread
+    _Atomic(thread_status_t) status;
 
     // either a freelist link or the scheduler link
     list_t link;
@@ -33,6 +77,14 @@ typedef struct thread {
 
     // The node for the scheduler
     list_entry_t scheduler_node;
+
+    // The CPU state of the thread
+    thread_frame_t* cpu_state;
+
+    // The extended state of the thread, must be aligned
+    // for XSAVE to work
+    __attribute__((aligned(64)))
+    uint8_t extended_state[];
 } __attribute__((aligned(4096))) thread_t;
 
 STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);
@@ -43,9 +95,29 @@ STATIC_ASSERT(sizeof(thread_t) <= SIZE_8MB);
 #define THREADS ((thread_t*)THREADS_ADDR)
 
 /**
+ * Switch the thread status, ensuring we first arrive at the status
+ * we want before we try to do anything
+ *
+ * @param old_value     [IN] The old value we want to see before we continue
+ * @param new_value     [IN] The new value we want to have
+ */
+void thread_switch_status(thread_t* thread, thread_status_t old_value, thread_status_t new_value);
+
+/**
 * Create a new thread, you need to schedule it yourself
 */
 thread_t* thread_create(thread_entry_t callback, void *arg, const char* name_fmt, ...);
+
+/**
+ * Resume a thread, destroying the
+ * current context that we have
+ */
+noreturn void thread_resume(thread_t* thread);
+
+/**
+ * Save the extended state of the thread
+ */
+void thread_save_extended_state(thread_t* thread);
 
 /**
  * Free the given thread, returning it to the freelist

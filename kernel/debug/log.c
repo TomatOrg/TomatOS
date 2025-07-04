@@ -14,6 +14,7 @@
 #include <lib/printf.h>
 
 #include "mem/alloc.h"
+#include "mem/phys.h"
 
 
 static irq_spinlock_t m_debug_lock = IRQ_SPINLOCK_INIT;
@@ -27,8 +28,8 @@ void init_early_logging() {
     m_e9_enabled = __inbyte(0xE9) == 0xE9;
 }
 
-static void mem_free_sized(void* ptr, size_t size) {
-    mem_free(ptr);
+static void phys_free_sized(void* ptr, size_t size) {
+    phys_free(ptr);
 }
 
 void init_logging(void) {
@@ -38,8 +39,8 @@ void init_logging(void) {
         struct limine_framebuffer* framebuffer = response->framebuffers[0];
         TRACE("Using framebuffer #0 - %p - %ldx%ld (pitch=%ld)", framebuffer->address, framebuffer->width, framebuffer->height, framebuffer->pitch);
         m_flanterm_context = flanterm_fb_init(
-            mem_alloc,
-            mem_free_sized,
+            phys_alloc,
+            phys_free_sized,
             framebuffer->address, framebuffer->width, framebuffer->height, framebuffer->pitch,
             framebuffer->red_mask_size, framebuffer->red_mask_shift,
             framebuffer->green_mask_size, framebuffer->green_mask_shift,

@@ -1,4 +1,4 @@
-#include "idt.h"
+#include "intr.h"
 
 #include <debug/debug.h>
 #include <mem/phys.h>
@@ -13,6 +13,7 @@
 #include "debug/log.h"
 #include "intrin.h"
 #include "regs.h"
+#include "time/timer.h"
 
 #define IDT_TYPE_TASK           0x5
 #define IDT_TYPE_INTERRUPT_16   0x6
@@ -33,7 +34,7 @@ typedef struct idt_entry {
     uint64_t _zero3 : 32;
 } PACKED idt_entry_t;
 
-typedef struct idt {
+typedef struct intr {
     uint16_t limit;
     idt_entry_t* base;
 } PACKED idt_t;
@@ -95,8 +96,6 @@ typedef union selector_error_code {
  */
 static void common_exception_handler(exception_context_t* ctx);
 
-#if 0
-
 #define EXCEPTION_STUB(num) \
     __attribute__((naked)) \
     static void exception_handler_##num() { \
@@ -113,40 +112,6 @@ static void common_exception_handler(exception_context_t* ctx);
             "pushq $" #num "\n" \
             "jmp common_exception_stub"); \
     }
-
-#else
-
-#define EXCEPTION_STUB(num) \
-    __attribute__((interrupt)) \
-    static void exception_handler_##num(interrupt_frame_t* frame) { \
-        exception_context_t ctx = { \
-            .cs = frame->cs, \
-            .rip = frame->rip, \
-            .rflags = frame->rflags, \
-            .rsp = frame->rsp, \
-            .ss = frame->ss, \
-            .int_num = num \
-        }; \
-        common_exception_handler(&ctx); \
-    }
-
-#define EXCEPTION_ERROR_STUB(num) \
-    __attribute__((interrupt)) \
-    static void exception_handler_##num(interrupt_frame_t* frame, uint64_t error_code) { \
-        exception_context_t ctx = { \
-            .cs = frame->cs, \
-            .rip = frame->rip, \
-            .rflags = frame->rflags, \
-            .rsp = frame->rsp, \
-            .ss = frame->ss, \
-            .int_num = num, \
-            .error_code = error_code \
-        }; \
-        common_exception_handler(&ctx); \
-    }
-
-
-#endif
 
 EXCEPTION_STUB(0x00);
 EXCEPTION_STUB(0x01);
@@ -182,6 +147,8 @@ EXCEPTION_ERROR_STUB(0x1E);
 EXCEPTION_STUB(0x1F);
 
 __asm__ (
+    ".cfi_sections .eh_frame, .debug_frame\n"
+    ".section .text\n"
     ".global common_exception_stub\n"
     "common_exception_stub:\n"
     ".cfi_startproc simple\n"
@@ -398,11 +365,6 @@ static void default_exception_handler(exception_context_t* ctx) {
     char buffer[256] = { 0 };
     debug_format_symbol(ctx->rip, buffer, sizeof(buffer));
     ERROR("Code: %s", buffer);
-    ERROR("%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
-        ((char*)ctx->rip)[0], ((char*)ctx->rip)[1], ((char*)ctx->rip)[2], ((char*)ctx->rip)[3],
-        ((char*)ctx->rip)[4], ((char*)ctx->rip)[5], ((char*)ctx->rip)[6], ((char*)ctx->rip)[7],
-        ((char*)ctx->rip)[8], ((char*)ctx->rip)[9], ((char*)ctx->rip)[10], ((char*)ctx->rip)[11],
-        ((char*)ctx->rip)[12], ((char*)ctx->rip)[13], ((char*)ctx->rip)[14], ((char*)ctx->rip)[15]);
     // debug_disasm_at((void*)ctx->rip, 5);
     ERROR("");
 
@@ -483,10 +445,16 @@ static void common_exception_handler(exception_context_t* ctx) {
 __attribute__((interrupt))
 static void timer_interrupt_handler(interrupt_frame_t* frame) {
     lapic_eoi();
-    scheduler_preempt();
+
+    // dispatch the timers, don't allow them to preempt
+    // while we are doing so, if they did request it
+    // then the preempt enable will handle it
+    scheduler_preempt_disable();
+    timer_dispatch();
+    scheduler_preempt_enable();
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////but it
 // IDT setup
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -494,14 +462,6 @@ static void timer_interrupt_handler(interrupt_frame_t* frame) {
  * All interrupt handler entries
  */
 static idt_entry_t m_idt_entries[256];
-
-/**
- * The idt
- */
-static idt_t m_idt = {
-    .limit = sizeof(m_idt_entries) - 1,
-    .base = m_idt_entries
-};
 
 /**
  * Set a single idt entry
@@ -557,5 +517,10 @@ void init_idt() {
     set_idt_entry(0x1E, exception_handler_0x1E, 0, true);
     set_idt_entry(0x1F, exception_handler_0x1F, 0, true);
     set_idt_entry(0x20, timer_interrupt_handler, 0, true);
-    asm volatile ("lidt %0" : : "m" (m_idt));
+
+    idt_t idt = {
+        .limit = sizeof(m_idt_entries) - 1,
+        .base = m_idt_entries
+    };
+    asm volatile ("lidt %0" : : "m" (idt));
 }

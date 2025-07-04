@@ -19,5 +19,5 @@ void init_lapic_per_core(void);
  */
 void lapic_eoi(void);
 
-void lapic_timer_set_timeout(uint64_t ms_timeout);
+void lapic_timer_set_deadline(uint64_t tsc_deadline);
 void lapic_timer_clear(void);

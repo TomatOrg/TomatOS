@@ -8,6 +8,7 @@
 #include <sync/spinlock.h>
 
 #include "scheduler.h"
+#include "time/tsc.h"
 
 /**
  * The amount of allocated threads we have
@@ -45,6 +46,9 @@ static thread_t* thread_alloc() {
         // the top of the stack, not the bottom of it
         thread->stack_start = (void*)((STACKS_ADDR));
         thread->stack_end = (void*)((STACKS_ADDR + SIZE_8MB * m_thread_top));
+
+        // switch to a dead state, just so we can wake it up properly
+        thread_switch_status(thread, THREAD_STATUS_IDLE, THREAD_STATUS_DEAD);
     }
 
     spinlock_release(&m_thread_freelist_lock);
@@ -52,12 +56,17 @@ static thread_t* thread_alloc() {
     return thread;
 }
 
+void thread_switch_status(thread_t* thread, thread_status_t old_value, thread_status_t new_value) {
+    thread_status_t current = old_value;
+    for (int i = 0; !atomic_compare_exchange_strong(&thread->status, &current, new_value); current = old_value, i++) {
+        ASSERT(!(old_value == THREAD_STATUS_WAITING && current == THREAD_STATUS_RUNNABLE), "waiting for WAITING but is RUNNABLE");
+
+        // TODO: the go code this is inspired by has some yield mechanism, can we use it? do we want to?
+    }
+}
+
 __attribute__((force_align_arg_pointer))
 static void thread_entry() {
-    // we need to enable preemption manually since we
-    // are not coming from a scheduler_call stub
-    scheduler_preempt_enable();
-
     // and now run the
     thread_t* thread = scheduler_get_current_thread();
     thread->entry(thread->arg);
@@ -69,6 +78,7 @@ thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt
     if (thread == NULL) {
         return NULL;
     }
+    ASSERT(thread->status == THREAD_STATUS_DEAD);
 
     // set the name
     va_list va;
@@ -83,12 +93,41 @@ thread_t* thread_create(thread_entry_t callback, void* arg, const char* name_fmt
 
     // set the thread entry as the first function to run
     // it will call the callback properly with its argument
-    runnable_set_rsp(&thread->runnable, thread->stack_end);
-    runnable_set_rip(&thread->runnable, thread_entry);
+    thread->cpu_state = thread->stack_end - sizeof(*thread->cpu_state);
+    thread->cpu_state->rip = (uintptr_t)thread_entry;
 
-    // TODO: fpu context
+    // setup the extended state
+    xsave_legacy_region_t* extended_state = (xsave_legacy_region_t*)thread->extended_state;
+    extended_state->mxscr = 0x00001f80;
+
+    // we are going to start it in a parked state, and the caller needs
+    // to actually queue it
+    thread_switch_status(thread, THREAD_STATUS_DEAD, THREAD_STATUS_WAITING);
 
     return thread;
+}
+
+/**
+ * Finalizes the switch to the thread, including
+ * actually jumping to it
+ */
+noreturn void thread_resume_finish(thread_frame_t* frame);
+
+void thread_resume(thread_t* thread) {
+    // Restore the extended state
+    // TODO: support for xrstors when available
+    __builtin_ia32_xrstor64(thread->extended_state, ~0ull);
+
+    // and now we can jump to the thread
+    thread_resume_finish(thread->cpu_state);
+}
+
+void thread_save_extended_state(thread_t* thread) {
+    // Save the extended state
+    // TODO: support for using xsaves which has both init and modified and compact
+    //       optimizations, we won't support xsavec since it does not have the modified
+    //       optimization
+    __builtin_ia32_xsaveopt64(thread->extended_state, ~0ull);
 }
 
 void thread_free(thread_t* thread) {

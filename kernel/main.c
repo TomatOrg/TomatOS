@@ -1,9 +1,10 @@
+#include <cpuid.h>
 #include <limine_requests.h>
 
 #include "limine.h"
 #include "debug/log.h"
 #include "arch/gdt.h"
-#include "arch/idt.h"
+#include "arch/intr.h"
 #include "lib/except.h"
 #include "acpi/acpi.h"
 #include "arch/intrin.h"
@@ -26,6 +27,8 @@
 
 #include <tomatodotnet/tdn.h>
 #include <tomatodotnet/jit/jit.h>
+
+#include "time/timer.h"
 
 /**
  * The init thread
@@ -101,7 +104,88 @@ static atomic_size_t m_smp_count = 0;
  */
 static atomic_bool m_smp_fail = false;
 
-static void set_cpu_features() {
+typedef struct xcr0_feature {
+    const char* name;
+    bool enable;
+    bool required;
+} xcr0_feature_t;
+
+/**
+ * The features that we support and want to enable if supported
+ */
+static const xcr0_feature_t m_xcr0_features[] = {
+    [0] = { "x87", true, true },
+    [1] = { "SSE", true, true },
+    [2] = { "AVX", true, true },
+    [3] = { "MPX[BNDREG]", false, false },
+    [4] = { "MPX[BNDCSR]", false, false },
+    [5] = { "AVX-512[OPMASK]", false, false },
+    [6] = { "AVX-512[ZMM_Hi256]", false, false },
+    [7] = { "AVX-512[Hi16_ZMM]", false, false },
+    [8] = { "PT", false, false },
+    [9] = { "PKRU", false, false },
+    [10] = { "PASID", false, false },
+    [11] = { "CET[U]", false, false },
+    [12] = { "CET[S]", false, false },
+    [13] = { "HDC", false, false },
+    [14] = { "UINTR", false, false },
+    [15] = { "LBR", false, false },
+    [16] = { "HWP", false, false },
+    [17] = { "AMX[TILECFG]", false, false },
+    [18] = { "AMX[XTILEDATA]", false, false },
+    [19] = { "APX", false, false },
+};
+
+static void set_extended_state_features(void) {
+    static bool first = true;
+    static uint32_t first_xcr0 = 0;
+    uint32_t a, b, c, d;
+
+    // ensure we have xsave (for the basic support sutff)
+    __cpuid(1, a, b, c, d);
+    ASSERT(c & bit_XSAVE, "Missing support for xsave");
+
+    // we are going to force xsaveopt for now
+    __cpuid_count(0xD, 1, a, b, c, d);
+    ASSERT(a & bit_XSAVEOPT, "Missing support for xsaveopt");
+
+    // enable/disable extended features or something
+    if (first) TRACE("extended state:");
+    __cpuid_count(0xD, 0, a, b, c, d);
+    uint64_t xcr0 = 0;
+    uint64_t features = a | ((uint64_t)d << 32);
+    for (int i = 0; i < ARRAY_LENGTH(m_xcr0_features); i++) {
+        const xcr0_feature_t* feature = &m_xcr0_features[i];
+        uint64_t bit = 1 << i;
+        if ((features & bit) != 0) {
+            if (feature->enable) {
+                xcr0 |= bit;
+                if (first) TRACE("\t- %s [enabling]", feature->name);
+            } else {
+                if (first) TRACE("\t- %s", feature->name);
+            }
+        } else {
+            ASSERT(!feature->required, "Missing required feature %s", feature->name);
+        }
+    }
+
+    // ensure that we have a consistent feature view
+    if (first) {
+        first_xcr0 = xcr0;
+    } else {
+        ASSERT(first_xcr0 == xcr0);
+    }
+    __builtin_ia32_xsetbv(0, xcr0);
+
+    if (first) {
+        __cpuid_count(0xD, 0, a, b, c, d);
+        TRACE("extended state size is %d bytes", b);
+    }
+
+    first = false;
+}
+
+static void set_cpu_features(void) {
     // PG/PE - required for long mode
     // MP - required for SSE
     __writecr0(CR0_PG | CR0_PE | CR0_MP);
@@ -110,15 +194,11 @@ static void set_cpu_features() {
     // OSFXSR/OSXMMEXCPT - required for SSE
     __writecr4(CR4_PAE | CR4_OSFXSR | CR4_OSXSAVE | CR4_OSXMMEXCPT);
 
-    // TODO: disable split locks
-
-    // TODO: enable all speculation that we want
-
-    // TODO: enable all the extensions that we want to support
+    set_extended_state_features();
 }
 
 static void halt() {
-    asm("cli");
+    irq_disable();
     for (;;) {
         asm("hlt");
     }
@@ -217,6 +297,7 @@ void _start() {
         RETHROW(pcpu_init(1));
         pcpu_init_per_core(0);
     }
+    init_logging();
 
     //
     // Continue with the rest of the initialization
@@ -232,7 +313,6 @@ void _start() {
     init_alloc();
 
     // load the debug symbols now that we have an allocator
-    init_logging();
     debug_load_symbols();
 
     // we need acpi for some early sleep primitives
@@ -283,7 +363,7 @@ void _start() {
 
     // we are about done, create the init thread and queue it
     m_init_thread = thread_create(init_thread_entry, NULL, "init thread");
-    scheduler_start_thread(m_init_thread);
+    scheduler_wakeup_thread(m_init_thread);
 
     // and we are ready to start the scheduler
     scheduler_start_per_core();

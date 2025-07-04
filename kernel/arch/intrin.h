@@ -138,3 +138,7 @@ static inline INTRIN_ATTR uint64_t __rdmsr(uint32_t index) {
     __asm__ __volatile__("rdmsr" : "=a"(low_data), "=d"(high_data) : "c"(index));
     return low_data | ((uint64_t)high_data << 32);
 }
+
+#define MSR_MEMORY_CTRL         0x33
+#define IA32_CORE_CAPABILITIES  0xCF
+

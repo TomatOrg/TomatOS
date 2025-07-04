@@ -24,7 +24,7 @@ int get_cpu_id();
 /**
  * Set the timeout, in tsc ticks, until the next per-cpu interrupt
  */
-void pcpu_timer_set_timeout(uint64_t ms_timeout);
+void pcpu_timer_set_deadline(uint64_t tsc_deadline);
 
 /**
  * Disable the per-cpu timer

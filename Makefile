@@ -12,7 +12,7 @@ KERNEL			:= tomatos
 #-----------------------------------------------------------------------------------------------------------------------
 
 # Are we compiling as debug or not 
-DEBUG 			?= 0
+DEBUG 			?= 1
 
 ifeq ($(DEBUG),1)
 OPTIMIZE		?= 0
@@ -50,7 +50,7 @@ endif
 # 
 COMMON_CFLAGS	:= -target x86_64-pc-none-elf
 COMMON_CFLAGS	+= -mgeneral-regs-only
-COMMON_CFLAGS	+= -march=x86-64-v3
+COMMON_CFLAGS	+= -march=x86-64-v3 -mxsave -mxsaveopt
 COMMON_CFLAGS	+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
 COMMON_CFLAGS	+= -mcmodel=kernel -mno-red-zone
 COMMON_CFLAGS	+= -nostdlib
@@ -115,6 +115,7 @@ CFLAGS 			+= -DSTB_SPRINTF_NOFLOAT
 
 # Get list of source files
 SRCS 		:= $(shell find kernel -name '*.c')
+SRCS 		+= $(shell find kernel -name '*.S')
 
 # Add the flanterm code for early console
 SRCS 		+= lib/flanterm/src/flanterm.c
@@ -122,8 +123,8 @@ SRCS 		+= lib/flanterm/src/flanterm_backends/fb.c
 CFLAGS 		+= -DFLANTERM_FB_DISABLE_BUMP_ALLOC
 
 # The objects/deps 
-OBJS 		:= $(addprefix $(OBJS_DIR)/,$(SRCS:.c=.c.o))
-DEPS		:= $(addprefix $(OBJS_DIR)/,$(SRCS:.c=.c.d))
+OBJS 		:= $(SRCS:%=$(OBJS_DIR)/%.o)
+DEPS 		:= $(OBJS:%.o=%.d)
 
 # Link against TomatoDotNet
 OBJS 		+= $(TDN_BIN_DIR)/libtdn.a
@@ -140,13 +141,19 @@ all: $(BIN_DIR)/$(KERNEL).elf
 -include $(DEPS)
 
 # Link rules for the final kernel executable.
-$(BIN_DIR)/$(KERNEL).elf: Makefile kernel/linker.ld $(OBJS)
+$(BIN_DIR)/$(KERNEL).elf: kernel/linker.ld $(OBJS)
 	@echo LD $@
 	@mkdir -p "$$(dirname $@)"
 	@$(LD) $(OBJS) $(LDFLAGS) -o $@
 
 # Compilation rules for *.c files.
-$(OBJS_DIR)/%.c.o: %.c Makefile $(BUILD_DIR)/limine/limine.h
+$(OBJS_DIR)/%.c.o: %.c
+	@echo CC $@
+	@mkdir -p $(@D)
+	@$(CC) -MMD -MP $(CFLAGS) -c $< -o $@
+
+# Compilation rules for *.c files.
+$(OBJS_DIR)/%.S.o: %.S
 	@echo CC $@
 	@mkdir -p $(@D)
 	@$(CC) -MMD -MP $(CFLAGS) -c $< -o $@
@@ -174,9 +181,8 @@ $(TDN_BIN_DIR)/libtdn.a: force
 		LD="$(LD)" \
 		DEBUG="$(DEBUG)" \
 		CFLAGS="$(COMMON_CFLAGS)" \
-		SPIDIR_CARGO_TARGET="x86_64-unknown-linux-none" \
 		SPIDIR_CARGO_FLAGS="--target=$(abspath artifacts/target.json) -Zbuild-std=core,alloc" \
-		SPIDIR_RUSTUP_TOOLCHAIN="nightly-2025-05-07"
+		SPIDIR_RUSTUP_TOOLCHAIN="nightly-2025-05-07" \
 
 #-----------------------------------------------------------------------------------------------------------------------
 # All the binaries
@@ -234,7 +240,7 @@ run: $(IMAGE_NAME).hdd
 		--enable-kvm \
 		-cpu host,+invtsc,+tsc-deadline \
 		-machine q35 \
-		-smp 4 \
+		-smp 1 \
 		-s \
 		-hda $(IMAGE_NAME).hdd \
 		-debugcon stdio \

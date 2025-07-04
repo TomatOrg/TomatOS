@@ -1,5 +1,7 @@
 #include "apic.h"
 
+#include <cpuid.h>
+
 #include "lib/string.h"
 
 #include "intrin.h"
@@ -99,6 +101,11 @@ typedef union {
 static bool m_x2apic_mode = false;
 
 /**
+ * Are we using TSC deadline mode
+ */
+static bool m_tsc_deadline = false;
+
+/**
  * The xAPIC base, when using xAPIC mode
  */
 static uint8_t* m_xapic_base = NULL;
@@ -170,8 +177,10 @@ err_t init_lapic(void) {
     // perform the per-core init
     init_lapic_per_core();
 
-    // calculate the frequency of the lapic
-    m_lapic_timer_freq = calculate_lapic_freq();
+    // if we don't have TSC deadline calibrate the lapic frequency
+    if (!tsc_deadline_is_supported()) {
+        m_lapic_timer_freq = calculate_lapic_freq();
+    }
 
 cleanup:
     return err;
@@ -185,36 +194,60 @@ void init_lapic_per_core(void) {
     };
     lapic_write(XAPIC_SPURIOUS_VECTOR_OFFSET, svr.packed);
 
-    // divide by 1, aka I don't want any division
-    LOCAL_APIC_DCR dcr = {
-        .divide_value_1 = 0b11,
-        .divide_value_2 = 0b01,
-    };
-    lapic_write(XAPIC_TIMER_DIVIDE_CONFIGURATION_OFFSET, dcr.packed);
+    if (tsc_deadline_is_supported()) {
+        // mark that we are using tsc timer
+        m_tsc_deadline = true;
 
-    // ensure the timer is clear
-    lapic_timer_clear();
+        // enable the tsc deadline timer properly
+        LOCAL_APIC_LVT_TIMER timer = {
+            .vector = 0x20,
+            .mask = 0,
+            .timer_mode = 2
+        };
+        lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
 
-    // enable the lapic timer properly
-    LOCAL_APIC_LVT_TIMER timer = {
-        .vector = 0x20,
-        .mask = 0,
-        .timer_mode = 0
-    };
-    lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
+        // According to the Intel manual, software must order the memory-mapped
+        // write to the LVT entry that enables TSC deadline mode, and any subsequent
+        // WRMSR to the IA32_TSC_DEADLINE MSR.
+        if (!m_x2apic_mode) {
+            asm("mfence");
+        }
+    } else {
+        // divide by 1, aka I don't want any division
+        LOCAL_APIC_DCR dcr = {
+            .divide_value_1 = 0b11,
+            .divide_value_2 = 0b01,
+        };
+        lapic_write(XAPIC_TIMER_DIVIDE_CONFIGURATION_OFFSET, dcr.packed);
+
+        // ensure the timer is clear
+        lapic_timer_clear();
+
+        // enable the lapic timer properly
+        LOCAL_APIC_LVT_TIMER timer = {
+            .vector = 0x20,
+            .mask = 0,
+            .timer_mode = 0
+        };
+        lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
+    }
 }
 
 void lapic_eoi(void) {
     lapic_write(XAPIC_EOI_OFFSET, 0);
 }
 
-void lapic_timer_set_timeout(uint64_t ms_timeout) {
+void lapic_timer_set_deadline(uint64_t tsc_deadline) {
     // calculate the amount of ticks we need to set, if too much then
     // just truncate, its up to the timer subsystem to be able to handle
     // it
-    uint64_t timer_count = (ms_timeout * m_lapic_timer_freq) / MS_PER_S;
-    if (timer_count > UINT32_MAX) {
-        timer_count = 429496730;
+    uint64_t now = get_tsc();
+    uint64_t timer_count = 0;
+    if (now < tsc_deadline) {
+        timer_count = ((tsc_deadline - now) * m_lapic_timer_freq) / g_tsc_freq_hz;
+        if (timer_count > UINT32_MAX) {
+            timer_count = 429496730;
+        }
     }
 
     // set the count
@@ -223,4 +256,20 @@ void lapic_timer_set_timeout(uint64_t ms_timeout) {
 
 void lapic_timer_clear(void) {
     lapic_write(XAPIC_TIMER_INIT_COUNT_OFFSET, 0);
+}
+
+void lapic_timer_mask(bool masked) {
+    // enable the lapic timer properly
+    LOCAL_APIC_LVT_TIMER timer = {
+        .vector = 0x20,
+        .mask = masked ? 1 : 0,
+        .timer_mode = m_tsc_deadline ? 2 : 0
+    };
+    lapic_write(XAPIC_LVT_TIMER_OFFSET, timer.packed);
+
+    // as above, we need an mfence to ensure that the next deadline
+    // access will not do a funny
+    if (m_tsc_deadline && !m_x2apic_mode) {
+        asm("mfence");
+    }
 }

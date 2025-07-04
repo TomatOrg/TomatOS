@@ -3,8 +3,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "cpuid.h"
+#include <cpuid.h>
 #include "acpi/acpi.h"
+#include "arch/intrin.h"
 #include "lib/defs.h"
 
 /**
@@ -53,4 +54,18 @@ void init_tsc() {
     g_tsc_freq_hz = calculate_tsc();
     TRACE("timer: TSC frequency %luMHz", g_tsc_freq_hz / 1000000);
     ASSERT(g_tsc_freq_hz != 0);
+}
+
+bool tsc_deadline_is_supported() {
+    uint32_t a, b, c, d;
+    __cpuid(1, a, b, c, d);
+    return c & bit_TSCDeadline;
+}
+
+void tsc_timer_set_deadline(uint64_t tsc_deadline) {
+    __wrmsr(MSR_IA32_TSC_DEADLINE, tsc_deadline);
+}
+
+void tsc_timer_clear(void) {
+    __wrmsr(MSR_IA32_TSC_DEADLINE, 0);
 }
