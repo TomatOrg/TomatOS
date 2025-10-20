@@ -77,6 +77,9 @@ static void init_thread_entry(void* arg) {
     RuntimeAssembly kernel_assembly;
     TDN_RETHROW(tdn_load_assembly_from_memory(kernel->address, kernel->size, &kernel_assembly));
 
+    RuntimeTypeInfo kernel_native;
+    TDN_RETHROW(tdn_assembly_lookup_type_by_cstr(kernel_assembly, "Tomato.Kernel", "Native", &kernel_native));
+
     // jit the entry point and call it
     TDN_RETHROW(tdn_jit_method(kernel_assembly->EntryPoint));
     int (*entry_point)(void) = kernel_assembly->EntryPoint->MethodPtr;
@@ -347,10 +350,6 @@ void _start() {
             // start it up
             response->cpus[i]->extra_argument = i;
             response->cpus[i]->goto_address = smp_entry;
-
-            while (m_smp_count != i + 1) {
-                cpu_relax();
-            }
         }
     }
 

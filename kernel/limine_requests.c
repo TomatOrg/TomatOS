@@ -5,19 +5,28 @@
 #include <debug/log.h>
 #include <lib/except.h>
 
-__attribute__((section(".limine_requests")))
+//
+// Metadata for limine to find our requests
+//
+
+__attribute__((used, section(".limine_requests")))
 static volatile LIMINE_BASE_REVISION(3);
 
-
-__attribute__((used, section(".limine_requests_start_marker")))
+__attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
+
+__attribute__((used, section(".limine_requests_end")))
+static volatile LIMINE_REQUESTS_END_MARKER;
+
+//
+// The actual requests
+//
 
 __attribute__((section(".limine_requests")))
 volatile struct limine_framebuffer_request g_limine_framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST,
     .revision = 0, .response = NULL
 };
-
 
 __attribute__((section(".limine_requests")))
 volatile struct limine_bootloader_info_request g_limine_bootloader_info_request = {
@@ -44,10 +53,26 @@ volatile struct limine_executable_file_request g_limine_executable_file_request 
     .revision = 0, .response = NULL
 };
 
+static struct limine_internal_module* m_internal_modules[] = {
+    // The corelib, must be present
+    &(struct limine_internal_module){
+        .path = "/System.Private.CoreLib.dll",
+        .flags = LIMINE_INTERNAL_MODULE_REQUIRED
+    },
+
+    // The kernel itself, must be present
+    &(struct limine_internal_module){
+        .path = "/Tomato.Kernel.dll",
+        .flags = LIMINE_INTERNAL_MODULE_REQUIRED
+    },
+};
+
 __attribute__((section(".limine_requests")))
 volatile struct limine_module_request g_limine_module_request = {
     .id = LIMINE_MODULE_REQUEST,
-    .revision = 1, .response = NULL
+    .revision = 1, .response = NULL,
+    .internal_modules = m_internal_modules,
+    .internal_module_count = ARRAY_LENGTH(m_internal_modules)
 };
 
 __attribute__((section(".limine_requests")))
@@ -68,9 +93,6 @@ volatile struct limine_mp_request g_limine_mp_request = {
     .revision = 0, .response = NULL,
     .flags = LIMINE_MP_X2APIC
 };
-
-__attribute__((used, section(".limine_requests_end_marker")))
-static volatile LIMINE_REQUESTS_END_MARKER;
 
 void limine_check_revision() {
 

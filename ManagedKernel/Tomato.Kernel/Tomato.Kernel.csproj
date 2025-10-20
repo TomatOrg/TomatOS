@@ -17,5 +17,6 @@
 
   <ItemGroup>
     <Compile Include="Kernel.cs" />
+    <Compile Include="Native.cs" />
   </ItemGroup>
 </Project>

@@ -128,7 +128,7 @@ void tdn_host_jit_set_exec(void* ptr, size_t size) {
 // TODO: Dumping spidir
 //----------------------------------------------------------------------------------------------------------------------
 
-void* tdn_host_jit_start_dump(void) {
+void* tdn_host_jit_start_dump(tdn_jit_dump_type_t type) {
     return NULL;
 }
 

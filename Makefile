@@ -12,7 +12,7 @@ KERNEL			:= tomatos
 #-----------------------------------------------------------------------------------------------------------------------
 
 # Are we compiling as debug or not 
-DEBUG 			?= 1
+DEBUG 			?= 0
 
 ifeq ($(DEBUG),1)
 OPTIMIZE		?= 0
@@ -53,7 +53,8 @@ COMMON_CFLAGS	+= -mgeneral-regs-only
 COMMON_CFLAGS	+= -march=x86-64-v3 -mxsave -mxsaveopt
 COMMON_CFLAGS	+= -fno-pie -fno-pic -ffreestanding -fno-builtin -static
 COMMON_CFLAGS	+= -mcmodel=kernel -mno-red-zone
-COMMON_CFLAGS	+= -nostdlib
+COMMON_CFLAGS	+= -nostdlib -nostdinc
+COMMON_CFLAGS	+= -isystem $(shell $(CC) --print-resource-dir)/include
 COMMON_CFLAGS	+= -flto -g
 COMMON_CFLAGS	+= -fno-omit-frame-pointer -fvisibility=hidden
 
@@ -179,6 +180,7 @@ $(TDN_BIN_DIR)/libtdn.a: force
 		LD="$(LD)" \
 		DEBUG="$(DEBUG)" \
 		CFLAGS="$(COMMON_CFLAGS)" \
+		SPIDIR_CARGO_TARGET_NAME="target" \
 		SPIDIR_CARGO_FLAGS="--target=$(abspath artifacts/target.json) -Zbuild-std=core,alloc" \
 		SPIDIR_RUSTUP_TOOLCHAIN="nightly-2025-05-07" \
 
@@ -213,7 +215,7 @@ $(BUILD_DIR)/limine/limine.h: $(BUILD_DIR)/limine
 # Clone and build limine utils
 $(BUILD_DIR)/limine:
 	mkdir -p $(@D)
-	cd $(BUILD_DIR) && git clone https://github.com/limine-bootloader/limine.git --branch=v8.x-binary --depth=1
+	cd $(BUILD_DIR) && git clone https://github.com/limine-bootloader/limine.git --branch=v10.x-binary --depth=1
 	$(MAKE) -C $(BUILD_DIR)/limine
 
 # The name of the image we are building
@@ -224,13 +226,16 @@ $(IMAGE_NAME).hdd: artifacts/limine.conf $(BUILD_DIR)/limine $(BIN_DIR)/$(KERNEL
 	mkdir -p $(@D)
 	rm -f $(IMAGE_NAME).hdd
 	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
-	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00
+	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00 -m 1
 	./$(BUILD_DIR)/limine/limine bios-install $(IMAGE_NAME).hdd
 	mformat -i $(IMAGE_NAME).hdd@@1M
-	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT
-	mcopy -i $(IMAGE_NAME).hdd@@1M $(BIN_DIR)/$(KERNEL).elf artifacts/limine.conf $(BUILD_DIR)/limine/limine-bios.sys ::/
+	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
+	mcopy -i $(IMAGE_NAME).hdd@@1M $(BIN_DIR)/$(KERNEL).elf ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M $(DLLS) ::/
+	mcopy -i $(IMAGE_NAME).hdd@@1M artifacts/limine.conf ::/boot/limine
+	mcopy -i $(IMAGE_NAME).hdd@@1M $(BUILD_DIR)/limine/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME).hdd@@1M $(BUILD_DIR)/limine/BOOTX64.EFI ::/EFI/BOOT
+	mcopy -i $(IMAGE_NAME).hdd@@1M $(BUILD_DIR)/limine/BOOTIA32.EFI ::/EFI/BOOT
 
 .PHONY: run
 run: $(IMAGE_NAME).hdd
@@ -238,7 +243,8 @@ run: $(IMAGE_NAME).hdd
 		--enable-kvm \
 		-cpu host,+invtsc,+tsc-deadline \
 		-machine q35 \
-		-smp 1 \
+		-m 256M \
+		-smp 4 \
 		-s \
 		-hda $(IMAGE_NAME).hdd \
 		-debugcon stdio \

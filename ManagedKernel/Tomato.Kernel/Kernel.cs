@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Tomato.Kernel;
 
 internal static class Kernel
@@ -5,7 +7,8 @@ internal static class Kernel
 
     private static int Main()
     {
-        return 123;
+        Debug.WriteLine("Hello from managed kernel!");
+        return 0;
     }
     
 }
