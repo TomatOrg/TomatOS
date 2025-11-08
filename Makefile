@@ -208,11 +208,8 @@ $(BIN_DIR)/System.Private.CoreLib.dll: ManagedKernel/Tomato.Kernel/bin/Debug/net
 
 # Build the kernel itself
 # TODO: build the entire solution instead?
-ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll: force
+ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/System.Private.CoreLib.dll &: force
 	cd ManagedKernel/Tomato.Kernel && dotnet build --configuration Debug
-
-# The C# build system handles this by copying it properly
-ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/System.Private.CoreLib.dll: ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/Tomato.Kernel.dll
 
 #-----------------------------------------------------------------------------------------------------------------------
 # Quick test
