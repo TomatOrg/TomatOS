@@ -7,3 +7,7 @@
 [submodule "lib/openlibm"]
 	path = lib/openlibm
 	url = git@github.com:JuliaMath/openlibm.git
+[submodule "lib/limine"]
+	path = lib/limine
+	url = https://github.com/limine-bootloader/limine.git
+	branch = v10.x-binary

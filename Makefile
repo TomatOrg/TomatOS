@@ -88,7 +88,7 @@ CFLAGS			+= -Wno-unused-function -Wno-unused-label -Wno-unused-variable
 CFLAGS 			+=
 CFLAGS			+= -Ilib/flanterm/src
 CFLAGS			+= -Ilib/buddy_alloc -DBUDDY_HEADER
-CFLAGS			+= -I$(BUILD_DIR)/limine
+CFLAGS			+= -Ilib/limine
 
 # Things required by TDN
 CFLAGS			+= -fms-extensions -Wno-microsoft
@@ -219,32 +219,32 @@ ManagedKernel/Tomato.Kernel/bin/Debug/net8.0/System.Private.CoreLib.dll: Managed
 # Quick test
 #-----------------------------------------------------------------------------------------------------------------------
 
-$(BUILD_DIR)/limine/limine.h: $(BUILD_DIR)/limine
-
-# Clone and build limine utils
-$(BUILD_DIR)/limine:
-	mkdir -p $(@D)
-	cd $(BUILD_DIR) && git clone https://github.com/limine-bootloader/limine.git --branch=v10.x-binary --depth=1
-	$(MAKE) -C $(BUILD_DIR)/limine
-
 # The name of the image we are building
 IMAGE_NAME 	:= $(BIN_DIR)/$(KERNEL)
 
+$(OBJS_DIR)/limine.stamp: $(shell find lib/limine)
+	@mkdir -p $(@D)
+	@cp -rpT lib/limine $(OBJS_DIR)/limine
+	@touch $@
+
+$(OBJS_DIR)/limine/limine: force | $(OBJS_DIR)/limine.stamp
+	@$(MAKE) -C $(OBJS_DIR)/limine
+
 # Build a limine image with both bios and uefi boot options
-$(IMAGE_NAME).hdd: artifacts/limine.conf $(BUILD_DIR)/limine $(BIN_DIR)/$(KERNEL).elf $(DLLS)
+$(IMAGE_NAME).hdd: artifacts/limine.conf $(OBJS_DIR)/limine/limine $(BIN_DIR)/$(KERNEL).elf $(DLLS)
 	mkdir -p $(@D)
 	rm -f $(IMAGE_NAME).hdd
 	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
 	sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00 -m 1
-	./$(BUILD_DIR)/limine/limine bios-install $(IMAGE_NAME).hdd
+	$(OBJS_DIR)/limine/limine bios-install $(IMAGE_NAME).hdd
 	mformat -i $(IMAGE_NAME).hdd@@1M
 	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
 	mcopy -i $(IMAGE_NAME).hdd@@1M $(BIN_DIR)/$(KERNEL).elf ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M $(DLLS) ::/
 	mcopy -i $(IMAGE_NAME).hdd@@1M artifacts/limine.conf ::/boot/limine
-	mcopy -i $(IMAGE_NAME).hdd@@1M $(BUILD_DIR)/limine/limine-bios.sys ::/boot/limine
-	mcopy -i $(IMAGE_NAME).hdd@@1M $(BUILD_DIR)/limine/BOOTX64.EFI ::/EFI/BOOT
-	mcopy -i $(IMAGE_NAME).hdd@@1M $(BUILD_DIR)/limine/BOOTIA32.EFI ::/EFI/BOOT
+	mcopy -i $(IMAGE_NAME).hdd@@1M lib/limine/limine-bios.sys ::/boot/limine
+	mcopy -i $(IMAGE_NAME).hdd@@1M lib/limine/BOOTX64.EFI ::/EFI/BOOT
+	mcopy -i $(IMAGE_NAME).hdd@@1M lib/limine/BOOTIA32.EFI ::/EFI/BOOT
 
 .PHONY: run
 run: $(IMAGE_NAME).hdd
