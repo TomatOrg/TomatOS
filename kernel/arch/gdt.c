@@ -2,6 +2,7 @@
 
 #include <lib/except.h>
 #include <mem/phys.h>
+#include <stdint.h>
 
 #include "mem/alloc.h"
 #include "sync/spinlock.h"
@@ -74,26 +75,27 @@ static gdt_t m_gdt = {
 };
 
 void init_gdt() {
-    asm volatile (
-        "lgdt %0\n"
-        "movq %%rsp, %%rax\n"
-        "pushq $16\n"
-        "pushq %%rax\n"
-        "pushfq\n"
-        "pushq $8\n"
-        "lea 1f(%%rip), %%rax\n"
-        "pushq %%rax\n"
-        "iretq\n"
-        "1:\n"
-        "movw $16, %%ax\n"
-        "movw %%ax, %%ds\n"
-        "movw %%ax, %%es\n"
-        "movw %%ax, %%fs\n"
-        "movw %%ax, %%gs\n"
-        :
-        : "m"(m_gdt)
-        : "memory", "rax"
-    );
+    uint64_t temp;
+
+    asm volatile("lgdt %[gdt]\n"
+                 "movq %%rsp, %[temp]\n"
+                 "pushq $16\n"
+                 "pushq %[temp]\n"
+                 "pushfq\n"
+                 "pushq %[code_selector]\n"
+                 "leaq 1f(%%rip), %[temp]\n"
+                 "pushq %[temp]\n"
+                 "iretq\n"
+                 "1:\n"
+                 "movw %[data_selector], %w[temp]\n"
+                 "movw %w[temp], %%ds\n"
+                 "movw %w[temp], %%es\n"
+                 "movw %w[temp], %%fs\n"
+                 "movw %w[temp], %%gs\n"
+                 : [temp] "=r"(temp)
+                 : [gdt] "m"(m_gdt), [code_selector] "i"(GDT_CODE),
+                   [data_selector] "i"(GDT_DATA)
+                 : "memory");
 }
 
 /**
@@ -143,7 +145,7 @@ err_t init_tss(void) {
     m_gdt.entries->tss.flags2 = 0b00000000;
 
     // load the TSS into the cache
-    asm volatile ("ltr %%ax" : : "a"(GDT_TSS) : "memory");
+    asm volatile ("ltr %w0" : : "r"(GDT_TSS) : "memory");
 
     spinlock_release(&m_tss_lock);
 
