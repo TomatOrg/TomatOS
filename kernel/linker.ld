@@ -38,6 +38,12 @@ SECTIONS
         KEEP(*(.limine_requests_end))
     }
 
+    pcpu_data : {
+        __start_pcpu_data = .;
+        *(pcpu_data)
+        __stop_pcpu_data = .;
+    }
+
     .data : {
         *(.data .data.*)
     }

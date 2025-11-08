@@ -56,20 +56,12 @@ typedef struct core_scheduler_context {
 static CPU_LOCAL core_scheduler_context_t m_core = {};
 
 /**
- * The scheduler contexts of all cpus
- */
-static core_scheduler_context_t** m_all_cores = NULL;
-
-/**
  * The size of the core parker, for mwait to work properly
  */
 static size_t m_core_parker_size = 0;
 
-err_t scheduler_init(void) {
+err_t init_scheduler(void) {
     err_t err = NO_ERROR;
-
-    m_all_cores = mem_alloc(g_cpu_count * sizeof(core_scheduler_context_t*));
-    CHECK_ERROR(m_all_cores != NULL, ERROR_OUT_OF_MEMORY);
 
     // calculate the monitor size so we can properly setup the wakeup structures
     uint32_t a, b, c, d;
@@ -100,9 +92,6 @@ cleanup:
 err_t scheduler_init_per_core(void) {
     err_t err = NO_ERROR;
 
-    // save the pointer of the current process
-    m_all_cores[get_cpu_id()] = &m_core;
-
     // setup the stack for the scheduler
     m_core.scheduler_stack = small_stack_alloc();
     CHECK_ERROR(m_core.scheduler_stack != NULL, ERROR_OUT_OF_MEMORY);
@@ -115,7 +104,7 @@ err_t scheduler_init_per_core(void) {
     CHECK(m_core.core_parker != NULL);
 
     // and init the queue
-    list_init(&m_core.queue);
+    list_init(pcpu_get_pointer(&m_core.queue));
 
 cleanup:
     return err;
@@ -213,11 +202,11 @@ noreturn static void scheduler_execute(thread_t* thread, bool inherit_time) {
     if (inherit_time) {
         // use the current deadline, if its in the past we will just
         // get the timer interrupt and handle it properly outside
-        timer_set(&m_core.timer, scheduler_timer_tick, m_core.timer.deadline);
+        timer_set(pcpu_get_pointer(&m_core.timer), scheduler_timer_tick, m_core.timer.deadline);
     } else {
         // set the timeslice for the thread
         // TODO: have the scheduler decide on a timeslice dynamically
-        timer_set(&m_core.timer, scheduler_timer_tick, tsc_ms_deadline(10));
+        timer_set(pcpu_get_pointer(&m_core.timer), scheduler_timer_tick, tsc_ms_deadline(10));
     }
 
     // set ourselves as the currently running thread
@@ -232,9 +221,11 @@ noreturn static void scheduler_execute(thread_t* thread, bool inherit_time) {
 }
 
 noreturn static void scheduler_schedule(void) {
+    core_scheduler_context_t* core = pcpu_get_pointer(&m_core);
+
     // cancel the schedule timer, since we don't need it anymore
     // and we don't want it to cause a wakeup
-    timer_cancel(&m_core.timer);
+    timer_cancel(&core->timer);
 
     for (;;) {
         // prepare to park, we are going to wait for
@@ -243,9 +234,9 @@ noreturn static void scheduler_schedule(void) {
         core_prepare_park();
 
         // take an item from the queue (if any)
-        bool irq_state = irq_spinlock_acquire(&m_core.queue_lock);
-        list_entry_t* next = list_pop(&m_core.queue);
-        irq_spinlock_release(&m_core.queue_lock, irq_state);
+        bool irq_state = irq_spinlock_acquire(&core->queue_lock);
+        list_entry_t* next = list_pop(&core->queue);
+        irq_spinlock_release(&core->queue_lock, irq_state);
 
         // we have a thread to run!
         if (next != NULL) {
@@ -278,9 +269,10 @@ static void scheduler_yield_internal(void) {
     scheduler_drop_thread();
 
     // return it to the queue
-    bool irq_state = irq_spinlock_acquire(&m_core.queue_lock);
-    list_add_tail(&m_core.queue, &current->scheduler_node);
-    irq_spinlock_release(&m_core.queue_lock, irq_state);
+    core_scheduler_context_t* core = pcpu_get_pointer(&m_core);
+    bool irq_state = irq_spinlock_acquire(&core->queue_lock);
+    list_add_tail(&core->queue, &current->scheduler_node);
+    irq_spinlock_release(&core->queue_lock, irq_state);
 
     // call the scheduler
     scheduler_schedule();
@@ -344,9 +336,10 @@ void scheduler_wakeup_thread(thread_t* thread) {
     thread_switch_status(thread, THREAD_STATUS_WAITING, THREAD_STATUS_RUNNABLE);
 
     // queue it properly
-    bool irq_state = irq_spinlock_acquire(&m_core.queue_lock);
-    list_add(&m_core.queue, &thread->scheduler_node);
-    irq_spinlock_release(&m_core.queue_lock, irq_state);
+    core_scheduler_context_t* core = pcpu_get_pointer(&m_core);
+    bool irq_state = irq_spinlock_acquire(&core->queue_lock);
+    list_add(&core->queue, &thread->scheduler_node);
+    irq_spinlock_release(&core->queue_lock, irq_state);
 
     // perform a reschedule, to allow the new thread to run
     scheduler_reschedule();

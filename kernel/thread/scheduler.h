@@ -6,7 +6,7 @@
 /**
  * Initialize the core of the scheduler
  */
-err_t scheduler_init(void);
+err_t init_scheduler(void);
 
 /**
  * Initialize the scheduler on each core, must be called

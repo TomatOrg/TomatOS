@@ -26,6 +26,11 @@ struct timer {
 };
 
 /**
+ * Initialize the timer subsystem
+ */
+void init_timers(void);
+
+/**
  * Setup a new timer to fire after the timeout
  */
 void timer_set(timer_t* timer, timer_callback_t callback, uint64_t tsc_deadline);

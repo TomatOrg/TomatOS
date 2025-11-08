@@ -1,10 +1,21 @@
 #include "timer.h"
 
 #include "tsc.h"
+#include "arch/apic.h"
 #include "lib/rbtree/rbtree.h"
 #include "sync/spinlock.h"
 #include "thread/pcpu.h"
 #include "thread/scheduler.h"
+
+typedef struct timer_backend {
+    void (*set_deadline)(uint64_t tsc_deadline);
+    void (*clear)(void);
+} timer_backend_t;
+
+/**
+ * The timer we are using
+ */
+static timer_backend_t m_timer_backend = {};
 
 struct per_core_timers {
     // the tree of timers, we use cached to have a quick
@@ -19,6 +30,18 @@ static CPU_LOCAL per_core_timers_t m_timers = {
     .tree = RB_ROOT_CACHED
 };
 
+void init_timers(void) {
+    if (tsc_deadline_is_supported()) {
+        TRACE("timer: using TSC deadline");
+        m_timer_backend.set_deadline = tsc_timer_set_deadline;
+        m_timer_backend.clear = tsc_timer_clear;
+    } else {
+        TRACE("timer: using APIC timer");
+        m_timer_backend.set_deadline = lapic_timer_set_deadline;
+        m_timer_backend.clear = lapic_timer_clear;
+    }
+}
+
 static bool timer_less(rb_node_t* a, const rb_node_t* b) {
     timer_t* ta = containerof(a, timer_t, node);
     timer_t* tb = containerof(b, timer_t, node);
@@ -32,12 +55,12 @@ void timer_set(timer_t* timer, timer_callback_t callback, uint64_t tsc_deadline)
     bool irq_state = irq_save();
     timer->deadline = tsc_deadline;
     timer->callback = callback;
-    timer->timers = &m_timers;
+    timer->timers = pcpu_get_pointer(&m_timers);
 
-    if (rb_add_cached(&timer->node, &m_timers.tree, timer_less) != NULL) {
+    if (rb_add_cached(&timer->node, pcpu_get_pointer(&m_timers.tree), timer_less) != NULL) {
         // if we are the new leftmost node then we are the next timer to arrive,
         // so set the deadline to us
-        pcpu_timer_set_deadline(tsc_deadline);
+        m_timer_backend.set_deadline(tsc_deadline);
     }
 
     irq_restore(irq_state);
@@ -48,7 +71,7 @@ void timer_cancel(timer_t* timer) {
     if (timers == NULL) {
         return;
     }
-    ASSERT(timers == &m_timers);
+    ASSERT(timers == pcpu_get_pointer(&m_timers));
     timer->timers = NULL;
 
     bool irq_state = irq_save();
@@ -60,10 +83,10 @@ void timer_cancel(timer_t* timer) {
         // and that the next timer should arrive later, update the timeout
         if (new_leftmost != NULL) {
             uint64_t new_deadline = containerof(new_leftmost, timer_t, node)->deadline;
-            pcpu_timer_set_deadline(new_deadline);
+            m_timer_backend.set_deadline(new_deadline);
         } else {
             // no more timers on the core, we can clear the timer
-            pcpu_timer_clear();
+            m_timer_backend.clear();
         }
     }
 
@@ -88,8 +111,8 @@ void timer_dispatch(void) {
         }
 
         // remove from the tree
-        ASSERT(timer->timers == &m_timers);
-        rb_erase_cached(&timer->node, &m_timers.tree);
+        ASSERT(timer->timers == pcpu_get_pointer(&m_timers));
+        rb_erase_cached(&timer->node, pcpu_get_pointer(&m_timers.tree));
         timer->timers = NULL;
 
         // we are done, we can unlock it
@@ -108,9 +131,9 @@ void timer_dispatch(void) {
     // if we still have a timer object in here it means that this is the next
     // time we should run it, setup the timer
     if (timer != NULL) {
-        pcpu_timer_set_deadline(timer->deadline);
+        m_timer_backend.set_deadline(timer->deadline);
     } else {
-        pcpu_timer_clear();
+        m_timer_backend.clear();
     }
 
     // we are done, its safe to do stuff again

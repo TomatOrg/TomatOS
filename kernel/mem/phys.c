@@ -564,7 +564,7 @@ static int m_lock_cpu = -1;
 /**
  * A reserved page used for
  */
-static CPU_LOCAL void* m_reserved_page;
+static void* CPU_LOCAL m_reserved_page;
 
 /**
  * There is one case where an on-demand stack expansion may
@@ -628,20 +628,6 @@ void* phys_alloc(size_t size) {
 
     // remove the lock
     m_lock_cpu = -1;
-    irq_spinlock_release(&m_memory_region_lock, irq_state);
-
-    return ptr;
-}
-
-
-void* early_phys_alloc(size_t size) {
-    int level = get_level_by_size(size);
-    if (level == -1) {
-        return NULL;
-    }
-
-    bool irq_state = irq_spinlock_acquire(&m_memory_region_lock);
-    void* ptr = internal_phys_alloc(level);
     irq_spinlock_release(&m_memory_region_lock, irq_state);
 
     return ptr;

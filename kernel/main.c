@@ -250,6 +250,7 @@ void _start() {
     err_t err = NO_ERROR;
 
     // make early logging work
+    init_early_pcpu();
     init_early_logging();
 
     // Welcome!
@@ -273,33 +274,6 @@ void _start() {
     //
     RETHROW(init_virt_early());
     RETHROW(init_phys());
-
-    //
-    // setup the per-cpu data of the current cpu
-    //
-    if (g_limine_mp_request.response != NULL) {
-        g_cpu_count = g_limine_mp_request.response->cpu_count;
-
-        // allocate all the storage needed
-        RETHROW(pcpu_init(g_limine_mp_request.response->cpu_count));
-
-        // now find the correct cpu id and set it
-        bool found = false;
-        for (int i = 0; i < g_limine_mp_request.response->cpu_count; i++) {
-            if (g_limine_mp_request.response->cpus[i]->lapic_id == g_limine_mp_request.response->bsp_lapic_id) {
-                pcpu_init_per_core(i);
-                found = true;
-                break;
-            }
-        }
-        CHECK(found);
-    } else {
-        // no SMP startup available from bootloader,
-        // just assume we have a single cpu
-        WARN("smp: missing limine SMP support");
-        RETHROW(pcpu_init(1));
-        pcpu_init_per_core(0);
-    }
     init_logging();
 
     //
@@ -312,7 +286,6 @@ void _start() {
     RETHROW(init_phys_mappings());
     set_cpu_features();
     switch_page_table();
-
     init_alloc();
 
     // load the debug symbols now that we have an allocator
@@ -321,36 +294,46 @@ void _start() {
     // we need acpi for some early sleep primitives
     RETHROW(init_acpi_tables());
 
-    // we need to calibrate the timer now
+    // timer subsystem init, we need to start by calibrating the TSC, following
+    // by setting up the lapic (including calibration if we don't have TSC deadline)
+    // followed by actually setting the timers properly
     init_tsc();
+    RETHROW(init_lapic());
+    init_timers();
 
-    // setup the scheduler
-    // do that before the SMP startup so it can requests
-    // tasks right away
-    RETHROW(scheduler_init());
+    // setup the scheduler structures
+    RETHROW(init_scheduler());
 
     // perform cpu startup
-    CHECK(g_limine_mp_request.response != NULL);
-    struct limine_mp_response* response = g_limine_mp_request.response;
+    if (g_limine_mp_request.response != NULL) {
+        struct limine_mp_response* response = g_limine_mp_request.response;
 
-    RETHROW(init_lapic());
+        g_cpu_count = response->cpu_count;
+        TRACE("smp: Starting CPUs (%zu)", g_cpu_count);
 
-    TRACE("smp: Starting CPUs (%zu)", g_cpu_count);
+        // setup pcpu for the rest of the system
+        RETHROW(init_pcpu(g_limine_mp_request.response->cpu_count));
 
-    for (size_t i = 0; i < g_cpu_count; i++) {
-        if (response->cpus[i]->lapic_id == response->bsp_lapic_id) {
-            TRACE("smp: \tCPU#%zu - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
+        for (size_t i = 0; i < g_cpu_count; i++) {
+            if (response->cpus[i]->lapic_id == response->bsp_lapic_id) {
+                TRACE("smp: \tCPU#%zu - LAPIC#%d (BSP)", i, response->cpus[i]->lapic_id);
 
-            // allocate the per-cpu storage now that we know our id
-            init_lapic_per_core();
-            RETHROW(scheduler_init_per_core());
+                // allocate the per-cpu storage now that we know our id
+                init_lapic_per_core();
+                RETHROW(scheduler_init_per_core());
 
-            m_smp_count++;
-        } else {
-            // start it up
-            response->cpus[i]->extra_argument = i;
-            response->cpus[i]->goto_address = smp_entry;
+                m_smp_count++;
+            } else {
+                // start it up
+                response->cpus[i]->extra_argument = i;
+                response->cpus[i]->goto_address = smp_entry;
+            }
         }
+    } else {
+        // no SMP startup available from bootloader,
+        // just assume we have a single cpu
+        WARN("smp: missing limine SMP support");
+        RETHROW(init_pcpu(1));
     }
 
     // wait for smp to finish up
