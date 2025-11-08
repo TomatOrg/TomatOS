@@ -4,3 +4,6 @@
 [submodule "lib/TomatoDotNet"]
 	path = lib/TomatoDotNet
 	url = git@github.com:TomatOrg/TomatoDotNet.git
+[submodule "lib/openlibm"]
+	path = lib/openlibm
+	url = git@github.com:JuliaMath/openlibm.git

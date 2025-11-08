@@ -25,6 +25,12 @@ SECTIONS
         *(.rodata .rodata.*)
     }
 
+    native_function_descriptors : {
+        __start_native_function_descriptors = .;
+        KEEP(*(native_function_descriptors))
+        __stop_native_function_descriptors = .;
+    }
+
     .note.gnu.build-id : {
         *(.note.gnu.build-id)
     }

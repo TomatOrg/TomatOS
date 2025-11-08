@@ -123,6 +123,15 @@ SRCS 		+= lib/flanterm/src/flanterm.c
 SRCS 		+= lib/flanterm/src/flanterm_backends/fb.c
 CFLAGS 		+= -DFLANTERM_FB_DISABLE_BUMP_ALLOC
 
+# Math lib
+SRCS		+= lib/openlibm/src/e_rem_pio2.c
+SRCS		+= lib/openlibm/src/k_rem_pio2.c
+SRCS 		+= lib/openlibm/src/k_cos.c
+SRCS 		+= lib/openlibm/src/k_sin.c
+SRCS 		+= lib/openlibm/src/s_cos.c
+SRCS 		+= lib/openlibm/src/s_scalbn.c
+CFLAGS		+= -isystem lib/openlibm/include
+
 # The objects/deps 
 OBJS 		:= $(SRCS:%=$(OBJS_DIR)/%.o)
 DEPS 		:= $(OBJS:%.o=%.d)
@@ -145,7 +154,7 @@ all: $(BIN_DIR)/$(KERNEL).elf
 $(BIN_DIR)/$(KERNEL).elf: kernel/linker.ld $(OBJS)
 	@echo LD $@
 	@mkdir -p "$$(dirname $@)"
-	@$(LD) $(OBJS) $(LDFLAGS) -o $@
+	@$(LD) --whole-archive $(OBJS) $(LDFLAGS) -o $@
 
 $(OBJS_DIR)/%.c.o: %.c
 	@echo CC $@

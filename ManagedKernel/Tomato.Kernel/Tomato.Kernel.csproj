@@ -9,6 +9,7 @@
         <NoStdLib>true</NoStdLib>
         <DisableImplicitFrameworkReferences>true</DisableImplicitFrameworkReferences>
         <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
 
   <ItemGroup>

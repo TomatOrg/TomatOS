@@ -4,7 +4,7 @@
 
 #include "cpp_magic.h"
 #include "defs.h"
-#include "debug/log.h"
+#include "assert.h"
 
 typedef enum err {
     NO_ERROR,
@@ -94,16 +94,3 @@ err_t map_tdn_error(tdn_err_t err);
     } while(0)
 
 #define TDN_RETHROW(error) TDN_RETHROW_LABEL(error, cleanup)
-
-//----------------------------------------------------------------------------------------------------------------------
-// Assertion
-//----------------------------------------------------------------------------------------------------------------------
-
-#define ASSERT(expr, ...) \
-    do { \
-        if (!(expr)) { \
-            IF(HAS_ARGS(__VA_ARGS__))(ERROR(__VA_ARGS__)); \
-            ERROR("Assertion failed at %s (%s:%d)", __FUNCTION__, __FILE__, __LINE__); \
-            __builtin_trap(); \
-        } \
-    } while (0)
