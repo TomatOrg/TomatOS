@@ -168,12 +168,8 @@ $(OBJS_DIR)/%.S.o: %.S
 
 .PHONY: clean
 clean:
-	rm -rf $(OBJS_DIR) $(BIN_DIR)
-	$(MAKE) -C lib/TomatoDotNet clean
-
-.PHONY: distclean
-distclean: clean
 	rm -rf $(BUILD_DIR)
+	$(MAKE) -C lib/TomatoDotNet clean
 
 #-----------------------------------------------------------------------------------------------------------------------
 # TomatoDotNet
