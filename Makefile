@@ -5,6 +5,9 @@
 # Nuke built-in rules and variables.
 override MAKEFLAGS += -rR
 
+.SECONDARY:
+.DELETE_ON_ERROR:
+
 KERNEL			:= tomatos
 
 #-----------------------------------------------------------------------------------------------------------------------
