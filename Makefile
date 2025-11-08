@@ -11,7 +11,7 @@ KERNEL			:= tomatos
 # General Config
 #-----------------------------------------------------------------------------------------------------------------------
 
-# Are we compiling as debug or not 
+# Are we compiling as debug or not
 DEBUG 			?= 0
 
 ifeq ($(DEBUG),1)
@@ -47,7 +47,7 @@ endif
 
 #
 # Common compilation flags, also passed to the libraries
-# 
+#
 COMMON_CFLAGS	:= -target x86_64-pc-none-elf
 COMMON_CFLAGS	+= -mgeneral-regs-only
 COMMON_CFLAGS	+= -march=x86-64-v3 -mxsave -mxsaveopt
@@ -101,7 +101,7 @@ endif
 
 #
 # Linker flags
-# 
+#
 LDFLAGS			:= -Tkernel/linker.ld -nostdlib -static
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -132,7 +132,7 @@ SRCS 		+= lib/openlibm/src/s_cos.c
 SRCS 		+= lib/openlibm/src/s_scalbn.c
 CFLAGS		+= -isystem lib/openlibm/include
 
-# The objects/deps 
+# The objects/deps
 OBJS 		:= $(SRCS:%=$(OBJS_DIR)/%.o)
 DEPS 		:= $(OBJS:%.o=%.d)
 
