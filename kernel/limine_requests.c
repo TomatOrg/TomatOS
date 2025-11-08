@@ -11,7 +11,7 @@
 //
 
 __attribute__((used, section(".limine_requests")))
-static volatile uint64_t g_limine_base_revision[] = LIMINE_BASE_REVISION(3);
+static volatile uint64_t g_limine_base_revision[] = LIMINE_BASE_REVISION(4);
 
 __attribute__((used, section(".limine_requests_start")))
 static uint64_t g_limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;

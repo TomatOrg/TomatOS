@@ -6,13 +6,6 @@ SECTIONS
 {
     . = 0xffffffff80000000;
 
-    /* Define a section to contain the Limine requests and assign it to its own PHDR */
-    .limine_requests : {
-        KEEP(*(.limine_requests_start))
-        KEEP(*(.limine_requests))
-        KEEP(*(.limine_requests_end))
-    }
-
     . = ALIGN(4096);
 
     .text : {
@@ -31,11 +24,19 @@ SECTIONS
         __stop_native_function_descriptors = .;
     }
 
-    .note.gnu.build-id : {
-        *(.note.gnu.build-id)
+    . = ALIGN(4096);
+
+    .got : {
+        *(.got)
     }
 
     . = ALIGN(4096);
+
+    .limine_requests : {
+        KEEP(*(.limine_requests_start))
+        KEEP(*(.limine_requests))
+        KEEP(*(.limine_requests_end))
+    }
 
     .data : {
         *(.data .data.*)

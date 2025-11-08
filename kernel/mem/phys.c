@@ -20,6 +20,7 @@ static const char* m_limine_memmap_type_str[] = {
     [LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE] = "Bootloader Reclaimable",
     [LIMINE_MEMMAP_EXECUTABLE_AND_MODULES] = "Executable and Modules",
     [LIMINE_MEMMAP_FRAMEBUFFER] = "Framebuffer",
+    [LIMINE_MEMMAP_ACPI_TABLES] = "ACPI Tables",
 };
 
 /**
@@ -498,6 +499,7 @@ err_t init_phys_mappings() {
 
             // readonly mappings
             case LIMINE_MEMMAP_EXECUTABLE_AND_MODULES:
+            case LIMINE_MEMMAP_ACPI_TABLES:
                 break;
 
             // map as Write Combining

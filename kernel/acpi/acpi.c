@@ -48,7 +48,7 @@ err_t init_acpi_tables() {
     err_t err = NO_ERROR;
 
     CHECK(g_limine_rsdp_request.response != NULL);
-    m_rsdp = PHYS_TO_DIRECT(g_limine_rsdp_request.response->address);
+    m_rsdp = g_limine_rsdp_request.response->address;
 
     // calculate the size nicely
     m_rsdp_size = m_rsdp->revision >= 2 ? m_rsdp->length : 20;
