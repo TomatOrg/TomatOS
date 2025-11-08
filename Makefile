@@ -153,7 +153,7 @@ all: $(BIN_DIR)/$(KERNEL).elf
 # Link rules for the final kernel executable.
 $(BIN_DIR)/$(KERNEL).elf: kernel/linker.ld $(OBJS)
 	@echo LD $@
-	@mkdir -p "$$(dirname $@)"
+	@mkdir -p $(@D)
 	@$(LD) --whole-archive $(OBJS) $(LDFLAGS) -o $@
 
 $(OBJS_DIR)/%.c.o: %.c
